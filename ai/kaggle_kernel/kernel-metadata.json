@@ -1,0 +1,14 @@
+{
+  "id": "nguyenhuukhoi/presaleee-v2-qwen4b-training",
+  "title": "Presaleee V2 Qwen4B Training",
+  "code_file": "presaleee_v2_qwen4b_training.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": "true",
+  "enable_gpu": "true",
+  "enable_tpu": "false",
+  "enable_internet": "true",
+  "dataset_sources": [],
+  "competition_sources": [],
+  "kernel_sources": []
+}

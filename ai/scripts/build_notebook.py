@@ -1,0 +1,434 @@
+"""
+Generates the complete, self-contained Jupyter Notebook for Kaggle:
+presale_qwen_qlora_training.ipynb
+"""
+
+import json
+import os
+
+def create_kaggle_notebook():
+    cells = []
+
+    # Cell 1: Markdown Introduction
+    cells.append({
+        "cell_type": "markdown",
+        "metadata": {},
+        "source": [
+            "# 🚀 Fine-Tuning Qwen-4B with QLoRA (4-bit) for SaaS Presale AI Assistant\n",
+            "\n",
+            "This notebook automates end-to-end LLM fine-tuning for **SaaS Presale Engineering**:\n",
+            "- **Base Model**: `Qwen/Qwen1.5-4B-Chat`\n",
+            "- **Quantization**: 4-bit NormalFloat (NF4) via `bitsandbytes`\n",
+            "- **PEFT Method**: QLoRA (Rank 16, Alpha 32)\n",
+            "- **Source Dataset**: `DeepMostInnovations/saas-sales-conversations`\n",
+            "- **Dataset Scope**: Exactly **2,000 conversations** processed into **10,000 instruction examples**:\n",
+            "  - **8,000 Train examples** (1,600 conversations)\n",
+            "  - **2,000 Validation examples** (400 conversations)\n",
+            "- **5 Presale Specialized Tasks**:\n",
+            "  1. 🎯 Pain Point Extraction\n",
+            "  2. 📋 Requirement Extraction\n",
+            "  3. 🔍 Intent Classification\n",
+            "  4. 🛡️ Objection & Risk Extraction\n",
+            "  5. 🏆 BANT Lead Qualification\n",
+            "\n",
+            "---"
+        ]
+    })
+
+    # Cell 2: Install dependencies
+    cells.append({
+        "cell_type": "code",
+        "execution_count": None,
+        "metadata": {},
+        "outputs": [],
+        "source": [
+            "# Step 1: Install required libraries for QLoRA & SFTTrainer\n",
+            "!pip install -q --upgrade pip\n",
+            "!pip install -q torch transformers datasets peft bitsandbytes trl accelerate sentencepiece\n",
+            "\n",
+            "import torch\n",
+            "print(f\"CUDA available: {torch.cuda.is_available()}\")\n",
+            "if torch.cuda.is_available():\n",
+            "    print(f\"Device: {torch.cuda.get_device_name(0)}\")\n",
+            "    print(f\"Device count: {torch.cuda.device_count()}\")\n",
+            "!nvidia-smi\n"
+        ]
+    })
+
+    # Cell 3: Data preprocessing (5 tasks)
+    cells.append({
+        "cell_type": "code",
+        "execution_count": None,
+        "metadata": {},
+        "outputs": [],
+        "source": [
+            "# Step 2: Download & Preprocess 2,000 Conversations into 10,000 Examples (8k Train / 2k Val)\n",
+            "import json\n",
+            "import random\n",
+            "from typing import Dict, List, Any, Tuple\n",
+            "from datasets import load_dataset, Dataset\n",
+            "\n",
+            "SYSTEM_PROMPTS = {\n",
+            "    \"pain_point\": \"You are an expert AI Presale Analyst. Analyze the sales conversation transcript and identify the customer's key pain points, operational bottlenecks, and current frustrations.\",\n",
+            "    \"requirement\": \"You are an expert AI Presale Analyst. Analyze the sales conversation transcript and extract the functional and technical requirements/needs expressed by the customer.\",\n",
+            "    \"intent\": \"You are an expert AI Presale Analyst. Classify the customer's primary intent in this sales interaction into one of the following categories: [Product Capability Evaluation, Pricing & ROI Evaluation, Implementation & Onboarding Assessment, Initial Discovery, Commercial Negotiation]. Provide a concise justification based on the conversation.\",\n",
+            "    \"objection\": \"You are an expert AI Presale Analyst. Identify all objections, hesitations, risks, and concerns raised by the customer during this sales interaction regarding pricing, complexity, time, or change management.\",\n",
+            "    \"qualification\": \"You are an expert AI Presale Solution Architect. Conduct a comprehensive Lead Qualification assessment using the BANT framework (Budget, Authority, Need, Timeline/Engagement) and assign a qualification status.\"\n",
+            "}\n",
+            "\n",
+            "def format_transcript(conv_data):\n",
+            "    if isinstance(conv_data, str):\n",
+            "        try:\n",
+            "            conv_data = json.loads(conv_data)\n",
+            "        except Exception:\n",
+            "            return conv_data\n",
+            "    turns = []\n",
+            "    for turn in conv_data:\n",
+            "        speaker = \"Customer\" if turn.get(\"speaker\") == \"customer\" else \"Sales Rep\"\n",
+            "        turns.append(f\"{speaker}: {turn.get('message', '').strip()}\")\n",
+            "    return \"\\n\".join(turns)\n",
+            "\n",
+            "def parse_scenario(scenario_data):\n",
+            "    if isinstance(scenario_data, str):\n",
+            "        try:\n",
+            "            return json.loads(scenario_data)\n",
+            "        except Exception:\n",
+            "            return {}\n",
+            "    return scenario_data if isinstance(scenario_data, dict) else {}\n",
+            "\n",
+            "def build_tasks(record):\n",
+            "    scenario = parse_scenario(record.get(\"scenario\", {}))\n",
+            "    persona = scenario.get(\"customer_persona\", {})\n",
+            "    transcript = format_transcript(record.get(\"conversation\", []))\n",
+            "    company = record.get(\"company_name\", persona.get(\"company\", \"Prospect Company\"))\n",
+            "    product = record.get(\"product_name\", \"SaaS Solution\")\n",
+            "    pain_points = persona.get(\"pain_points\", [])\n",
+            "    needs = persona.get(\"needs\", [])\n",
+            "    budget_sens = persona.get(\"budget_sensitivity\", \"medium\")\n",
+            "    authority = persona.get(\"decision_making_authority\", \"evaluator\")\n",
+            "    role = persona.get(\"role\", \"Prospect\")\n",
+            "    outcome = record.get(\"outcome\", 0)\n",
+            "    engagement = record.get(\"customer_engagement\", 0.5)\n",
+            "    conv_id = record.get(\"conversation_id\", \"\")\n",
+            "\n",
+            "    # 1. Pain Points\n",
+            "    t1_p = f\"Sales Conversation Transcript:\\n```\\n{transcript}\\n```\\n\\nIdentify and list the customer's primary pain points and operational bottlenecks:\"\n",
+            "    t1_r = \"Based on the conversation, the customer's key pain points are:\\n\" + (\"\\n\".join([f\"- {p}\" for p in pain_points]) if pain_points else \"- Workflow inefficiencies and tooling complexity.\")\n",
+            "    \n",
+            "    # 2. Requirements\n",
+            "    t2_p = f\"Sales Conversation Transcript:\\n```\\n{transcript}\\n```\\n\\nExtract the customer's functional and technical requirements for the solution:\"\n",
+            "    t2_r = \"The core customer requirements and solution needs identified:\\n\" + (\"\\n\".join([f\"- {n}\" for n in needs]) if needs else \"- An intuitive solution that simplifies team workflows.\")\n",
+            "    \n",
+            "    # 3. Intent Classification\n",
+            "    if budget_sens == \"high\":\n",
+            "        intent, just = \"Pricing & ROI Evaluation\", \"Customer actively inquires about pricing and ROI compared to existing tool costs.\"\n",
+            "    elif outcome == 1 and authority in [\"decision_maker\", \"signer\"]:\n",
+            "        intent, just = \"Commercial Negotiation\", \"Customer has decision authority and is moving towards procurement terms.\"\n",
+            "    elif any(\"train\" in str(p).lower() for p in pain_points):\n",
+            "        intent, just = \"Implementation & Onboarding Assessment\", \"Customer focuses heavily on team onboarding curve and adoption support.\"\n",
+            "    else:\n",
+            "        intent, just = \"Product Capability Evaluation\", \"Customer is evaluating product features against their internal workflows.\"\n",
+            "    t3_p = f\"Sales Conversation Transcript:\\n```\\n{transcript}\\n```\\n\\nClassify the customer's primary intent and provide a brief justification:\"\n",
+            "    t3_r = f\"**Primary Intent**: {intent}\\n\\n**Analysis**: {just}\"\n",
+            "\n",
+            "    # 4. Objections\n",
+            "    objs = []\n",
+            "    if budget_sens == \"high\":\n",
+            "        objs.append(\"Cost & ROI Concerns: Subscription pricing scrutiny and budget constraints.\")\n",
+            "    if any(\"train\" in str(p).lower() for p in pain_points):\n",
+            "        objs.append(\"Learning Curve: Team is busy and may face adoption hurdles.\")\n",
+            "    if not objs:\n",
+            "        objs.append(\"Bandwidth & Implementation Timing: Concerns around rollout bandwidth.\")\n",
+            "    t4_p = f\"Sales Conversation Transcript:\\n```\\n{transcript}\\n```\\n\\nIdentify and analyze the customer's objections and hesitations:\"\n",
+            "    t4_r = \"The customer raised the following key objections during the discussion:\\n\" + \"\\n\".join([f\"- {o}\" for o in objs])\n",
+            "\n",
+            "    # 5. Lead Qualification (BANT)\n",
+            "    status = \"Qualified (High Potential - Won)\" if outcome == 1 else \"Unqualified / At-Risk (Nurture Required)\"\n",
+            "    t5_p = f\"Sales Conversation Transcript:\\n```\\n{transcript}\\n```\\n\\nCompany: {company}\\nProduct Discussed: {product}\\nConduct a BANT Lead Qualification analysis and deliver the evaluation:\"\n",
+            "    t5_r = (\n",
+            "        f\"### BANT Lead Qualification Report\\n\"\n",
+            "        f\"- **Budget**: Sensitivity is {budget_sens.upper()}. {'Clear budget approval path.' if outcome == 1 else 'Requires concrete ROI proof to unlock spend.'}\\n\"\n",
+            "        f\"- **Authority**: Stakeholder role is {role} ({authority.capitalize()}). Needs team buy-in.\\n\"\n",
+            "        f\"- **Need**: Critical urgency around workflow friction and operational efficiency.\\n\"\n",
+            "        f\"- **Timeline / Engagement**: Customer engagement score {engagement:.1f}/1.0.\\n\\n\"\n",
+            "        f\"**Lead Qualification Verdict**: {status}\\n\"\n",
+            "        f\"**Next Presale Step**: {'Deliver technical architecture demo & contract proposal.' if outcome == 1 else 'Send case studies addressing ROI and schedule follow-up discovery session.'}\"\n",
+            "    )\n",
+            "\n",
+            "    return [\n",
+            "        {\"task\": \"pain_point\", \"messages\": [{\"role\": \"system\", \"content\": SYSTEM_PROMPTS[\"pain_point\"]}, {\"role\": \"user\", \"content\": t1_p}, {\"role\": \"assistant\", \"content\": t1_r}]},\n",
+            "        {\"task\": \"requirement\", \"messages\": [{\"role\": \"system\", \"content\": SYSTEM_PROMPTS[\"requirement\"]}, {\"role\": \"user\", \"content\": t2_p}, {\"role\": \"assistant\", \"content\": t2_r}]},\n",
+            "        {\"task\": \"intent\", \"messages\": [{\"role\": \"system\", \"content\": SYSTEM_PROMPTS[\"intent\"]}, {\"role\": \"user\", \"content\": t3_p}, {\"role\": \"assistant\", \"content\": t3_r}]},\n",
+            "        {\"task\": \"objection\", \"messages\": [{\"role\": \"system\", \"content\": SYSTEM_PROMPTS[\"objection\"]}, {\"role\": \"user\", \"content\": t4_p}, {\"role\": \"assistant\", \"content\": t4_r}]},\n",
+            "        {\"task\": \"qualification\", \"messages\": [{\"role\": \"system\", \"content\": SYSTEM_PROMPTS[\"qualification\"]}, {\"role\": \"user\", \"content\": t5_p}, {\"role\": \"assistant\", \"content\": t5_r}]}\n",
+            "    ]\n",
+            "\n",
+            "# Load streaming dataset to avoid loading full 100k conversations\n",
+            "print(\"Loading DeepMostInnovations/saas-sales-conversations...\")\n",
+            "raw_ds = load_dataset(\"DeepMostInnovations/saas-sales-conversations\", split=\"train\", streaming=True)\n",
+            "\n",
+            "TARGET_CONVERSATIONS = 2000\n",
+            "TRAIN_CONVS = 1600\n",
+            "VAL_CONVS = 400\n",
+            "\n",
+            "conversations = []\n",
+            "for idx, item in enumerate(raw_ds):\n",
+            "    record = {k: v for k, v in item.items() if not k.startswith(\"embedding_\")}\n",
+            "    conversations.append(record)\n",
+            "    if len(conversations) >= TARGET_CONVERSATIONS:\n",
+            "        break\n",
+            "    if (idx + 1) % 500 == 0:\n",
+            "        print(f\"Collected {len(conversations)}/{TARGET_CONVERSATIONS} conversations...\")\n",
+            "\n",
+            "print(f\"Total collected conversations: {len(conversations)}\")\n",
+            "random.seed(42)\n",
+            "random.shuffle(conversations)\n",
+            "\n",
+            "train_conv_subset = conversations[:TRAIN_CONVS]\n",
+            "val_conv_subset = conversations[TRAIN_CONVS:TRAIN_CONVS + VAL_CONVS]\n",
+            "\n",
+            "train_data = []\n",
+            "for c in train_conv_subset:\n",
+            "    train_data.extend(build_tasks(c))\n",
+            "\n",
+            "val_data = []\n",
+            "for c in val_conv_subset:\n",
+            "    val_data.extend(build_tasks(c))\n",
+            "\n",
+            "print(f\"\\nDataset prepared successfully!\")\n",
+            "print(f\"Train samples: {len(train_data)} (from {len(train_conv_subset)} conversations)\")\n",
+            "print(f\"Val samples:   {len(val_data)} (from {len(val_conv_subset)} conversations)\")\n"
+        ]
+    })
+
+    # Cell 4: Model & Tokenizer loading with 4-bit Quantization
+    cells.append({
+        "cell_type": "code",
+        "execution_count": None,
+        "metadata": {},
+        "outputs": [],
+        "source": [
+            "# Step 3: Load Qwen-4B Model and Tokenizer with 4-bit NF4 Quantization\n",
+            "from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig\n",
+            "from peft import prepare_model_for_kbit_training\n",
+            "\n",
+            "# Alibaba's official Qwen 4B model\n",
+            "MODEL_ID = \"Qwen/Qwen1.5-4B-Chat\"\n",
+            "\n",
+            "print(f\"Loading tokenizer for {MODEL_ID}...\")\n",
+            "tokenizer = AutoTokenizer.from_pretrained(\n",
+            "    MODEL_ID,\n",
+            "    trust_remote_code=True,\n",
+            "    padding_side=\"right\"\n",
+            ")\n",
+            "if tokenizer.pad_token is None:\n",
+            "    tokenizer.pad_token = tokenizer.eos_token\n",
+            "\n",
+            "# 4-bit NormalFloat (NF4) Quantization Config\n",
+            "bnb_config = BitsAndBytesConfig(\n",
+            "    load_in_4bit=True,\n",
+            "    bnb_4bit_quant_type=\"nf4\",\n",
+            "    bnb_4bit_compute_dtype=torch.float16,\n",
+            "    bnb_4bit_use_double_quant=True\n",
+            ")\n",
+            "\n",
+            "print(f\"Loading base model {MODEL_ID} in 4-bit...\")\n",
+            "model = AutoModelForCausalLM.from_pretrained(\n",
+            "    MODEL_ID,\n",
+            "    quantization_config=bnb_config,\n",
+            "    device_map=\"auto\",\n",
+            "    trust_remote_code=True\n",
+            ")\n",
+            "\n",
+            "model = prepare_model_for_kbit_training(model)\n",
+            "print(\"Base model prepared for 4-bit training!\")\n"
+        ]
+    })
+
+    # Cell 5: Setup LoRA & Format ChatML
+    cells.append({
+        "cell_type": "code",
+        "execution_count": None,
+        "metadata": {},
+        "outputs": [],
+        "source": [
+            "# Step 4: Configure PEFT / LoRA Adapter Specification\n",
+            "from peft import LoraConfig\n",
+            "\n",
+            "lora_config = LoraConfig(\n",
+            "    r=16,\n",
+            "    lora_alpha=32,\n",
+            "    target_modules=[\"q_proj\", \"k_proj\", \"v_proj\", \"o_proj\", \"gate_proj\", \"up_proj\", \"down_proj\"],\n",
+            "    lora_dropout=0.05,\n",
+            "    bias=\"none\",\n",
+            "    task_type=\"CAUSAL_LM\"\n",
+            ")\n",
+            "\n",
+            "# Format chat conversations using Qwen Chat Template\n",
+            "def format_prompts(batch):\n",
+            "    formatted_texts = []\n",
+            "    for messages in batch[\"messages\"]:\n",
+            "        text = tokenizer.apply_chat_template(\n",
+            "            messages,\n",
+            "            tokenize=False,\n",
+            "            add_generation_prompt=False\n",
+            "        )\n",
+            "        formatted_texts.append(text)\n",
+            "    return {\"text\": formatted_texts}\n",
+            "\n",
+            "train_dataset = Dataset.from_list(train_data).map(format_prompts, batched=True)\n",
+            "val_dataset = Dataset.from_list(val_data).map(format_prompts, batched=True)\n",
+            "\n",
+            "print(\"Sample formatted training prompt:\")\n",
+            "print(\"-\" * 50)\n",
+            "print(train_dataset[0][\"text\"][:600] + \"...\")\n",
+            "print(\"-\" * 50)\n"
+        ]
+    })
+
+    # Cell 6: SFTTrainer Execution
+    cells.append({
+        "cell_type": "code",
+        "execution_count": None,
+        "metadata": {},
+        "outputs": [],
+        "source": [
+            "# Step 5: Setup Training Arguments & SFTTrainer\n",
+            "from trl import SFTTrainer, SFTConfig\n",
+            "\n",
+            "OUTPUT_DIR = \"/kaggle/working/qwen_presale_qlora\"\n",
+            "\n",
+            "training_args = SFTConfig(\n",
+            "    output_dir=OUTPUT_DIR,\n",
+            "    dataset_text_field=\"text\",\n",
+            "    max_length=1536,\n",
+            "    num_train_epochs=1,\n",
+            "    per_device_train_batch_size=2,\n",
+            "    gradient_accumulation_steps=8,  # Effective batch size = 16\n",
+            "    optim=\"paged_adamw_8bit\",\n",
+            "    learning_rate=2e-4,\n",
+            "    lr_scheduler_type=\"cosine\",\n",
+            "    warmup_steps=30,\n",
+            "    fp16=True,\n",
+            "    logging_steps=20,\n",
+            "    eval_strategy=\"steps\",\n",
+            "    eval_steps=250,\n",
+            "    save_strategy=\"steps\",\n",
+            "    save_steps=250,\n",
+            "    save_total_limit=2,\n",
+            "    report_to=\"none\"\n",
+            ")\n",
+            "\n",
+            "trainer = SFTTrainer(\n",
+            "    model=model,\n",
+            "    train_dataset=train_dataset,\n",
+            "    eval_dataset=val_dataset,\n",
+            "    peft_config=lora_config,\n",
+            "    processing_class=tokenizer,\n",
+            "    args=training_args\n",
+            ")\n",
+            "\n",
+            "print(\"Starting QLoRA Fine-Tuning...\")\n",
+            "trainer.train()\n",
+            "print(\"Training Complete!\")\n"
+        ]
+    })
+
+    # Cell 7: Save adapter
+    cells.append({
+        "cell_type": "code",
+        "execution_count": None,
+        "metadata": {},
+        "outputs": [],
+        "source": [
+            "# Step 6: Save LoRA Adapter & Tokenizer\n",
+            "FINAL_ADAPTER_DIR = \"/kaggle/working/qwen_presale_adapter\"\n",
+            "\n",
+            "print(f\"Saving LoRA adapter to {FINAL_ADAPTER_DIR}...\")\n",
+            "trainer.model.save_pretrained(FINAL_ADAPTER_DIR)\n",
+            "tokenizer.save_pretrained(FINAL_ADAPTER_DIR)\n",
+            "\n",
+            "print(\"Adapter files saved:\")\n",
+            "!ls -lh {FINAL_ADAPTER_DIR}\n"
+        ]
+    })
+
+    # Cell 8: Inference Demo on all 5 Presale Tasks
+    cells.append({
+        "cell_type": "code",
+        "execution_count": None,
+        "metadata": {},
+        "outputs": [],
+        "source": [
+            "# Step 7: Test Inference on a New Sales Conversation across all 5 Presale Tasks\n",
+            "test_transcript = \"\"\"Customer: Hi there, our engineering team is spending over 20 hours a week maintaining legacy CI/CD scripts and our test suites keep failing silently.\nSales Rep: That sounds frustrating. Are you looking to replace your current pipelines or augment them with automated orchestration?\nCustomer: Definitely augment first. But our main concern is security compliance (SOC2) and whether our junior engineers can pick this up quickly without a 2-month training period. Also, what is your pricing tier for 50 seats?\"\"\"\n",
+            "\n",
+            "tasks_to_test = [\n",
+            "    (\"Pain Point Extraction\", SYSTEM_PROMPTS[\"pain_point\"], \"Identify and list the customer's primary pain points:\"),\n",
+            "    (\"Requirement Extraction\", SYSTEM_PROMPTS[\"requirement\"], \"Extract the customer's functional and technical requirements:\"),\n",
+            "    (\"Intent Classification\", SYSTEM_PROMPTS[\"intent\"], \"Classify the customer's primary intent and provide a brief justification:\"),\n",
+            "    (\"Objection Extraction\", SYSTEM_PROMPTS[\"objection\"], \"Identify and analyze the customer's objections and hesitations:\"),\n",
+            "    (\"Lead Qualification\", SYSTEM_PROMPTS[\"qualification\"], \"Company: FinTech SaaS\\nProduct Discussed: CloudOrchestrator Pro\\nConduct a BANT Lead Qualification analysis:\")\n",
+            "]\n",
+            "\n",
+            "infer_model = trainer.model\n",
+            "infer_model.eval()\n",
+            "\n",
+            "print(\"=== TESTING FINE-TUNED PRE-SALE LLM ===\\n\")\n",
+            "for task_name, sys_prompt, user_query in tasks_to_test:\n",
+            "    print(f\"\\n==================== [TASK: {task_name.upper()}] ====================\")\n",
+            "    prompt_messages = [\n",
+            "        {\"role\": \"system\", \"content\": sys_prompt},\n",
+            "        {\"role\": \"user\", \"content\": f\"Sales Conversation Transcript:\\n```\\n{test_transcript}\\n```\\n\\n{user_query}\"}\n",
+            "    ]\n",
+            "    \n",
+            "    input_text = tokenizer.apply_chat_template(prompt_messages, tokenize=False, add_generation_prompt=True)\n",
+            "    inputs = tokenizer(input_text, return_tensors=\"pt\").to(infer_model.device)\n",
+            "    \n",
+            "    with torch.no_grad():\n",
+            "        outputs = infer_model.generate(\n",
+            "            **inputs,\n",
+            "            max_new_tokens=256,\n",
+            "            temperature=0.2,\n",
+            "            top_p=0.9,\n",
+            "            do_sample=True,\n",
+            "            pad_token_id=tokenizer.pad_token_id\n",
+            "        )\n",
+            "    \n",
+            "    response = tokenizer.decode(outputs[0][inputs['input_ids'].shape[1]:], skip_special_tokens=True)\n",
+            "    print(response.strip())\n"
+        ]
+    })
+
+    notebook = {
+        "cells": cells,
+        "metadata": {
+            "kernelspec": {
+                "display_name": "Python 3",
+                "language": "python",
+                "name": "python3"
+            },
+            "language_info": {
+                "name": "python",
+                "version": "3.10.0"
+            },
+            "accelerator": "GPU"
+        },
+        "nbformat": 4,
+        "nbformat_minor": 4
+    }
+
+    # Write root notebook
+    with open("presale_qwen_qlora_training.ipynb", "w", encoding="utf-8") as f:
+        json.dump(notebook, f, indent=2, ensure_ascii=False)
+
+    # Write into kaggle_kernel
+    os.makedirs("kaggle_kernel", exist_ok=True)
+    with open("kaggle_kernel/presale_qwen_qlora_training.ipynb", "w", encoding="utf-8") as f:
+        json.dump(notebook, f, indent=2, ensure_ascii=False)
+
+    print("Notebook presale_qwen_qlora_training.ipynb regenerated successfully!")
+
+if __name__ == "__main__":
+    create_kaggle_notebook()
+

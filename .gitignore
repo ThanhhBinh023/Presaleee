@@ -1,22 +1,50 @@
-# Logs
-logs
-*.log
+# Root & OS
+.DS_Store
+Thumbs.db
+*.local
+
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+kaggle.json
+.kaggle/
+
+# Node.js / Frontend / Backend
+node_modules/
+dist/
+dist-ssr/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
+# Python & AI
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.ipynb_checkpoints/
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.h5
 
-# Editor directories and files
+# Model weights & large artifacts (Keep code, track weights via HF/Storage)
+ai/qwen_presale_adapter/
+ai/qwen_presale_adapter_v2/adapter_model.safetensors
+ai/qwen_presale_adapter_v2/tokenizer.json
+ai/kaggle_logs/
+
+# IDE & Editor
 .vscode/*
 !.vscode/extensions.json
-.idea
-.DS_Store
+.idea/
 *.suo
 *.ntvs*
 *.njsproj

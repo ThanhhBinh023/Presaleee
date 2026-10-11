@@ -64,3 +64,4 @@ Khi bạn là AI đang đọc repository này:
 2. **Không commit weights nặng**: Tuyệt đối không sinh code add các file `.safetensors`, `.bin`, `.pt`, `.h5` vào Git.
 3. **Strict Typing**: Giữ 100% TypeScript strict mode cho cả `backend` và `frontend`. Không dùng kiểu `any` tùy tiện; hãy định nghĩa interfaces rõ ràng.
 4. **Error Handling**: Mọi API endpoint phải có try/catch chuẩn và trả về mã lỗi HTTP đồng nhất (`{ success: false, message, error }`).
+

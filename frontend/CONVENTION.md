@@ -43,3 +43,4 @@ frontend/src/
 - `npm run dev`: Chạy dev server tại `http://localhost:5173`.
 - `npm run lint`: Chạy oxlint kiểm tra cú pháp và code quality.
 - `npm run build`: Type-check với TypeScript (`tsc -b`) và đóng gói Vite.
+

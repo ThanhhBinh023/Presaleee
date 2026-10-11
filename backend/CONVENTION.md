@@ -63,3 +63,4 @@ backend/src/
 - `npm run dev`: Chạy dev server bằng `tsx watch` (auto reload khi sửa file).
 - `npm run build`: Compile TypeScript sang JavaScript trong thư mục `dist/`.
 - `npm start`: Chạy production build.
+

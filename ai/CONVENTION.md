@@ -49,3 +49,4 @@ ai/
 - `pip install -r requirements.txt`: Cài đặt thư viện.
 - `python scripts/chat_interactive.py`: Chạy giao diện dòng lệnh test model trực tiếp.
 - `python scripts/run_presaleee_verification_suite.py`: Chạy bộ kiểm thử 6 nghiệp vụ.
+

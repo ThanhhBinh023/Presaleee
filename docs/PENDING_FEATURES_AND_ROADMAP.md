@@ -150,3 +150,4 @@ Dưới đây là chi tiết các hạng mục còn thiếu, được phân lo�
 * **Thành viên phụ trách AI / Data (AI):**
   * Nạp thêm nhiều Case Study đa dạng vào Supabase Knowledge Vault (ngành Bất động sản, Giáo dục, Sản xuất).
   * Kiểm thử các prompt edge-case và tối ưu hoá độ chính xác của bảng thông số trích xuất.
+

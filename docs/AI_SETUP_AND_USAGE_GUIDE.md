@@ -53,7 +53,7 @@ python3 -m venv .venv
 # Trên macOS / Linux:
 source .venv/bin/activate
 # Trên Windows (cmd / powershell):
-# .venv\Scripts\activate
+.venv\Scripts\activate
 
 # 4. Cài đặt các thư viện AI cần thiết
 pip install -r ai/requirements.txt
@@ -69,18 +69,10 @@ Tạo hoặc mở file `backend/.env` và đảm bảo có 2 biến quan trọng
 
 ```env
 # 1. Supabase PostgreSQL Connection String (Đã có sẵn pgvector & 12 tables)
-DATABASE_URL=postgresql://postgres.epwuknhjbbnjyicfexfl:Presaleee2026@aws-0-ap-northeast-1.pooler.supabase.com:5432/postgres
 
-# 2. Google Gemini API Key (Dùng cho Cloud Embedding gemini-embedding-001)
-GEMINI_API_KEY=AIzaSy...your-gemini-api-key...
 
-# 3. Cổng chạy Backend & AI Service
-PORT=5000
-AI_SERVICE_URL=http://localhost:8000
-NODE_ENV=development
+# 2. Google Gemini API Key (Dùng cho Cloud Embedding)
 ```
-
-*(Liên hệ trưởng nhóm nếu bạn chưa có `GEMINI_API_KEY` hoặc chuỗi kết nối Database)*
 
 ---
 
@@ -287,3 +279,4 @@ export async function generateProposalOverview(rfpText: string, domain?: string)
    * Đảm bảo chuỗi kết nối `DATABASE_URL` trong `backend/.env` không bị ngắt mạng Internet. Supabase Tokyo yêu cầu máy tính của bạn có kết nối mạng.
 3. **Mô hình AI chạy chậm trên máy:**
    * Script đã được tối ưu tự động dùng GPU Apple Silicon (**Metal/MPS**) trên Mac hoặc CUDA trên máy Windows/Linux. Nếu máy chỉ có CPU thông thường, việc sinh văn bản có thể mất từ 15-30 giây, điều này hoàn toàn bình thường khi chạy LLM local.
+

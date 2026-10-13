@@ -10,3 +10,4 @@ export interface IngestDocumentOutputDTO {
   docId: string;
   totalChunks: number;
 }
+

@@ -28,3 +28,4 @@ export class ExternalServiceError extends AppError {
     super(message, 502);
   }
 }
+

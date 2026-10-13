@@ -74,3 +74,4 @@ export class PostgresKnowledgeRepository implements IKnowledgeRepository {
     }));
   }
 }
+

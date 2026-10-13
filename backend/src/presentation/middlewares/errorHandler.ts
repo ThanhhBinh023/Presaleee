@@ -23,3 +23,4 @@ export function errorHandler(
     statusCode: 500
   });
 }
+

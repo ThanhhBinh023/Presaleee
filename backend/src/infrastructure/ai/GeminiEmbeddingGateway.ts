@@ -50,3 +50,4 @@ export class GeminiEmbeddingGateway implements IEmbeddingGateway {
     }
   }
 }
+

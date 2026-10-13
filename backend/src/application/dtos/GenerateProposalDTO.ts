@@ -10,3 +10,4 @@ export interface GenerateProposalOutputDTO {
   overview: string;
   sources: DocumentChunk[];
 }
+

@@ -10,3 +10,4 @@ export interface RAGSearchOutputDTO {
   chunks: DocumentChunk[];
   totalRetrieved: number;
 }
+

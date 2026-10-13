@@ -21,3 +21,4 @@ export const env: AppConfig = {
   aiServiceUrl: process.env.AI_SERVICE_URL || 'http://localhost:8000',
   nodeEnv: process.env.NODE_ENV || 'development'
 };
+

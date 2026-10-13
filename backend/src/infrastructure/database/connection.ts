@@ -15,3 +15,4 @@ dbPool.on('connect', () => {
 dbPool.on('error', (err: Error) => {
   console.error('❌ PostgreSQL connection error:', err.message);
 });
+

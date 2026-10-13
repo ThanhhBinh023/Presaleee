@@ -19,3 +19,4 @@ export interface IKnowledgeRepository {
   ): Promise<void>;
   searchHybrid(params: HybridSearchParams): Promise<DocumentChunk[]>;
 }
+

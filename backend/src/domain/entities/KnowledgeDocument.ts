@@ -10,3 +10,4 @@ export interface KnowledgeDocument {
   createdAt?: Date;
   updatedAt?: Date;
 }
+

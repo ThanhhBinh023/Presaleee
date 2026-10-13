@@ -19,3 +19,4 @@ export interface DocumentChunk {
   semanticRank?: number | null;
   ftsRank?: number | null;
 }
+

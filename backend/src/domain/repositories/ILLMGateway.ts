@@ -8,3 +8,4 @@ export interface LLMGenerateOptions {
 export interface ILLMGateway {
   generate(options: LLMGenerateOptions): Promise<string>;
 }
+

@@ -1,22 +1,28 @@
 import os
+from dotenv import load_dotenv
+
+load_dotenv("backend/.env")
+load_dotenv(".env")
+
 import torch
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
-from fastembed import TextEmbedding
+from google import genai
+from google.genai import types
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import PeftModel
 
 app = FastAPI(title="Presaleee AI Engine", version="1.0.0")
 
-# 1. Khởi tạo BAAI/bge-m3 Embedding Engine (chạy siêu nhanh qua ONNX / FastEmbed)
-print("⏳ Loading BAAI/bge-m3 embedding model...")
-embedding_model = TextEmbedding(model_name="BAAI/bge-m3")
-print("✅ Embedding model ready (1024 dims)!")
+# 1. Khởi tạo Gemini Client cho Embedding (gemini-embedding-001, 768 dims)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+print("✅ Gemini gemini-embedding-001 ready (768 dims)!")
 
 # 2. Khởi tạo LLM Engine (Load on startup hoặc load lazy)
 BASE_MODEL_NAME = "Qwen/Qwen1.5-4B-Chat"
-ADAPTER_PATH = "./qwen_presale_adapter_v2"
+ADAPTER_PATH = "./ai/qwen_presale_adapter_v2" if os.path.isdir("./ai/qwen_presale_adapter_v2") else "./qwen_presale_adapter_v2"
 llm_model = None
 tokenizer = None
 
@@ -64,9 +70,15 @@ def health():
 @app.post("/api/v1/embed", response_model=EmbedResponse)
 def embed_endpoint(req: EmbedRequest):
     try:
-        embeddings_generator = embedding_model.embed(req.texts)
-        embeddings = [list(e) for e in embeddings_generator]
-        return EmbedResponse(embeddings=embeddings, dimension=len(embeddings[0]) if embeddings else 1024)
+        embeddings = []
+        for text in req.texts:
+            res = gemini_client.models.embed_content(
+                model="gemini-embedding-001",
+                contents=text,
+                config=types.EmbedContentConfig(output_dimensionality=768)
+            )
+            embeddings.append(res.embeddings[0].values)
+        return EmbedResponse(embeddings=embeddings, dimension=768)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -108,3 +120,4 @@ def generate_endpoint(req: GenerateRequest):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=False)
+

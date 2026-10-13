@@ -1,7 +1,10 @@
 import { Pool } from 'pg';
 import dotenv from 'dotenv';
+import path from 'path';
 
 dotenv.config();
+dotenv.config({ path: path.resolve(process.cwd(), 'backend/.env') });
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 export const dbPool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -17,3 +20,4 @@ dbPool.on('connect', () => {
 dbPool.on('error', (err) => {
   console.error('❌ Supabase PostgreSQL connection error:', err);
 });
+

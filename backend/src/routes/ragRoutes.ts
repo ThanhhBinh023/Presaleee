@@ -57,3 +57,4 @@ ragRouter.post('/generate-proposal', async (req: Request, res: Response) => {
     res.status(500).json({ success: false, error: error.message });
   }
 });
+

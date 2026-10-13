@@ -80,50 +80,70 @@ export class RAGService {
   }
 
   /**
-   * Bước 3: Tìm kiếm ngữ cảnh liên quan (Semantic Vector Search)
+   * Bước 3: Tìm kiếm ngữ cảnh liên quan qua HYBRID RAG (Vector 768 dims + Full-Text Search RRF)
    */
   static async searchRelevantContext(
     queryText: string,
     domain?: string,
     topK: number = 3
   ): Promise<RetrievedChunk[]> {
-    // 1. Lấy embedding của câu hỏi/yêu cầu tìm kiếm
+    // 1. Lấy embedding 768 dims của câu hỏi từ AI Service
     const [queryEmbedding] = await AIClient.getEmbeddings([queryText]);
     const vectorStr = `[${queryEmbedding.join(',')}]`;
 
-    // 2. Truy vấn hàm match_document_chunks trên Supabase
+    // 2. Truy vấn hàm hybrid_search_chunks trên Supabase
     const res = await dbPool.query(
-      `SELECT * FROM match_document_chunks($1::vector, $2, $3, $4)`,
-      [vectorStr, 0.4, topK, domain || null]
+      `SELECT id, doc_id, chunk_content, metadata, combined_score, semantic_rank, fts_rank 
+       FROM hybrid_search_chunks(
+         query_text => $1,
+         query_embedding => $2::vector,
+         match_count => $3,
+         full_text_weight => 1.0,
+         semantic_weight => 1.0,
+         rrf_k => 60,
+         filter_domain => $4
+       )`,
+      [queryText, vectorStr, topK, domain || null]
     );
 
     return res.rows;
   }
 
   /**
-   * Bước 4: Sinh Proposal có ngữ cảnh (RAG Generation)
+   * Bước 4: Sinh Proposal có ngữ cảnh (Hybrid RAG Generation)
    */
   static async generateContextAwareProposalOverview(
     rfpText: string,
     domain?: string
   ): Promise<{ overview: string; sources: RetrievedChunk[] }> {
-    // 1. Retrieve: Tìm tài liệu / proposal mẫu tương tự trong kho tri thức
+    // 1. Retrieve: Tìm tài liệu / case study tương tự qua Hybrid Search
     const relevantChunks = await this.searchRelevantContext(rfpText, domain, 3);
 
-    // 2. Augment: Ghép context vào Prompt
-    let augmentedPrompt = `Yêu cầu khách hàng:\n${rfpText}\n\n`;
+    // 2. Augment: Ghép context chính xác từ các dự án quá khứ vào Prompt
+    let augmentedPrompt = `YÊU CẦU DỰ ÁN MỚI TỪ KHÁCH HÀNG:\n${rfpText}\n\n`;
 
     if (relevantChunks.length > 0) {
-      augmentedPrompt += `[THÔNG TIN THAM KHẢO TỪ CÁC DỰ ÁN TƯƠNG ĐỒNG TRONG QUÁ KHỨ]:\n`;
+      augmentedPrompt += `[THÔNG TIN THAM KHẢO & DỮ LIỆU ĐÃ ĐƯỢC CHỨNG MINH TỪ CÁC DỰ ÁN TƯƠNG ĐỒNG TRONG QUÁ KHỨ]:\n`;
       relevantChunks.forEach((chunk, index) => {
-        augmentedPrompt += `Tài liệu tham khảo ${index + 1}:\n${chunk.chunk_content}\n\n`;
+        const title = chunk.metadata?.title || 'Tài liệu tham khảo';
+        const section = chunk.metadata?.section || '';
+        const tech = chunk.metadata?.tech_stack ? chunk.metadata.tech_stack.join(', ') : '';
+        const compliance = chunk.metadata?.compliance ? chunk.metadata.compliance.join(', ') : '';
+
+        augmentedPrompt += `Tham khảo #${index + 1} (${title} - ${section}):\n`;
+        augmentedPrompt += `- Nội dung: ${chunk.chunk_content}\n`;
+        if (tech) augmentedPrompt += `- Tech stack đã áp dụng: ${tech}\n`;
+        if (compliance) augmentedPrompt += `- Tiêu chuẩn bảo mật: ${compliance}\n`;
+        augmentedPrompt += `\n`;
       });
-      augmentedPrompt += `Dựa vào yêu cầu khách hàng và tham khảo các giải pháp tương đồng ở trên, hãy tổng hợp bản Overview giải pháp chuyên nghiệp.`;
+
+      augmentedPrompt += `HƯỚNG DẪN TỔNG HỢP:\n`;
+      augmentedPrompt += `Dựa trên yêu cầu mới của khách hàng và các giải pháp đã kiểm chứng ở trên, hãy soạn thảo bản Overview giải pháp chuyên nghiệp gồm: Tầm nhìn giải pháp, Kiến trúc đề xuất, Các phân hệ cốt lõi, Cam kết bảo mật/tuân thủ, và Lý do tại sao giải pháp này tối ưu.`;
     }
 
-    // 3. Generate: Gọi Qwen fine-tuned LLM
+    // 3. Generate: Gọi Qwen1.5-4B LoRA fine-tuned model (Task 5: Proposal Builder)
     const output = await AIClient.generate({
-      taskMode: 5, // Task 5: Proposal Builder
+      taskMode: 5,
       prompt: augmentedPrompt,
       temperature: 0.2
     });
@@ -134,3 +154,4 @@ export class RAGService {
     };
   }
 }
+

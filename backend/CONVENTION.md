@@ -1,66 +1,94 @@
-# Backend Coding Convention (Node.js + Express + TypeScript)
+# Backend Coding Convention (Clean Architecture + TypeScript)
 
-Thư mục này đóng vai trò **Nhạc trưởng (Orchestrator)** của hệ thống Presaleee, quản lý Database (PostgreSQL + `pgvector`), Authentication, RAG Pipeline và điều phối AI request.
+Thư mục này đóng vai trò **Nhạc trưởng (Orchestrator)** của hệ thống Presaleee, được thiết kế tuân thủ nghiêm ngặt **Kiến trúc sạch (Clean Architecture / Hexagonal Architecture)** nhằm phân tách rõ ràng trách nhiệm giữa Domain, Application, Infrastructure và Presentation layers.
 
 ---
 
-## 1. Cấu Trúc Thư Mục Khuyến Nghị
+## 1. Cấu Trúc Thư Mục Clean Architecture
 
 ```
 backend/src/
-├── controllers/     # Điều khiển request/response cho từng route
-├── services/        # Nghiệp vụ cốt lõi: RAGService, ProposalService, AuthService
-├── routes/          # Khai báo Express router
-├── models/          # Database entities / schemas / migrations
-├── clients/         # HTTP Client gọi AI Service (FastAPI /embed, /generate)
-├── middlewares/     # Auth middleware, validation, error handler
-├── types/           # Định nghĩa TypeScript interfaces (DTO, models)
-├── utils/           # Utility functions (logger, chunking text,...)
-└── index.ts         # Khởi tạo Express server
+├── domain/                      # [Enterprise Business Rules] - Thực thể & hợp đồng nghiệp vụ độc lập
+│   ├── entities/                # Thực thể cốt lõi (DocumentChunk, KnowledgeDocument, Proposal,...)
+│   ├── repositories/            # Interfaces hợp đồng (IKnowledgeRepository, IEmbeddingGateway, ILLMGateway)
+│   └── errors/                  # Lớp lỗi Domain tùy chỉnh (AppError, ValidationError, NotFoundError,...)
+│
+├── application/                 # [Application Business Rules] - Luồng nghiệp vụ cụ thể (Use Cases & DTOs)
+│   ├── use-cases/               # Use cases thực thi (SearchHybridRAGUseCase, IngestDocumentUseCase,...)
+│   ├── dtos/                    # Input / Output Data Transfer Objects
+│   └── services/                # Tiện ích nghiệp vụ nội bộ (TextSplitterService)
+│
+├── infrastructure/              # [Frameworks & Drivers] - Triển khai thực tế công nghệ & dịch vụ bên ngoài
+│   ├── config/                  # Quản lý biến môi trường strongly-typed (env.ts)
+│   ├── database/
+│   │   ├── connection.ts        # Supabase PostgreSQL Connection Pool
+│   │   ├── migrations/          # DDL migrations cho PostgreSQL + pgvector
+│   │   └── repositories/        # Cài đặt cụ thể các repositories (PostgresKnowledgeRepository)
+│   └── ai/                      # Gateways tích hợp AI Cloud & Inference
+│       ├── GeminiEmbeddingGateway.ts  # Tích hợp Gemini Cloud API (gemini-embedding-001, 768 dims)
+│       └── FastAPILMGateway.ts        # Tích hợp HTTP client gọi Inference Engine Qwen
+│
+├── presentation/                # [Interface Adapters] - Xử lý giao tiếp HTTP / REST API
+│   ├── controllers/             # Điều hướng request/response (RAGController)
+│   ├── routes/                  # Định nghĩa Express Router (/api/v1/rag)
+│   └── middlewares/             # Middleware xác thực, validate, bắt lỗi tập trung (errorHandler)
+│
+├── container.ts                 # IoC / Dependency Injection Container liên kết toàn bộ hệ thống
+└── index.ts                     # Entry point khởi tạo vòng đời Express Server
 ```
 
 ---
 
-## 2. Quy Tắc Code & RAG Pipeline
+## 2. Quy Tắc Phụ Thuộc (The Dependency Rule)
+
+1. **Nguyên tắc dòng chảy phụ thuộc (Inward Dependency)**:
+   - Các layer bên ngoài chỉ được phép phụ thuộc vào layer bên trong.
+   - **Domain Layer** là hạt nhân trung tâm, TUYỆT ĐỐI KHÔNG import bất kỳ thư viện bên ngoài nào (`express`, `pg`, `@google/genai`, `axios`).
+   - **Application Layer** chỉ phụ thuộc vào **Domain Layer**.
+   - **Infrastructure Layer** và **Presentation Layer** phụ thuộc vào **Application** và **Domain**.
+2. **Nguyên tắc Đảo ngược Phụ thuộc (Dependency Inversion Principle - DIP)**:
+   - Các Use Case trong Application Layer chỉ giao tiếp với Repository và Gateway thông qua Interface (`IKnowledgeRepository`, `IEmbeddingGateway`, `ILLMGateway`).
+   - Mọi thể hiện cụ thể (concrete instances) được cấu hình và tiêm vào (inject) thông qua file `container.ts`.
+
+---
+
+## 3. Quy Chuẩn RESTful API & Error Handling
 
 1. **Chuẩn RESTful API Response**:
-   Mọi endpoint trả về định dạng chuẩn:
+   Mọi endpoint trả về định dạng JSON nhất quán:
    ```json
    {
      "success": true,
      "data": { ... },
-     "message": "Optional descriptive message"
+     "meta": { "total": 10 }
    }
    ```
-   Khi có lỗi:
+   Khi có lỗi xảy ra:
    ```json
    {
      "success": false,
-     "error": "Chi tiết lỗi",
+     "error": "Descriptive error message",
      "statusCode": 400
    }
    ```
 
-2. **Quy tắc điều phối RAG**:
-   - **Chunking**: Chia nhỏ tài liệu RFP / proposal cũ (khoảng 300–800 từ) trước khi gửi embedding.
-   - **Gửi Embed**: Gọi sang AI Service `POST http://localhost:8000/embed` để nhận vector 1024-dim (`bge-m3`).
-   - **Query pgvector**: Thực hiện truy vấn cosine similarity bằng toán tử `<=>`:
-     ```sql
-     SELECT id, title, content_chunk, 1 - (embedding <=> $1) AS similarity
-     FROM document_embeddings
-     WHERE project_id = $2
-     ORDER BY embedding <=> $1
-     LIMIT 5;
-     ```
-   - **Ghép Prompt**: Ghép các chunks liên quan vào prompt template trước khi gửi sang `POST http://localhost:8000/generate`.
-
-3. **Database & Environment**:
-   - Không commit thông tin nhạy cảm (DB password, API key). Luôn dùng file `.env` và cập nhật `.env.example`.
+2. **Xử lý ngoại lệ tập trung (Centralized Error Handler)**:
+   - Ném ngoại lệ kế thừa từ `AppError` (`ValidationError`, `NotFoundError`, `ExternalServiceError`).
+   - Middleware `errorHandler.ts` bắt mọi ngoại lệ và định dạng lại response mã HTTP phù hợp (400, 404, 502, 500).
 
 ---
 
-## 3. Lệnh Thường Dùng
-- `npm run dev`: Chạy dev server bằng `tsx watch` (auto reload khi sửa file).
-- `npm run build`: Compile TypeScript sang JavaScript trong thư mục `dist/`.
-- `npm start`: Chạy production build.
+## 4. Quy Chuẩn RAG Pipeline trong Clean Architecture
 
+1. **Cloud Embedding Contract**:
+   - Sử dụng model `gemini-embedding-001` qua `GeminiEmbeddingGateway`.
+   - Luôn sử dụng dimensionality reduction 768 dimensions để khớp với schema `vector(768)` và HNSW index trong Supabase.
+2. **Hybrid Search Execution**:
+   - Không query thủ công SQL thô rải rác; mọi truy vấn Hybrid Search phải thông qua `IKnowledgeRepository.searchHybrid()`, gọi hàm RPC `hybrid_search_chunks` (kết hợp Cosine Similarity + Full-Text Search qua Reciprocal Rank Fusion / RRF).
+
+---
+
+## 5. Lệnh Thường Dùng
+- `npm run dev`: Chạy backend ở chế độ development với auto-reload.
+- `npm run build`: Kiểm tra typecheck và build dự án ra thư mục `dist/`.
+- `npm start`: Chạy production build từ `dist/index.js`.

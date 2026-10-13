@@ -10,15 +10,15 @@ Dự án áp dụng mô hình **Decoupled Architecture (Tam giác AI - Backend -
 
 ```
 ├── frontend/    # [Client Layer] React 19 + TypeScript + Vite + TailwindCSS
-├── backend/     # [Core API & Orchestration] Node.js + Express + TypeScript + PostgreSQL (pgvector)
-├── ai/          # [AI Model Engine] Python + Qwen1.5-4B LoRA + BAAI/bge-m3 Embedding
+├── backend/     # [Core API & Orchestration] Node.js + Express + TypeScript (Clean Architecture) + PostgreSQL (pgvector)
+├── ai/          # [AI Model Engine] Python + Qwen1.5-4B LoRA + Gemini Cloud Embedding (768 dims)
 ├── docs/        # Kiến trúc, tài liệu sản phẩm, hướng dẫn tích hợp AI
 └── .github/     # CI/CD Workflows (Lint, Typecheck, Build)
 ```
 
 ### Nguyên tắc phân tách trách nhiệm (Separation of Concerns):
 - **Frontend**: Chỉ đảm nhận UI/UX, state management người dùng, render dữ liệu, không chứa direct prompt template hay gọi thẳng sang AI service.
-- **Backend**: Đóng vai trò **Nhạc trưởng (Orchestrator)**. Quản lý Auth, CRUD, DB, PostgreSQL + `pgvector`, Chunking tài liệu RAG, điều phối prompt và bảo mật nghiệp vụ.
+- **Backend**: Đóng vai trò **Nhạc trưởng (Orchestrator)** tuân theo **Clean Architecture** (Domain, Application Use Cases, Infrastructure, Presentation). Quản lý Auth, CRUD, DB, PostgreSQL + `pgvector`, Chunking tài liệu RAG, điều phối prompt và bảo mật nghiệp vụ.
 - **AI Service**: Là **Inference Engine** tính toán thuần túy (Stateless). Chỉ nhận request embedding hoặc generation và trả kết quả tính toán, không truy cập trực tiếp DB nghiệp vụ.
 
 ---
@@ -53,7 +53,7 @@ Mọi commit phải tuân thủ chuẩn:
 
 Mỗi thư mục con đều có file `CONVENTION.md` hoặc `README.md` riêng:
 - [Frontend Convention](frontend/CONVENTION.md): React components, Tailwind styling, naming convention, state handling.
-- [Backend Convention](backend/CONVENTION.md): Express patterns, error handling, DB schema, RAG & pgvector practices.
+- [Backend Convention](backend/CONVENTION.md): Clean Architecture (Domain, Application, Infrastructure, Presentation), error handling, DB schema, RAG & pgvector practices.
 - [AI Engine Convention](ai/CONVENTION.md): Model inference rules, prompt schemas, environment variables, notebook practices.
 
 ---

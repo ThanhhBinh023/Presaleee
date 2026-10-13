@@ -13,9 +13,9 @@ async function runDatabaseSetup() {
   console.log('====================================================\n');
 
   if (!dbUrl || dbUrl.includes('[YOUR-PASSWORD]')) {
-    console.error('❌ LỖI: DATABASE_URL chưa được cấu hình hoặc còn chứa placeholder!');
-    console.error('👉 Vui lòng mở file backend/.env và điền connection string thực tế của Supabase.');
-    console.error('Ví dụ: DATABASE_URL=postgresql://postgres.xxx:mypassword@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres\n');
+    console.error('❌ ERROR: DATABASE_URL is not configured or still contains placeholder!');
+    console.error('👉 Please configure your Supabase connection string in backend/.env.');
+    console.error('Example: DATABASE_URL=postgresql://postgres.xxx:mypassword@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres\n');
     process.exit(1);
   }
 
@@ -25,21 +25,21 @@ async function runDatabaseSetup() {
   });
 
   try {
-    console.log('⏳ 1. Đang kiểm tra kết nối tới Supabase PostgreSQL...');
+    console.log('⏳ 1. Verifying connection to Supabase PostgreSQL...');
     const client = await pool.connect();
-    console.log('✅ Kết nối thành công tới Supabase!\n');
+    console.log('✅ Connected successfully to Supabase PostgreSQL!\n');
 
-    console.log('⏳ 2. Đang đọc file schema migration: 001_initial_schema.sql...');
+    console.log('⏳ 2. Reading schema migration: 001_initial_schema.sql...');
     const migrationPath = path.join(__dirname, 'migrations', '001_initial_schema.sql');
     const sql = fs.readFileSync(migrationPath, 'utf8');
 
-    console.log('⏳ 3. Đang thực thi migration (tạo extension pgvector, 10 bảng, HNSW index, RPC function)...');
+    console.log('⏳ 3. Executing migrations (creating extensions, tables, indices, and functions)...');
     await client.query(sql);
-    console.log('✅ Migration thành công! Tất cả bảng và pgvector đã sẵn sàng.\n');
+    console.log('✅ Migration succeeded! Database schema and pgvector are ready.\n');
 
-    console.log('⏳ 4. Đang chèn dữ liệu khởi tạo mặc định (Seed data)...');
+    console.log('⏳ 4. Seeding default initial workspace data...');
     
-    // Tạo 1 Organization mặc định
+    // Seed default organization
     const orgRes = await client.query(`
       INSERT INTO organizations (name, domain, plan)
       VALUES ('Presaleee Default Workspace', 'presaleee.ai', 'ENTERPRISE')
@@ -53,7 +53,7 @@ async function runDatabaseSetup() {
       orgId = existingOrg.rows[0].id;
     }
 
-    // Tạo Default Rate Cards cho các vị trí
+    // Seed default rate cards
     await client.query(`
       INSERT INTO rate_cards (organization_id, role_name, level, hourly_rate_usd, daily_rate_usd)
       VALUES 
@@ -66,9 +66,9 @@ async function runDatabaseSetup() {
         ($1, 'DevOps Engineer', 'SENIOR', 50.00, 400.00)
       ON CONFLICT DO NOTHING;
     `, [orgId]);
-    console.log('✅ Seed dữ liệu Rate Card thành công!\n');
+    console.log('✅ Rate card seed data inserted successfully!\n');
 
-    // Kiểm tra danh sách bảng đã tạo
+    // Inspect created database tables
     const tablesRes = await client.query(`
       SELECT table_name 
       FROM information_schema.tables 
@@ -76,17 +76,16 @@ async function runDatabaseSetup() {
       ORDER BY table_name;
     `);
 
-    console.log('📋 Danh sách các bảng đã được khởi tạo trên Supabase:');
+    console.log('📋 Initialized database tables in Supabase:');
     tablesRes.rows.forEach(r => console.log(`   - 📦 ${r.table_name}`));
 
-    console.log('\n🎉 CHÚC MỪNG! HỆ THỐNG DATABASE ĐÃ SẴN SÀNG CHO CẢ TEAM SỬ DỤNG!');
+    console.log('\n🎉 SUCCESS! DATABASE IS CONFIGURED AND READY FOR USE!');
     client.release();
     await pool.end();
   } catch (error: any) {
-    console.error('\n❌ Thất bại trong quá trình cài đặt DB:', error.message);
+    console.error('\n❌ Database setup failed:', error.message);
     process.exit(1);
   }
 }
 
 runDatabaseSetup();
-

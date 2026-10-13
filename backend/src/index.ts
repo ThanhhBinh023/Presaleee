@@ -1,30 +1,34 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
-import { ragRouter } from './routes/ragRoutes.js';
-
-dotenv.config();
+import { env } from './infrastructure/config/env.js';
+import { container } from './container.js';
+import { createApiRouter } from './presentation/routes/index.js';
+import { errorHandler } from './presentation/middlewares/errorHandler.js';
 
 const app = express();
-const port = process.env.PORT || 5000;
 
 app.use(cors());
 app.use(express.json());
 
-// Healthcheck
-app.get('/health', (req: Request, res: Response) => {
-  res.json({
+// System healthcheck endpoint
+app.get('/health', (_req: Request, res: Response) => {
+  res.status(200).json({
     status: 'ok',
     service: 'presaleee-backend',
-    database: 'supabase-pgvector',
+    architecture: 'clean-architecture',
     timestamp: new Date().toISOString()
   });
 });
 
-// RAG API Routes
-app.use('/api/v1/rag', ragRouter);
+// Presentation API routes
+app.use('/api/v1', createApiRouter(container.ragController));
 
-app.listen(port, () => {
-  console.log(`🚀 Presaleee Backend is running on port ${port}`);
-  console.log(`📡 RAG Endpoints available at: http://localhost:${port}/api/v1/rag`);
+// Centralized error handling middleware
+app.use(errorHandler);
+
+const server = app.listen(env.port, () => {
+  console.log(`🚀 Presaleee Backend is running on port ${env.port}`);
+  console.log(`📡 RAG Endpoints available at: http://localhost:${env.port}/api/v1/rag`);
 });
+
+export { app, server };

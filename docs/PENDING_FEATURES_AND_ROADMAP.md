@@ -76,15 +76,15 @@ Dưới đây là chi tiết các hạng mục còn thiếu, được phân lo�
 * [ ] **2.1. Module Quản lý Tài khoản & Phân quyền (Auth & RBAC):**
   * API Đăng nhập / Đăng ký / Refresh Token.
   * Middleware kiểm tra vai trò người dùng (Roles: `ADMIN`, `PRE_SALE_LEAD`, `SALES`, `VIEWER`).
-* [ ] **2.2. Module CRUD Đề xuất (Proposal Management Service):**
-  * Use Cases: Tạo Proposal mới, Cập nhật từng Sheet, Lấy lịch sử phiên bản.
-  * Bảng `proposal_sheets`: Lưu trữ dữ liệu dạng JSON cho từng sheet trong 10 sheets.
+* [x] **2.2. Module CRUD Đề xuất (Proposal Management Service):** *(Hoàn tất Sprint 1)*
+  * Use Cases: `CreateProposalUseCase`, `GetProposalByIdUseCase`, `ListProposalsUseCase`, `UpdateProposalUseCase`, `UpdateProposalSheetUseCase`, `DeleteProposalUseCase`.
+  * Bảng `proposal_sheets`: Lưu trữ dữ liệu dạng JSON cho từng sheet trong 10 sheets chuẩn, tự động đồng bộ tổng chi phí & thời gian vào Proposal.
 * [ ] **2.3. Module Bảng giá & Nhân sự (Rate Cards Management):**
   * API CRUD bảng giá theo vị trí (Project Manager, Solution Architect, Senior Dev,...).
   * API tính toán tự động tổng chi phí: $\sum (\text{Effort Man-month} \times \text{Rate Card}) = \text{Tổng giá trị gói thầu}$.
-* [ ] **2.4. Module Xuất File Excel (10-Sheet Excel Exporter):**
-  * Viết Use Case `ExportProposalToExcelUseCase` sử dụng thư viện `exceljs`.
-  * Format template Excel chuyên nghiệp: Cài đặt font chữ đồng bộ, kẻ bảng, highlight tiêu đề, format tiền tệ USD/VND và công thức SUM tự động.
+* [x] **2.4. Module Xuất File Excel (10-Sheet Excel Exporter):** *(Hoàn tất Sprint 1)*
+  * Viết Use Case `ExportProposalToExcelUseCase` và Service `ExcelProposalExporterService` sử dụng thư viện `exceljs`.
+  * Format template Excel 10 tabs chuyên nghiệp: Font chữ Calibri đồng bộ, kẻ viền (borders), highlight tiêu đề màu Slate Navy `#0F172A`, badge Emerald `#10B981`, format tiền tệ USD/VND và công thức SUM tự động, tự động co giãn độ rộng cột.
 * [ ] **2.5. Xử lý File Tài Liệu (Document Parser & OCR):**
   * Viết parser đọc nội dung text từ file `.pdf`, `.docx`, `.xlsx` mà khách hàng upload lên trước khi đẩy vào AI RAG.
 * [ ] **2.6. Xử lý Tác vụ Bất đồng bộ (Async Queue / Background Worker):**

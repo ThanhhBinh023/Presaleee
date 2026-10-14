@@ -21,7 +21,7 @@ app.get('/health', (_req: Request, res: Response) => {
 });
 
 // Presentation API routes
-app.use('/api/v1', createApiRouter(container.ragController));
+app.use('/api/v1', createApiRouter(container.ragController, container.proposalController));
 
 // Centralized error handling middleware
 app.use(errorHandler);
@@ -29,6 +29,7 @@ app.use(errorHandler);
 const server = app.listen(env.port, () => {
   console.log(`🚀 Presaleee Backend is running on port ${env.port}`);
   console.log(`📡 RAG Endpoints available at: http://localhost:${env.port}/api/v1/rag`);
+  console.log(`📋 Proposal Endpoints available at: http://localhost:${env.port}/api/v1/proposals`);
 });
 
 export { app, server };

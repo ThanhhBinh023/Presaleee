@@ -109,9 +109,11 @@ def get_optimal_device() -> torch.device:
 def resolve_adapter_dir(path: str) -> str:
     candidates = [
         path,
+        "./ai/qwen_presale_adapter_v2",
         "./qwen_presale_adapter_v2",
+        "./ai/qwen_presale_adapter_v2/qwen_presale_adapter_v2",
         "./qwen_presale_adapter_v2/qwen_presale_adapter_v2",
-        "./qwen_presale_adapter/qwen_presale_adapter",
+        "./ai/qwen_presale_adapter",
         "./qwen_presale_adapter"
     ]
     for p in candidates:

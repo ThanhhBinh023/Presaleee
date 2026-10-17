@@ -253,23 +253,54 @@ def interactive_loop(model, tokenizer, device):
             print(f"Lỗi: {e}")
 
 
+def extract_text_from_file(file_path: str) -> str:
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"File not found: {file_path}")
+    ext = os.path.splitext(file_path)[1].lower()
+    if ext in [".xlsx", ".xlsm"]:
+        import openpyxl
+        wb = openpyxl.load_workbook(file_path, data_only=True)
+        sections = []
+        for sheet_name in wb.sheetnames:
+            sheet = wb[sheet_name]
+            rows_text = []
+            for row in sheet.iter_rows(values_only=True):
+                cells = [str(c).strip() for c in row if c is not None and str(c).strip()]
+                if cells:
+                    rows_text.append(" | ".join(cells))
+            if rows_text:
+                sections.append(f"[Sheet: {sheet_name}]\n" + "\n".join(rows_text))
+        return "\n\n".join(sections)
+    else:
+        with open(file_path, "r", encoding="utf-8") as f:
+            return f.read().strip()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Interactive Chat CLI for Fine-Tuned Presaleee LLM")
     parser.add_argument("--base_model", type=str, default=DEFAULT_BASE_MODEL, help="Base HuggingFace model ID")
     parser.add_argument("--adapter_path", type=str, default=DEFAULT_ADAPTER_PATH, help="Path to fine-tuned LoRA adapter")
     parser.add_argument("--mode", type=str, default="default", choices=["default", "1", "2", "3", "4", "5", "6"], help="Presale task mode")
     parser.add_argument("--prompt", type=str, default=None, help="Direct prompt to generate text (one-shot mode)")
+    parser.add_argument("--file", type=str, default=None, help="Path to input file (.xlsx, .txt, .md) to process")
     args = parser.parse_args()
+
+    input_text = args.prompt
+    if args.file:
+        print(f"\n📂 Reading input file: {args.file}")
+        input_text = extract_text_from_file(args.file)
 
     model, tokenizer, device = load_model(args.base_model, args.adapter_path)
 
-    if args.prompt:
+    if input_text:
         sys_prompt = PRESET_SYSTEM_PROMPTS.get(args.mode, PRESET_SYSTEM_PROMPTS["default"])
-        print(f"\nUser Prompt: {args.prompt}")
-        generate_response(model, tokenizer, device, args.prompt, system_prompt=sys_prompt)
+        preview = input_text[:300] + ("..." if len(input_text) > 300 else "")
+        print(f"\n📝 Input Preview:\n{preview}")
+        generate_response(model, tokenizer, device, input_text, system_prompt=sys_prompt)
     else:
         interactive_loop(model, tokenizer, device)
 
 
 if __name__ == "__main__":
     main()
+

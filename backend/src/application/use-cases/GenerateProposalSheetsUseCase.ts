@@ -4,6 +4,7 @@ import { ILeadRepository } from '../../domain/repositories/ILeadRepository.js';
 import { ConflictError, NotFoundError, ValidationError } from '../../domain/errors/AppError.js';
 import { STANDARD_PROPOSAL_SHEETS, ProposalSheet } from '../../domain/entities/Proposal.js';
 import { SearchHybridRAGUseCase } from './SearchHybridRAGUseCase.js';
+import { IMeetingRepository } from '../../domain/repositories/IMeetingRepository.js';
 
 const MAX_INSTRUCTIONS = 4000;
 const MAX_RFP_LENGTH = 50_000;
@@ -50,6 +51,7 @@ export class GenerateProposalSheetsUseCase {
   constructor(
     private readonly proposalRepository: IProposalRepository,
     private readonly leadRepository: ILeadRepository,
+    private readonly meetingRepository: IMeetingRepository,
     private readonly searchUseCase: SearchHybridRAGUseCase,
     private readonly llmGateway: ILLMGateway
   ) {}
@@ -68,6 +70,13 @@ export class GenerateProposalSheetsUseCase {
       ? await this.leadRepository.findById(proposal.leadId, { organizationId: input.organizationId })
       : null;
     if (proposal.leadId && !lead) throw new NotFoundError('Linked lead not found.');
+    const meetingContext = lead
+      ? (await this.meetingRepository.listByLead(lead.id, { organizationId: input.organizationId }))
+        .filter(meeting => meeting.status === 'INSPECTED' && meeting.cleanNotes)
+        .slice(0, 5)
+        .map(meeting => `${meeting.title} (${meeting.meetingDate})\n${meeting.cleanNotes}\nTechnical summary: ${'technicalSummary' in meeting.analysis ? meeting.analysis.technicalSummary : ''}`)
+        .join('\n\n')
+      : '';
     const rfpText = lead?.rawRfpContent || '';
     if (rfpText.length > MAX_RFP_LENGTH) throw new ValidationError('Linked RFP content exceeds the proposal generation limit.');
     const query = [proposal.title, lead?.title || '', rfpText].filter(Boolean).join('\n\n');
@@ -95,6 +104,7 @@ export class GenerateProposalSheetsUseCase {
         `Required top-level content keys (follow these keys): ${JSON.stringify(existing?.sheetData || {})}`,
         `Currency: ${proposal.currency || 'USD'}`,
         `Lead metadata: ${JSON.stringify(lead?.extractedMetadata || {})}`,
+        `Inspected discovery meeting context:\n${meetingContext || '(No inspected meetings linked to this lead.)'}`,
         `RFP source text:\n<rfp>${rfpText}</rfp>`,
         `Verified knowledge references:\n${referenceContext || '(No organization knowledge references found.)'}`,
         `Additional user instructions:\n${instructions || '(None)'}`

@@ -42,12 +42,16 @@ import {
   QualifyLeadUseCase,
   GetLatestQualificationUseCase
 } from './application/use-cases/LeadUseCases.js';
+import { PostgresDashboardRepository } from './infrastructure/database/repositories/PostgresDashboardRepository.js';
+import { GetDashboardOverviewUseCase, ListDashboardActivityUseCase, ListDashboardLeadsUseCase } from './application/use-cases/DashboardUseCases.js';
+import { DashboardController } from './presentation/controllers/DashboardController.js';
 
 export interface ServiceContainer {
   knowledgeRepository: PostgresKnowledgeRepository;
   proposalRepository: PostgresProposalRepository;
   authRepository: PostgresAuthRepository;
   leadRepository: PostgresLeadRepository;
+  dashboardRepository: PostgresDashboardRepository;
   embeddingGateway: GeminiEmbeddingGateway;
   llmGateway: FastAPILMGateway;
   excelExporterService: ExcelProposalExporterService;
@@ -71,6 +75,7 @@ export interface ServiceContainer {
   proposalController: ProposalController;
   leadIntakeController: LeadIntakeController;
   authController: AuthController;
+  dashboardController: DashboardController;
 }
 
 export function createContainer(): ServiceContainer {
@@ -79,6 +84,7 @@ export function createContainer(): ServiceContainer {
   const proposalRepository = new PostgresProposalRepository(dbPool);
   const authRepository = new PostgresAuthRepository(dbPool);
   const leadRepository = new PostgresLeadRepository(dbPool);
+  const dashboardRepository = new PostgresDashboardRepository(dbPool);
   const embeddingGateway = new GeminiEmbeddingGateway();
   const llmGateway = new FastAPILMGateway();
   const excelExporterService = new ExcelProposalExporterService();
@@ -138,12 +144,18 @@ export function createContainer(): ServiceContainer {
     forgotPasswordUseCase,
     resetPasswordUseCase
   );
+  const dashboardController = new DashboardController(
+    new GetDashboardOverviewUseCase(dashboardRepository),
+    new ListDashboardLeadsUseCase(dashboardRepository),
+    new ListDashboardActivityUseCase(dashboardRepository)
+  );
 
   return {
     knowledgeRepository,
     proposalRepository,
     authRepository,
     leadRepository,
+    dashboardRepository,
     embeddingGateway,
     llmGateway,
     excelExporterService,
@@ -163,7 +175,8 @@ export function createContainer(): ServiceContainer {
     ragController,
     proposalController,
     leadIntakeController,
-    authController
+    authController,
+    dashboardController
   };
 }
 

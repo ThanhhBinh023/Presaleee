@@ -2,6 +2,12 @@ import { Request, Response, NextFunction } from 'express';
 import { SearchHybridRAGUseCase } from '../../application/use-cases/SearchHybridRAGUseCase.js';
 import { IngestDocumentUseCase } from '../../application/use-cases/IngestDocumentUseCase.js';
 import { GenerateProposalUseCase } from '../../application/use-cases/GenerateProposalUseCase.js';
+import { AppError } from '../../domain/errors/AppError.js';
+
+function organizationId(req: Request): string {
+  if (!req.auth?.organizationId) throw new AppError('An organization is required for this operation.', 403);
+  return req.auth.organizationId;
+}
 
 export class RAGController {
   constructor(
@@ -15,11 +21,12 @@ export class RAGController {
    */
   search = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { query, domain, topK } = req.body;
+      const { query, domain, topK } = req.body || {};
       const result = await this.searchUseCase.execute({
         query,
         domain,
-        topK: topK ? parseInt(topK, 10) : undefined
+        topK: topK === undefined ? undefined : Number(topK),
+        organizationId: organizationId(req)
       });
 
       res.status(200).json({
@@ -37,13 +44,13 @@ export class RAGController {
    */
   ingest = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { title, category, domain, content, organizationId } = req.body;
+      const { title, category, domain, content } = req.body || {};
       const result = await this.ingestUseCase.execute({
         title,
         category,
         domain,
         content,
-        organizationId
+        organizationId: organizationId(req), uploadedBy: req.auth!.sub
       });
 
       res.status(201).json({
@@ -61,11 +68,12 @@ export class RAGController {
    */
   generateProposal = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { rfpText, domain, maxTokens } = req.body;
+      const { rfpText, domain, maxTokens } = req.body || {};
       const result = await this.generateProposalUseCase.execute({
         rfpText,
         domain,
-        maxTokens: maxTokens ? parseInt(maxTokens, 10) : undefined
+        organizationId: organizationId(req),
+        maxTokens: maxTokens === undefined ? undefined : Number(maxTokens)
       });
 
       res.status(200).json({

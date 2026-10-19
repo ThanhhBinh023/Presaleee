@@ -12,8 +12,20 @@ export interface HybridSearchParams {
   organizationId?: string | null;
 }
 
+export interface KnowledgeDocumentFilter {
+  organizationId: string;
+  category?: string;
+  domain?: string;
+  search?: string;
+  limit: number;
+  offset: number;
+}
+
 export interface IKnowledgeRepository {
   createDocument(doc: Omit<KnowledgeDocument, 'id'>): Promise<string>;
+  findDocuments(filter: KnowledgeDocumentFilter): Promise<{ documents: KnowledgeDocument[]; total: number }>;
+  findDocumentById(id: string, organizationId: string): Promise<KnowledgeDocument | null>;
+  deleteDocument(id: string, organizationId: string): Promise<boolean>;
   saveDocumentChunks(
     docId: string,
     chunks: Array<{ chunkIndex: number; chunkContent: string; metadata: Record<string, any>; embedding: number[] }>

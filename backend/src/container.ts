@@ -59,6 +59,14 @@ import {
   ListLeadMeetingsUseCase, SaveMeetingTranscriptUseCase, UpdateMeetingStatusUseCase
 } from './application/use-cases/MeetingUseCases.js';
 import { SubmitProposalForReviewUseCase } from './application/use-cases/SubmitProposalForReviewUseCase.js';
+import { PostgresPortalRepository } from './infrastructure/database/repositories/PostgresPortalRepository.js';
+import { PortalController } from './presentation/controllers/PortalController.js';
+import {
+  AskPortalProposalUseCase, CreatePortalCommentUseCase, CreatePortalSessionUseCase,
+  CreatePortalMaterialUseCase, DeletePortalMaterialUseCase,
+  ExportPortalProposalPdfUseCase, GetPortalProposalUseCase, ListPortalCommentsUseCase,
+  ListPortalMaterialsUseCase, RevokePortalSessionUseCase
+} from './application/use-cases/PortalUseCases.js';
 
 export interface ServiceContainer {
   knowledgeRepository: PostgresKnowledgeRepository;
@@ -96,6 +104,8 @@ export interface ServiceContainer {
   knowledgeController: KnowledgeController;
   meetingRepository: PostgresMeetingRepository;
   meetingController: MeetingController;
+  portalRepository: PostgresPortalRepository;
+  portalController: PortalController;
 }
 
 export function createContainer(): ServiceContainer {
@@ -106,6 +116,7 @@ export function createContainer(): ServiceContainer {
   const leadRepository = new PostgresLeadRepository(dbPool);
   const dashboardRepository = new PostgresDashboardRepository(dbPool);
   const meetingRepository = new PostgresMeetingRepository(dbPool);
+  const portalRepository = new PostgresPortalRepository(dbPool);
   const embeddingGateway = new GeminiEmbeddingGateway();
   const llmGateway = new FastAPILMGateway();
   const excelExporterService = new ExcelProposalExporterService();
@@ -196,6 +207,19 @@ export function createContainer(): ServiceContainer {
     new AnalyzeMeetingUseCase(meetingRepository, leadRepository, llmGateway),
     new UpdateMeetingStatusUseCase(meetingRepository)
   );
+  const getPortalProposalUseCase = new GetPortalProposalUseCase(proposalRepository);
+  const portalController = new PortalController(
+    new CreatePortalSessionUseCase(portalRepository, proposalRepository),
+    getPortalProposalUseCase,
+    new AskPortalProposalUseCase(proposalRepository, llmGateway),
+    new ListPortalCommentsUseCase(portalRepository),
+    new CreatePortalCommentUseCase(portalRepository),
+    new ListPortalMaterialsUseCase(portalRepository),
+    new ExportPortalProposalPdfUseCase(exportProposalToPdfUseCase, getPortalProposalUseCase),
+    new RevokePortalSessionUseCase(portalRepository),
+    new CreatePortalMaterialUseCase(portalRepository),
+    new DeletePortalMaterialUseCase(portalRepository)
+  );
 
   return {
     knowledgeRepository,
@@ -229,7 +253,9 @@ export function createContainer(): ServiceContainer {
     dashboardController,
     knowledgeController,
     meetingRepository,
-    meetingController
+    meetingController,
+    portalRepository,
+    portalController
   };
 }
 

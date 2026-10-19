@@ -47,6 +47,7 @@ export class PostgresKnowledgeRepository implements IKnowledgeRepository {
     const semanticWeight = params.semanticWeight ?? 1.0;
     const rrfK = params.rrfK ?? 60;
     const domain = params.domain || null;
+    const organizationId = params.organizationId || null;
 
     const res = await this.pool.query(
       `SELECT id, doc_id, chunk_content, metadata, combined_score, semantic_rank, fts_rank
@@ -57,9 +58,10 @@ export class PostgresKnowledgeRepository implements IKnowledgeRepository {
          full_text_weight => $4,
          semantic_weight => $5,
          rrf_k => $6,
-         filter_domain => $7
+         filter_organization_id => $7,
+         filter_domain => $8
        );`,
-      [params.queryText, vectorStr, matchCount, fullTextWeight, semanticWeight, rrfK, domain]
+      [params.queryText, vectorStr, matchCount, fullTextWeight, semanticWeight, rrfK, organizationId, domain]
     );
 
     return res.rows.map((r: any) => ({

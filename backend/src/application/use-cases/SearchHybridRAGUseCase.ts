@@ -25,7 +25,8 @@ export class SearchHybridRAGUseCase {
       queryText: trimmedQuery,
       queryEmbedding,
       matchCount: topK,
-      domain: input.domain || null
+      domain: input.domain || null,
+      organizationId: input.organizationId || null
     });
 
     return {

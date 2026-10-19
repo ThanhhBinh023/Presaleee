@@ -15,3 +15,10 @@ export interface AuthSessionContext {
   userAgent?: string;
   ipAddress?: string;
 }
+
+export interface AuthRequestClaims {
+  sub: string;
+  email: string;
+  organizationId: string | null;
+  role: string;
+}

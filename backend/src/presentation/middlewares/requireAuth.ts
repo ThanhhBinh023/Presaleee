@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { UnauthorizedError } from '../../domain/errors/AppError.js';
 import { AccessTokenClaims, verifyAccessToken } from '../../application/services/AuthTokenService.js';
+import { AppError } from '../../domain/errors/AppError.js';
 
 declare global {
   namespace Express {
@@ -8,6 +9,14 @@ declare global {
       auth?: AccessTokenClaims;
     }
   }
+}
+
+export function requireOrganization(req: Request, _res: Response, next: NextFunction): void {
+  if (!req.auth?.organizationId) {
+    next(new AppError('An organization is required for this operation.', 403));
+    return;
+  }
+  next();
 }
 
 export function requireAuth(req: Request, _res: Response, next: NextFunction): void {

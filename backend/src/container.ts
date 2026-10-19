@@ -21,10 +21,21 @@ import { RAGController } from './presentation/controllers/RAGController.js';
 import { ProposalController } from './presentation/controllers/ProposalController.js';
 import { LeadIntakeController } from './presentation/controllers/LeadIntakeController.js';
 import { AnalyzeLeadIntakeUseCase } from './application/use-cases/AnalyzeLeadIntakeUseCase.js';
+import { PostgresAuthRepository } from './infrastructure/database/repositories/PostgresAuthRepository.js';
+import { AuthController } from './presentation/controllers/AuthController.js';
+import {
+  LoginUseCase,
+  RefreshSessionUseCase,
+  LogoutUseCase,
+  GetCurrentUserUseCase,
+  ForgotPasswordUseCase,
+  ResetPasswordUseCase
+} from './application/use-cases/AuthUseCases.js';
 
 export interface ServiceContainer {
   knowledgeRepository: PostgresKnowledgeRepository;
   proposalRepository: PostgresProposalRepository;
+  authRepository: PostgresAuthRepository;
   embeddingGateway: GeminiEmbeddingGateway;
   llmGateway: FastAPILMGateway;
   excelExporterService: ExcelProposalExporterService;
@@ -47,12 +58,14 @@ export interface ServiceContainer {
   ragController: RAGController;
   proposalController: ProposalController;
   leadIntakeController: LeadIntakeController;
+  authController: AuthController;
 }
 
 export function createContainer(): ServiceContainer {
   // 1. Infrastructure layer
   const knowledgeRepository = new PostgresKnowledgeRepository(dbPool);
   const proposalRepository = new PostgresProposalRepository(dbPool);
+  const authRepository = new PostgresAuthRepository(dbPool);
   const embeddingGateway = new GeminiEmbeddingGateway();
   const llmGateway = new FastAPILMGateway();
   const excelExporterService = new ExcelProposalExporterService();
@@ -62,6 +75,12 @@ export function createContainer(): ServiceContainer {
   const ingestDocumentUseCase = new IngestDocumentUseCase(knowledgeRepository, embeddingGateway);
   const generateProposalUseCase = new GenerateProposalUseCase(searchHybridRAGUseCase, llmGateway);
   const analyzeLeadIntakeUseCase = new AnalyzeLeadIntakeUseCase(llmGateway);
+  const loginUseCase = new LoginUseCase(authRepository);
+  const refreshSessionUseCase = new RefreshSessionUseCase(authRepository);
+  const logoutUseCase = new LogoutUseCase(authRepository);
+  const getCurrentUserUseCase = new GetCurrentUserUseCase(authRepository);
+  const forgotPasswordUseCase = new ForgotPasswordUseCase(authRepository);
+  const resetPasswordUseCase = new ResetPasswordUseCase(authRepository);
 
   const createProposalUseCase = new CreateProposalUseCase(proposalRepository);
   const getProposalByIdUseCase = new GetProposalByIdUseCase(proposalRepository);
@@ -88,10 +107,19 @@ export function createContainer(): ServiceContainer {
     exportProposalToExcelUseCase
   );
   const leadIntakeController = new LeadIntakeController(analyzeLeadIntakeUseCase);
+  const authController = new AuthController(
+    loginUseCase,
+    refreshSessionUseCase,
+    logoutUseCase,
+    getCurrentUserUseCase,
+    forgotPasswordUseCase,
+    resetPasswordUseCase
+  );
 
   return {
     knowledgeRepository,
     proposalRepository,
+    authRepository,
     embeddingGateway,
     llmGateway,
     excelExporterService,
@@ -110,7 +138,8 @@ export function createContainer(): ServiceContainer {
 
     ragController,
     proposalController,
-    leadIntakeController
+    leadIntakeController,
+    authController
   };
 }
 

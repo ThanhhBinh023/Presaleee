@@ -10,6 +10,8 @@ export function createProposalRouter(controller: ProposalController): Router {
   router.get('/:id/export-excel', controller.exportExcel);
   router.post('/:id/generate', controller.generateAll);
   router.post('/:id/sheets/:sheetName/generate', controller.generateSheet);
+  router.post('/:id/sections/:sectionName/regenerate', controller.regenerateSection);
+  router.post('/:id/submit-review', controller.submitForReview);
 
   // Proposal Sheets
   router.put('/:id/sheets/:sheetName', controller.updateSheet);

@@ -14,6 +14,9 @@ import { KnowledgeController } from '../controllers/KnowledgeController.js';
 import { createKnowledgeRouter } from './knowledgeRoutes.js';
 import { MeetingController } from '../controllers/MeetingController.js';
 import { createMeetingRouter } from './meetingRoutes.js';
+import { PortalController } from '../controllers/PortalController.js';
+import { createPortalRouter } from './portalRoutes.js';
+import { IPortalRepository } from '../../domain/repositories/IPortalRepository.js';
 
 export function createApiRouter(
   ragController: RAGController,
@@ -22,7 +25,9 @@ export function createApiRouter(
   authController: AuthController,
   dashboardController: DashboardController,
   knowledgeController: KnowledgeController,
-  meetingController: MeetingController
+  meetingController: MeetingController,
+  portalController: PortalController,
+  portalRepository: IPortalRepository
 ): Router {
   const router = Router();
 
@@ -34,6 +39,9 @@ export function createApiRouter(
   router.post('/leads/:leadId/meetings', requireAuth, requireOrganization, meetingController.createForLead);
   router.post('/leads/:leadId/proposals', requireAuth, requireOrganization, proposalController.createFromLead);
   router.use('/meetings', createMeetingRouter(meetingController));
+  router.use('/portal', createPortalRouter(portalController, portalRepository));
+  router.post('/proposals/:proposalId/portal-materials', requireAuth, requireOrganization, portalController.createMaterial);
+  router.delete('/proposals/:proposalId/portal-materials/:materialId', requireAuth, requireOrganization, portalController.deleteMaterial);
   router.use('/auth', createAuthRouter(authController));
   router.use('/dashboard', createDashboardRouter(dashboardController));
 

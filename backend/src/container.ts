@@ -31,11 +31,23 @@ import {
   ForgotPasswordUseCase,
   ResetPasswordUseCase
 } from './application/use-cases/AuthUseCases.js';
+import { PostgresLeadRepository } from './infrastructure/database/repositories/PostgresLeadRepository.js';
+import {
+  CreateLeadUseCase,
+  ListLeadsUseCase,
+  GetLeadUseCase,
+  UpdateLeadUseCase,
+  UpdateLeadStatusUseCase,
+  DeleteLeadUseCase,
+  QualifyLeadUseCase,
+  GetLatestQualificationUseCase
+} from './application/use-cases/LeadUseCases.js';
 
 export interface ServiceContainer {
   knowledgeRepository: PostgresKnowledgeRepository;
   proposalRepository: PostgresProposalRepository;
   authRepository: PostgresAuthRepository;
+  leadRepository: PostgresLeadRepository;
   embeddingGateway: GeminiEmbeddingGateway;
   llmGateway: FastAPILMGateway;
   excelExporterService: ExcelProposalExporterService;
@@ -66,6 +78,7 @@ export function createContainer(): ServiceContainer {
   const knowledgeRepository = new PostgresKnowledgeRepository(dbPool);
   const proposalRepository = new PostgresProposalRepository(dbPool);
   const authRepository = new PostgresAuthRepository(dbPool);
+  const leadRepository = new PostgresLeadRepository(dbPool);
   const embeddingGateway = new GeminiEmbeddingGateway();
   const llmGateway = new FastAPILMGateway();
   const excelExporterService = new ExcelProposalExporterService();
@@ -106,7 +119,17 @@ export function createContainer(): ServiceContainer {
     deleteProposalUseCase,
     exportProposalToExcelUseCase
   );
-  const leadIntakeController = new LeadIntakeController(analyzeLeadIntakeUseCase);
+  const leadIntakeController = new LeadIntakeController(
+    analyzeLeadIntakeUseCase,
+    new CreateLeadUseCase(leadRepository),
+    new ListLeadsUseCase(leadRepository),
+    new GetLeadUseCase(leadRepository),
+    new UpdateLeadUseCase(leadRepository),
+    new UpdateLeadStatusUseCase(leadRepository),
+    new DeleteLeadUseCase(leadRepository),
+    new QualifyLeadUseCase(leadRepository, llmGateway),
+    new GetLatestQualificationUseCase(leadRepository)
+  );
   const authController = new AuthController(
     loginUseCase,
     refreshSessionUseCase,
@@ -120,6 +143,7 @@ export function createContainer(): ServiceContainer {
     knowledgeRepository,
     proposalRepository,
     authRepository,
+    leadRepository,
     embeddingGateway,
     llmGateway,
     excelExporterService,

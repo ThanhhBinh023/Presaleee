@@ -1,9 +1,11 @@
 import { ILeadRepository } from '../../domain/repositories/ILeadRepository.js';
+import { IAuditRepository } from '../../domain/repositories/IAuditRepository.js';
 import { ConflictError, NotFoundError, ValidationError } from '../../domain/errors/AppError.js';
 import { Lead, LeadQualification, LeadSource, LeadStatus, LEAD_SOURCES, LEAD_STATUSES } from '../../domain/entities/Lead.js';
 import { ILLMGateway } from '../../domain/repositories/ILLMGateway.js';
 import { ReferenceValidator } from '../services/ReferenceValidator.js';
-import { CreateLeadDTO, ListLeadsDTO, parseLeadSource, parseLeadStatus, UpdateLeadDTO } from '../dtos/LeadDTO.js';
+import { requiredUuid } from '../services/RequestValidation.js';
+import { AuthenticatedLeadScope, CreateLeadDTO, ListLeadsDTO, parseLeadSource, parseLeadStatus, UpdateLeadDTO } from '../dtos/LeadDTO.js';
 
 const MAX_RFP_CHARACTERS = 50_000;
 const QUALIFICATION_SCHEMA = `{
@@ -113,10 +115,23 @@ function listFilterValue<T extends string>(value: unknown, allowed: readonly T[]
   return value as T;
 }
 
+function leadAudit(scope: AuthenticatedLeadScope, action: string, entityId: string, payload: Record<string, unknown>) {
+  return {
+    organizationId: scope.organizationId,
+    actorId: scope.userId,
+    action,
+    entityType: 'lead',
+    entityId,
+    payload,
+    ipAddress: scope.ipAddress
+  };
+}
+
 export class CreateLeadUseCase {
   constructor(
     private readonly leadRepository: ILeadRepository,
-    private readonly referenceValidator?: ReferenceValidator
+    private readonly referenceValidator?: ReferenceValidator,
+    private readonly auditRepository?: IAuditRepository
   ) {}
   async execute(dto: CreateLeadDTO): Promise<Lead> {
     const organizationId = dto.organizationId;
@@ -128,7 +143,7 @@ export class CreateLeadUseCase {
     const clientId = optionalUuid(dto.clientId, 'clientId');
     const assignedTo = optionalUuid(dto.assignedTo, 'assignedTo');
     await this.referenceValidator?.validate(organizationId, { clientId, assignedTo });
-    return this.leadRepository.create({
+    const lead = await this.leadRepository.create({
       organizationId,
       createdBy: dto.userId,
       title,
@@ -138,6 +153,8 @@ export class CreateLeadUseCase {
       clientId,
       assignedTo
     });
+    await this.auditRepository?.record(leadAudit(dto, 'LEAD_CREATED', lead.id, { title, source, clientId: clientId ?? null }));
+    return lead;
   }
 }
 
@@ -167,7 +184,7 @@ export class ListLeadsUseCase {
 export class GetLeadUseCase {
   constructor(private readonly leadRepository: ILeadRepository) {}
   async execute(id: string, organizationId: string): Promise<Lead> {
-    const lead = await this.leadRepository.findById(id, { organizationId });
+    const lead = await this.leadRepository.findById(requiredUuid(id, 'id'), { organizationId });
     if (!lead) throw new NotFoundError('Lead not found.');
     return lead;
   }
@@ -176,7 +193,8 @@ export class GetLeadUseCase {
 export class UpdateLeadUseCase {
   constructor(
     private readonly leadRepository: ILeadRepository,
-    private readonly referenceValidator?: ReferenceValidator
+    private readonly referenceValidator?: ReferenceValidator,
+    private readonly auditRepository?: IAuditRepository
   ) {}
   async execute(dto: UpdateLeadDTO): Promise<Lead> {
     const updates: Parameters<ILeadRepository['update']>[2] = {};
@@ -186,27 +204,33 @@ export class UpdateLeadUseCase {
     if (dto.extractedMetadata !== undefined) updates.extractedMetadata = jsonObject(dto.extractedMetadata, 'extractedMetadata');
     if (dto.clientId !== undefined) updates.clientId = optionalUuid(dto.clientId, 'clientId');
     if (dto.assignedTo !== undefined) updates.assignedTo = optionalUuid(dto.assignedTo, 'assignedTo');
+    if (dto.status !== undefined) throw new ValidationError('Change the lead status through PATCH /leads/:id/status, which enforces the state machine.');
     if (Object.keys(updates).length === 0) throw new ValidationError('At least one editable field is required.');
     await this.referenceValidator?.validate(dto.organizationId, { clientId: updates.clientId, assignedTo: updates.assignedTo });
-    const lead = await this.leadRepository.update(dto.id, { organizationId: dto.organizationId }, updates);
+    const lead = await this.leadRepository.update(requiredUuid(dto.id, 'id'), { organizationId: dto.organizationId }, updates);
     if (!lead) throw new NotFoundError('Lead not found.');
+    await this.auditRepository?.record(leadAudit(dto, 'LEAD_UPDATED', lead.id, { changedFields: Object.keys(updates) }));
     return lead;
   }
 }
 
 export class UpdateLeadStatusUseCase {
-  constructor(private readonly leadRepository: ILeadRepository) {}
-  async execute(id: string, organizationId: string, statusValue: unknown): Promise<Lead> {
+  constructor(
+    private readonly leadRepository: ILeadRepository,
+    private readonly auditRepository?: IAuditRepository
+  ) {}
+  async execute(id: string, scope: AuthenticatedLeadScope, statusValue: unknown): Promise<Lead> {
     const status = parseLeadStatus(statusValue);
-    const existing = await this.leadRepository.findById(id, { organizationId });
+    const leadId = requiredUuid(id, 'id');
+    const existing = await this.leadRepository.findById(leadId, { organizationId: scope.organizationId });
     if (!existing) throw new NotFoundError('Lead not found.');
     const transitions: Record<LeadStatus, LeadStatus[]> = {
       NEW: ['IN_REVIEW', 'QUALIFYING', 'REJECTED'],
       IN_REVIEW: ['QUALIFYING', 'APPROVED', 'REJECTED'],
       QUALIFYING: ['QUALIFIED', 'IN_REVIEW', 'REJECTED'],
       QUALIFIED: ['APPROVED', 'PROPOSAL_DRAFTING', 'REJECTED'],
-      PROPOSAL_DRAFTING: ['APPROVED', 'REJECTED'],
-      APPROVED: ['PROPOSAL_DRAFTING', 'REJECTED'],
+      PROPOSAL_DRAFTING: ['APPROVED', 'WON', 'LOST', 'REJECTED'],
+      APPROVED: ['PROPOSAL_DRAFTING', 'WON', 'LOST', 'REJECTED'],
       REJECTED: ['IN_REVIEW'],
       WON: [],
       LOST: ['IN_REVIEW']
@@ -219,25 +243,39 @@ export class UpdateLeadStatusUseCase {
       throw new ConflictError(`Lead cannot transition from ${existing.status} to ${status}.`);
     }
     const lead = await this.leadRepository.updateStatusWithQualificationCheck(
-      id, { organizationId }, status, allowedCurrentStatuses
+      leadId, { organizationId: scope.organizationId }, status, allowedCurrentStatuses
     );
     if (!lead) throw new ConflictError('Lead status changed or the required qualification is missing.');
+    await this.auditRepository?.record(leadAudit(scope, 'LEAD_STATUS_CHANGED', lead.id, {
+      from: existing.status,
+      to: lead.status
+    }));
     return lead;
   }
 }
 
 export class DeleteLeadUseCase {
-  constructor(private readonly leadRepository: ILeadRepository) {}
-  async execute(id: string, organizationId: string): Promise<void> {
-    const deleted = await this.leadRepository.delete(id, { organizationId });
+  constructor(
+    private readonly leadRepository: ILeadRepository,
+    private readonly auditRepository?: IAuditRepository
+  ) {}
+  async execute(id: string, scope: AuthenticatedLeadScope): Promise<void> {
+    const leadId = requiredUuid(id, 'id');
+    const deleted = await this.leadRepository.delete(leadId, { organizationId: scope.organizationId });
     if (!deleted) throw new NotFoundError('Lead not found.');
+    await this.auditRepository?.record(leadAudit(scope, 'LEAD_DELETED', leadId, {}));
   }
 }
 
 export class QualifyLeadUseCase {
-  constructor(private readonly leadRepository: ILeadRepository, private readonly llmGateway: ILLMGateway) {}
-  async execute(id: string, organizationId: string): Promise<LeadQualification> {
-    const lead = await this.leadRepository.findById(id, { organizationId });
+  constructor(
+    private readonly leadRepository: ILeadRepository,
+    private readonly llmGateway: ILLMGateway,
+    private readonly auditRepository?: IAuditRepository
+  ) {}
+  async execute(id: string, scope: AuthenticatedLeadScope): Promise<LeadQualification> {
+    const leadId = requiredUuid(id, 'id');
+    const lead = await this.leadRepository.findById(leadId, { organizationId: scope.organizationId });
     if (!lead) throw new NotFoundError('Lead not found.');
     const prompt = [
       'Evaluate this sales lead using BANT: Budget, Authority, Need, Timeline.',
@@ -255,8 +293,12 @@ export class QualifyLeadUseCase {
     ].join('\n\n');
     const output = await this.llmGateway.generate({ taskMode: 4, prompt, temperature: 0.1, maxTokens: 1400 });
     const qualification = normalizeQualification(parseJsonObject(output));
-    const saved = await this.leadRepository.saveQualification(id, { organizationId }, qualification);
+    const saved = await this.leadRepository.saveQualification(leadId, { organizationId: scope.organizationId }, qualification);
     if (!saved) throw new NotFoundError('Lead not found.');
+    await this.auditRepository?.record(leadAudit(scope, 'LEAD_QUALIFIED', leadId, {
+      score: qualification.score,
+      recommendation: qualification.recommendation
+    }));
     return qualification;
   }
 }
@@ -264,7 +306,7 @@ export class QualifyLeadUseCase {
 export class GetLatestQualificationUseCase {
   constructor(private readonly leadRepository: ILeadRepository) {}
   async execute(id: string, organizationId: string): Promise<LeadQualification> {
-    const lead = await this.leadRepository.findById(id, { organizationId });
+    const lead = await this.leadRepository.findById(requiredUuid(id, 'id'), { organizationId });
     if (!lead) throw new NotFoundError('Lead not found.');
     if (lead.bantScore === null || !Object.keys(lead.bantDetails).length) throw new NotFoundError('Lead has no qualification result.');
     return lead.bantDetails as unknown as LeadQualification;

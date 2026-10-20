@@ -3,6 +3,7 @@ import { ConflictError, NotFoundError, ValidationError } from '../../domain/erro
 import { CreateProposalUseCase } from './CreateProposalUseCase.js';
 import { ProposalWithSheets } from '../../domain/entities/Proposal.js';
 import { getDefaultProposalSheets } from '../services/DefaultProposalSheets.js';
+import { requiredUuid } from '../services/RequestValidation.js';
 
 export class CreateProposalFromLeadUseCase {
   constructor(
@@ -11,8 +12,9 @@ export class CreateProposalFromLeadUseCase {
   ) {}
 
   async execute(leadId: string, organizationId: string, userId: string, titleOverride?: unknown): Promise<ProposalWithSheets> {
-    if (!leadId || !organizationId || !userId) throw new ValidationError('Lead, user, and organization are required.');
-    const lead = await this.leadRepository.findById(leadId, { organizationId });
+    if (!organizationId || !userId) throw new ValidationError('Lead, user, and organization are required.');
+    const targetLeadId = requiredUuid(leadId, 'leadId');
+    const lead = await this.leadRepository.findById(targetLeadId, { organizationId });
     if (!lead) throw new NotFoundError('Lead not found.');
     if (!['QUALIFIED', 'APPROVED', 'PROPOSAL_DRAFTING'].includes(lead.status)) {
       throw new ConflictError('Lead must be qualified or approved before proposal creation.');

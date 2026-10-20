@@ -29,6 +29,17 @@ function round(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
+function currencyOf(card: RateCard): string {
+  return (card.currency || 'USD').toUpperCase();
+}
+
+/** Resolution order mirrors resolveMonthlyRate: explicit monthly, then daily x 21, then hourly x 8 x 21. */
+export function deriveMonthlyRate(card: Pick<RateCard, 'hourlyRateUsd' | 'dailyRateUsd'>): number | null {
+  if (card.dailyRateUsd > 0) return round(card.dailyRateUsd * BILLABLE_DAYS_PER_MONTH);
+  if (card.hourlyRateUsd > 0) return round(card.hourlyRateUsd * BILLABLE_HOURS_PER_DAY * BILLABLE_DAYS_PER_MONTH);
+  return null;
+}
+
 /**
  * The LLM proposes staffing effort only; every monetary figure is derived here so
  * totals never come from model arithmetic.
@@ -58,11 +69,18 @@ export function calculatePricing(input: PricingCalculationInput): PricingCalcula
       monthlyRate = round(line.monthlyRateOverride);
       rateSource = 'MANUAL_OVERRIDE';
     } else {
-      resolvedCard = resolveRateCard(line, rateCardsById, input.rateCards);
+      const resolution = resolveRateCard(line, rateCardsById, input.rateCards, input.currency);
+      if (resolution.conflict) {
+        throw new PricingCalculationError(
+          'MIXED_CURRENCY',
+          `Rate card "${resolution.conflict.roleName}" has currency ${currencyOf(resolution.conflict)}, but this quotation is calculated in currency ${input.currency}. Create a ${input.currency} rate card or override the monthly rate.`
+        );
+      }
+      resolvedCard = resolution.card;
       if (!resolvedCard) {
         throw new PricingCalculationError(
           'UNKNOWN_ROLE',
-          `No active rate card matches role "${line.roleName}"${line.level ? ` at level ${line.level}` : ''}. Provide rateCardId, monthlyRateOverride, or create the rate card first.`
+          `No active rate card matches role "${line.roleName}"${line.level ? ` at level ${line.level}` : ''} in currency ${input.currency}. Provide rateCardId, monthlyRateOverride, or create the rate card first.`
         );
       }
       monthlyRate = resolveMonthlyRate(resolvedCard);
@@ -74,7 +92,7 @@ export function calculatePricing(input: PricingCalculationInput): PricingCalcula
     totalCost = round(totalCost + lineCost);
     lines.push({
       roleName: line.roleName,
-      level: line.level ?? resolvedCard?.level ?? null,
+      level: resolvedCard?.level ?? line.level ?? null,
       rateCardId: resolvedCard?.id ?? line.rateCardId ?? null,
       manMonths: line.manMonths,
       monthlyRate,
@@ -93,19 +111,34 @@ export function calculatePricing(input: PricingCalculationInput): PricingCalcula
   };
 }
 
-function resolveRateCard(line: PricingInputLine, rateCardsById: Map<string, RateCard>, rateCards: RateCard[]): RateCard | undefined {
+interface RateCardResolution {
+  card?: RateCard;
+  /** A card matched the role/level but is priced in another currency. */
+  conflict?: RateCard;
+}
+
+function resolveRateCard(
+  line: PricingInputLine,
+  rateCardsById: Map<string, RateCard>,
+  rateCards: RateCard[],
+  currency: string
+): RateCardResolution {
   if (line.rateCardId) {
     const card = rateCardsById.get(line.rateCardId);
-    return card && card.isActive ? card : undefined;
+    if (!card || !card.isActive) return {};
+    if (currencyOf(card) !== currency) return { conflict: card };
+    return { card };
   }
   const roleName = line.roleName.trim().toLowerCase();
   const sameRole = rateCards.filter(card => card.isActive && card.roleName.trim().toLowerCase() === roleName);
   const levelMatched = line.level ? sameRole.filter(card => card.level === line.level) : sameRole;
-  return levelMatched[0] ?? sameRole[0];
+  const candidates = levelMatched.length ? levelMatched : sameRole;
+  const inCurrency = candidates.filter(card => currencyOf(card) === currency);
+  if (inCurrency.length) return { card: inCurrency[0] };
+  return candidates.length ? { conflict: candidates[0] } : {};
 }
 
 function resolveMonthlyRate(card: RateCard): number {
   if (card.monthlyRateUsd !== null && Number.isFinite(card.monthlyRateUsd)) return round(card.monthlyRateUsd);
-  if (card.dailyRateUsd > 0) return round(card.dailyRateUsd * BILLABLE_DAYS_PER_MONTH);
-  return round(card.hourlyRateUsd * BILLABLE_HOURS_PER_DAY * BILLABLE_DAYS_PER_MONTH);
+  return deriveMonthlyRate(card) ?? 0;
 }

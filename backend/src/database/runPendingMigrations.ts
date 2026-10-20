@@ -17,7 +17,7 @@ const APPLIED_PROBES: Record<string, string> = {
   '003_update_dim_768': `SELECT EXISTS (SELECT 1 FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid WHERE c.relname = 'document_chunks' AND a.attname = 'embedding' AND format_type(a.atttypid, a.atttypmod) = 'vector(768)') AS applied`,
   '004_optimize_hybrid_search': `SELECT FALSE AS applied`,
   '005_auth_sessions_and_credentials': `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'password_hash') AS applied`,
-  '006_discovery_meetings': `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'meetings') AS applied`,
+  '006_discovery_meetings': `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'meetings' AND column_name = 'organization_id') AS applied`,
   '007_client_portal': `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'portal_sessions') AS applied`,
   '008_reference_data_and_audit_indexes': `SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'uq_clients_org_company') AS applied`
 };

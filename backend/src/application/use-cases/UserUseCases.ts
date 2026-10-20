@@ -254,11 +254,9 @@ export class UpdateOwnProfileUseCase {
       passwordChanged = true;
     }
 
-    const updated = await this.userRepository.update(scope.userId, updates);
+    const updated = await this.userRepository.update(scope.userId, passwordChanged ? { ...updates, passwordHash } : updates);
     if (!updated) throw new NotFoundError('User not found.');
-    if (passwordChanged && passwordHash !== current.passwordHash) {
-      await this.userRepository.revokeSessions(scope.userId);
-    }
+    if (passwordChanged) await this.userRepository.revokeSessions(scope.userId);
     await this.auditRepository.record({
       organizationId: scope.organizationId,
       actorId: scope.userId,

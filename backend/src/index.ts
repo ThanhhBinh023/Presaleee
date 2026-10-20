@@ -40,7 +40,11 @@ app.use('/api/v1', createApiRouter(
   container.knowledgeController,
   container.meetingController,
   container.portalController,
-  container.portalRepository
+  container.portalRepository,
+  container.clientController,
+  container.rateCardController,
+  container.userController,
+  container.auditController
 ));
 
 

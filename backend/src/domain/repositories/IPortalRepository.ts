@@ -1,4 +1,4 @@
-import { PortalComment, PortalMaterial, PortalSession } from '../entities/Portal.js';
+import { PortalComment, PortalMaterial, PortalMaterialDetail, PortalSession, PortalSessionDetail } from '../entities/Portal.js';
 
 export type PortalSessionContext = PortalSession;
 
@@ -20,4 +20,6 @@ export interface IPortalRepository {
     description: string | null; fileName: string; fileUrl: string; mimeType: string | null; isShared: boolean;
   }): Promise<PortalMaterial | null>;
   deleteMaterial(proposalId: string, materialId: string, organizationId: string): Promise<boolean>;
+  listSessionsForProposal(proposalId: string, organizationId: string): Promise<PortalSessionDetail[]>;
+  listMaterialsForStaff(proposalId: string, organizationId: string): Promise<PortalMaterialDetail[]>;
 }

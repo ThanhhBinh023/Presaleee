@@ -33,6 +33,7 @@ export interface ListLeadsDTO extends AuthenticatedLeadScope {
   status?: unknown;
   source?: unknown;
   assignedTo?: unknown;
+  clientId?: unknown;
   search?: unknown;
 }
 

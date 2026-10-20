@@ -65,8 +65,31 @@ import {
   AskPortalProposalUseCase, CreatePortalCommentUseCase, CreatePortalSessionUseCase,
   CreatePortalMaterialUseCase, DeletePortalMaterialUseCase,
   ExportPortalProposalPdfUseCase, GetPortalProposalUseCase, ListPortalCommentsUseCase,
-  ListPortalMaterialsUseCase, RevokePortalSessionUseCase
+  ListPortalMaterialsUseCase, RevokePortalSessionUseCase,
+  ListProposalPortalSessionsUseCase, ListProposalPortalMaterialsUseCase
 } from './application/use-cases/PortalUseCases.js';
+import { PostgresClientRepository } from './infrastructure/database/repositories/PostgresClientRepository.js';
+import { PostgresRateCardRepository } from './infrastructure/database/repositories/PostgresRateCardRepository.js';
+import { PostgresUserRepository } from './infrastructure/database/repositories/PostgresUserRepository.js';
+import { PostgresAuditRepository } from './infrastructure/database/repositories/PostgresAuditRepository.js';
+import { ReferenceValidator } from './application/services/ReferenceValidator.js';
+import {
+  CreateClientUseCase, DeleteClientUseCase, GetClientUseCase,
+  ListClientsUseCase, ListClientLeadsUseCase, UpdateClientUseCase
+} from './application/use-cases/ClientUseCases.js';
+import { ClientController } from './presentation/controllers/ClientController.js';
+import {
+  CalculateQuotationPricingUseCase, CreateRateCardUseCase, DeleteRateCardUseCase,
+  GetRateCardUseCase, ListRateCardsUseCase, UpdateRateCardUseCase
+} from './application/use-cases/RateCardUseCases.js';
+import { RateCardController } from './presentation/controllers/RateCardController.js';
+import {
+  AddMemberUseCase, GetMemberUseCase, ListMembersUseCase, ListOrganizationsUseCase,
+  RegisterUseCase, UpdateMemberUseCase, UpdateOwnProfileUseCase
+} from './application/use-cases/UserUseCases.js';
+import { UserController } from './presentation/controllers/UserController.js';
+import { ListAuditLogsUseCase } from './application/use-cases/AuditUseCases.js';
+import { AuditController } from './presentation/controllers/AuditController.js';
 
 export interface ServiceContainer {
   knowledgeRepository: PostgresKnowledgeRepository;
@@ -106,6 +129,14 @@ export interface ServiceContainer {
   meetingController: MeetingController;
   portalRepository: PostgresPortalRepository;
   portalController: PortalController;
+  clientRepository: PostgresClientRepository;
+  rateCardRepository: PostgresRateCardRepository;
+  userRepository: PostgresUserRepository;
+  auditRepository: PostgresAuditRepository;
+  clientController: ClientController;
+  rateCardController: RateCardController;
+  userController: UserController;
+  auditController: AuditController;
 }
 
 export function createContainer(): ServiceContainer {
@@ -117,6 +148,11 @@ export function createContainer(): ServiceContainer {
   const dashboardRepository = new PostgresDashboardRepository(dbPool);
   const meetingRepository = new PostgresMeetingRepository(dbPool);
   const portalRepository = new PostgresPortalRepository(dbPool);
+  const clientRepository = new PostgresClientRepository(dbPool);
+  const rateCardRepository = new PostgresRateCardRepository(dbPool);
+  const userRepository = new PostgresUserRepository(dbPool);
+  const auditRepository = new PostgresAuditRepository(dbPool);
+  const referenceValidator = new ReferenceValidator(clientRepository, userRepository);
   const embeddingGateway = new GeminiEmbeddingGateway();
   const llmGateway = new FastAPILMGateway();
   const excelExporterService = new ExcelProposalExporterService();
@@ -133,6 +169,7 @@ export function createContainer(): ServiceContainer {
   const getCurrentUserUseCase = new GetCurrentUserUseCase(authRepository);
   const forgotPasswordUseCase = new ForgotPasswordUseCase(authRepository);
   const resetPasswordUseCase = new ResetPasswordUseCase(authRepository);
+  const registerUseCase = new RegisterUseCase(userRepository, authRepository, auditRepository);
 
   const createProposalUseCase = new CreateProposalUseCase(proposalRepository);
   const createProposalFromLeadUseCase = new CreateProposalFromLeadUseCase(leadRepository, createProposalUseCase);
@@ -170,10 +207,10 @@ export function createContainer(): ServiceContainer {
   );
   const leadIntakeController = new LeadIntakeController(
     analyzeLeadIntakeUseCase,
-    new CreateLeadUseCase(leadRepository),
+    new CreateLeadUseCase(leadRepository, referenceValidator),
     new ListLeadsUseCase(leadRepository),
     new GetLeadUseCase(leadRepository),
-    new UpdateLeadUseCase(leadRepository),
+    new UpdateLeadUseCase(leadRepository, referenceValidator),
     new UpdateLeadStatusUseCase(leadRepository),
     new DeleteLeadUseCase(leadRepository),
     new QualifyLeadUseCase(leadRepository, llmGateway),
@@ -185,7 +222,8 @@ export function createContainer(): ServiceContainer {
     logoutUseCase,
     getCurrentUserUseCase,
     forgotPasswordUseCase,
-    resetPasswordUseCase
+    resetPasswordUseCase,
+    registerUseCase
   );
   const dashboardController = new DashboardController(
     new GetDashboardOverviewUseCase(dashboardRepository),
@@ -218,8 +256,36 @@ export function createContainer(): ServiceContainer {
     new ExportPortalProposalPdfUseCase(exportProposalToPdfUseCase, getPortalProposalUseCase),
     new RevokePortalSessionUseCase(portalRepository),
     new CreatePortalMaterialUseCase(portalRepository),
-    new DeletePortalMaterialUseCase(portalRepository)
+    new DeletePortalMaterialUseCase(portalRepository),
+    new ListProposalPortalSessionsUseCase(portalRepository, proposalRepository),
+    new ListProposalPortalMaterialsUseCase(portalRepository, proposalRepository)
   );
+
+  const clientController = new ClientController(
+    new CreateClientUseCase(clientRepository, auditRepository),
+    new ListClientsUseCase(clientRepository),
+    new GetClientUseCase(clientRepository),
+    new UpdateClientUseCase(clientRepository, auditRepository),
+    new DeleteClientUseCase(clientRepository, auditRepository),
+    new ListClientLeadsUseCase(clientRepository, leadRepository)
+  );
+  const rateCardController = new RateCardController(
+    new CreateRateCardUseCase(rateCardRepository, auditRepository),
+    new ListRateCardsUseCase(rateCardRepository),
+    new GetRateCardUseCase(rateCardRepository),
+    new UpdateRateCardUseCase(rateCardRepository, auditRepository),
+    new DeleteRateCardUseCase(rateCardRepository, auditRepository),
+    new CalculateQuotationPricingUseCase(rateCardRepository, auditRepository, proposalRepository)
+  );
+  const userController = new UserController(
+    new ListOrganizationsUseCase(userRepository),
+    new ListMembersUseCase(userRepository),
+    new GetMemberUseCase(userRepository),
+    new AddMemberUseCase(userRepository, authRepository, auditRepository),
+    new UpdateMemberUseCase(userRepository, auditRepository),
+    new UpdateOwnProfileUseCase(authRepository, userRepository, auditRepository)
+  );
+  const auditController = new AuditController(new ListAuditLogsUseCase(auditRepository));
 
   return {
     knowledgeRepository,
@@ -255,7 +321,15 @@ export function createContainer(): ServiceContainer {
     meetingRepository,
     meetingController,
     portalRepository,
-    portalController
+    portalController,
+    clientRepository,
+    rateCardRepository,
+    userRepository,
+    auditRepository,
+    clientController,
+    rateCardController,
+    userController,
+    auditController
   };
 }
 

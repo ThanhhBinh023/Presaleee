@@ -45,8 +45,12 @@ The client materials list requires explicit rows, so staff can register or remov
 
 | Method and endpoint | Purpose |
 | --- | --- |
+| `GET /proposals/:proposalId/portal-materials` | List every material on the proposal, shared or not, with `isShared` and `createdBy`. |
+| `GET /proposals/:proposalId/portal-sessions` | List client sessions with `revokedAt`, `lastAccessedAt`, `createdAt` and the client's `commentCount`. |
 | `POST /proposals/:proposalId/portal-materials` | Register an HTTPS file URL and metadata; defaults to not shared. |
 | `DELETE /proposals/:proposalId/portal-materials/:materialId` | Remove the material from the proposal portal. |
+
+Both reads require an employee access token, an organization claim, and a proposal that exists in the caller's organization (otherwise `404`). They return staff-only projections: session rows never include the stored token hash, and the material list is the staff view — the client-facing `GET /portal/proposals/:proposalId/materials` still returns only `is_shared=true` rows.
 
 Create body fields: `title`, `fileName`, and `fileUrl` (required); `description`, `mimeType`, and `isShared` (optional). Only authorized proposal staff may manage materials. The API stores a URL and metadata; it does not upload the file or create signed URLs. For private object storage, supply a short-lived signed HTTPS URL and refresh it through the storage integration before it expires.
 

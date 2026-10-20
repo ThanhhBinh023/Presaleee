@@ -26,7 +26,12 @@ export class FastAPILMGateway implements ILLMGateway {
       return response.data.output;
     } catch (error: any) {
       if (error instanceof ExternalServiceError) throw error;
-      throw new ExternalServiceError(`AI Service generation failed: ${error?.message || 'Unknown error'}`);
+      // The upstream message contains the host, port and socket error; keep it in the server log only.
+      console.error(`[ai-gateway] ${this.baseUrl}/api/v1/generate failed: ${error?.message || 'Unknown error'}`);
+      const status = error?.response?.status;
+      throw new ExternalServiceError(status
+        ? `AI Service returned HTTP ${status}.`
+        : 'AI Service is unreachable. Please retry in a moment.');
     }
   }
 }

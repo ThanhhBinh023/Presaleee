@@ -8,6 +8,7 @@
     "db:setup": "tsx src/database/setupDatabase.ts",
     "db:migrate:auth": "tsx src/database/runAuthMigration.ts",
     "db:migrate": "tsx src/database/runPendingMigrations.ts",
+    "test:e2e:auth": "node api_test/g1_g2_auth.e2e.mjs",
     "build": "tsc",
     "start": "node dist/index.js"
   },

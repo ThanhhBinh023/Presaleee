@@ -2,6 +2,7 @@ import { ILeadRepository } from '../../domain/repositories/ILeadRepository.js';
 import { ConflictError, NotFoundError, ValidationError } from '../../domain/errors/AppError.js';
 import { Lead, LeadQualification, LeadSource, LeadStatus, LEAD_SOURCES, LEAD_STATUSES } from '../../domain/entities/Lead.js';
 import { ILLMGateway } from '../../domain/repositories/ILLMGateway.js';
+import { ReferenceValidator } from '../services/ReferenceValidator.js';
 import { CreateLeadDTO, ListLeadsDTO, parseLeadSource, parseLeadStatus, UpdateLeadDTO } from '../dtos/LeadDTO.js';
 
 const MAX_RFP_CHARACTERS = 50_000;
@@ -113,7 +114,10 @@ function listFilterValue<T extends string>(value: unknown, allowed: readonly T[]
 }
 
 export class CreateLeadUseCase {
-  constructor(private readonly leadRepository: ILeadRepository) {}
+  constructor(
+    private readonly leadRepository: ILeadRepository,
+    private readonly referenceValidator?: ReferenceValidator
+  ) {}
   async execute(dto: CreateLeadDTO): Promise<Lead> {
     const organizationId = dto.organizationId;
     if (!organizationId) throw new ValidationError('Authenticated organization is required.');
@@ -121,6 +125,9 @@ export class CreateLeadUseCase {
     const rawRfpContent = requiredText(dto.rawRfpContent, 'rawRfpContent', MAX_RFP_CHARACTERS);
     const source = parseLeadSource(dto.source, 'MANUAL');
     const extractedMetadata = dto.extractedMetadata === undefined ? {} : jsonObject(dto.extractedMetadata, 'extractedMetadata');
+    const clientId = optionalUuid(dto.clientId, 'clientId');
+    const assignedTo = optionalUuid(dto.assignedTo, 'assignedTo');
+    await this.referenceValidator?.validate(organizationId, { clientId, assignedTo });
     return this.leadRepository.create({
       organizationId,
       createdBy: dto.userId,
@@ -128,8 +135,8 @@ export class CreateLeadUseCase {
       rawRfpContent,
       source,
       extractedMetadata,
-      clientId: optionalUuid(dto.clientId, 'clientId'),
-      assignedTo: optionalUuid(dto.assignedTo, 'assignedTo')
+      clientId,
+      assignedTo
     });
   }
 }
@@ -150,6 +157,7 @@ export class ListLeadsUseCase {
       status: listFilterValue(dto.status, LEAD_STATUSES, 'status'),
       source: listFilterValue(dto.source, LEAD_SOURCES, 'source'),
       assignedTo: optionalUuid(dto.assignedTo, 'assignedTo') || undefined,
+      clientId: optionalUuid(dto.clientId, 'clientId') || undefined,
       search
     });
     return { ...result, page, limit, totalPages: Math.ceil(result.total / limit) || 1 };
@@ -166,7 +174,10 @@ export class GetLeadUseCase {
 }
 
 export class UpdateLeadUseCase {
-  constructor(private readonly leadRepository: ILeadRepository) {}
+  constructor(
+    private readonly leadRepository: ILeadRepository,
+    private readonly referenceValidator?: ReferenceValidator
+  ) {}
   async execute(dto: UpdateLeadDTO): Promise<Lead> {
     const updates: Parameters<ILeadRepository['update']>[2] = {};
     if (dto.title !== undefined) updates.title = requiredText(dto.title, 'title', 255);
@@ -176,6 +187,7 @@ export class UpdateLeadUseCase {
     if (dto.clientId !== undefined) updates.clientId = optionalUuid(dto.clientId, 'clientId');
     if (dto.assignedTo !== undefined) updates.assignedTo = optionalUuid(dto.assignedTo, 'assignedTo');
     if (Object.keys(updates).length === 0) throw new ValidationError('At least one editable field is required.');
+    await this.referenceValidator?.validate(dto.organizationId, { clientId: updates.clientId, assignedTo: updates.assignedTo });
     const lead = await this.leadRepository.update(dto.id, { organizationId: dto.organizationId }, updates);
     if (!lead) throw new NotFoundError('Lead not found.');
     return lead;

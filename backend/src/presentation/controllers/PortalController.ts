@@ -5,7 +5,8 @@ import {
   AskPortalProposalUseCase, CreatePortalCommentUseCase, CreatePortalSessionUseCase,
   CreatePortalMaterialUseCase, DeletePortalMaterialUseCase,
   ExportPortalProposalPdfUseCase, GetPortalProposalUseCase, ListPortalCommentsUseCase,
-  ListPortalMaterialsUseCase, RevokePortalSessionUseCase
+  ListPortalMaterialsUseCase, RevokePortalSessionUseCase,
+  ListProposalPortalSessionsUseCase, ListProposalPortalMaterialsUseCase
 } from '../../application/use-cases/PortalUseCases.js';
 
 declare global {
@@ -38,7 +39,9 @@ export class PortalController {
     private readonly exportPdfUseCase: ExportPortalProposalPdfUseCase,
     private readonly revokeSessionUseCase: RevokePortalSessionUseCase,
     private readonly createMaterialUseCase: CreatePortalMaterialUseCase,
-    private readonly deleteMaterialUseCase: DeletePortalMaterialUseCase
+    private readonly deleteMaterialUseCase: DeletePortalMaterialUseCase,
+    private readonly listSessionsUseCase: ListProposalPortalSessionsUseCase,
+    private readonly listMaterialsStaffUseCase: ListProposalPortalMaterialsUseCase
   ) {}
 
   createSession = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
@@ -128,6 +131,22 @@ export class PortalController {
     try {
       const session = portalSession(req);
       const materials = await this.listMaterialsUseCase.execute(routeParam(req, 'proposalId'), session.organizationId);
+      res.status(200).json({ success: true, data: materials, meta: { total: materials.length } });
+    } catch (error) { next(error); }
+  };
+
+  listProposalSessions = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.auth?.organizationId) throw new AppError('Authenticated organization is required.', 403);
+      const sessions = await this.listSessionsUseCase.execute(routeParam(req, 'proposalId'), req.auth.organizationId);
+      res.status(200).json({ success: true, data: sessions, meta: { total: sessions.length } });
+    } catch (error) { next(error); }
+  };
+
+  listProposalMaterials = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.auth?.organizationId) throw new AppError('Authenticated organization is required.', 403);
+      const materials = await this.listMaterialsStaffUseCase.execute(routeParam(req, 'proposalId'), req.auth.organizationId);
       res.status(200).json({ success: true, data: materials, meta: { total: materials.length } });
     } catch (error) { next(error); }
   };

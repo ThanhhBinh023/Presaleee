@@ -1,0 +1,295 @@
+{
+  "runId": "20261020163553",
+  "suite": "G3 Users & Organizations + G4 Client Directory",
+  "baseUrl": "http://127.0.0.1:5099",
+  "startedAt": "2026-10-20T16:35:53.440Z",
+  "finishedAt": "2026-10-20T16:36:07.423Z",
+  "durationMs": 13983,
+  "totals": {
+    "cases": 28,
+    "PASS": 28
+  },
+  "trackedTestData": {
+    "userIds": [
+      "6e8bb036-8ae9-4af2-b572-350424bfde0c",
+      "1e2a54c9-017b-4862-bf78-675341a9566e",
+      "b712e450-e61d-4bc3-b59b-4afa1d96e13b",
+      "c48204c3-fc92-47df-9765-4275d489f8b7",
+      "e88c8e69-d326-4d30-83b8-ba84880b56cc"
+    ],
+    "organizationIds": [
+      "9bc7b0a3-01cc-4180-b082-1ae3d5e1035a",
+      "6faa6460-b1aa-45c8-86ac-bd80dcedb3bb"
+    ]
+  },
+  "observations": [
+    "G3/G4 run also confirms the multi-tenant fix: member and client reads from another organization answer 404, and allOrganizations=true is ADMIN-scoped to the caller own tenants."
+  ],
+  "results": [
+    {
+      "id": "G3-01",
+      "title": "Bootstrap: two independent organizations, each with one ADMIN",
+      "status": "PASS",
+      "durationMs": 2035,
+      "notes": [
+        "org A 9bc7b0a3-01cc-4180-b082-1ae3d5e1035a",
+        "org B 6faa6460-b1aa-45c8-86ac-bd80dcedb3bb"
+      ]
+    },
+    {
+      "id": "G3-02",
+      "title": "GET /users/me/organizations lists only the caller own organizations",
+      "status": "PASS",
+      "durationMs": 85,
+      "notes": [
+        "visible organizations: 1"
+      ]
+    },
+    {
+      "id": "G3-03",
+      "title": "GET /users returns a paginated directory without credentials",
+      "status": "PASS",
+      "durationMs": 153,
+      "notes": [
+        "meta.total=1"
+      ]
+    },
+    {
+      "id": "G3-04",
+      "title": "POST /users creates members and applies the VIEWER default role",
+      "status": "PASS",
+      "durationMs": 614,
+      "notes": [
+        "viewer b712e450-e61d-4bc3-b59b-4afa1d96e13b",
+        "role defaults to VIEWER"
+      ]
+    },
+    {
+      "id": "G3-05",
+      "title": "POST /users rejects duplicates, unknown roles and weak passwords",
+      "status": "PASS",
+      "durationMs": 99,
+      "notes": [
+        "409 duplicate email",
+        "400 unknown role",
+        "400 password policy"
+      ]
+    },
+    {
+      "id": "G3-06",
+      "title": "RBAC: a VIEWER may read the directory but not write it",
+      "status": "PASS",
+      "durationMs": 397,
+      "notes": [
+        "This operation requires one of the following roles: ADMIN, PRESALE_LEAD."
+      ]
+    },
+    {
+      "id": "G3-07",
+      "title": "GET /users filters by search, role and status and validates the enum",
+      "status": "PASS",
+      "durationMs": 302,
+      "notes": [
+        "enum and range guards return 400, never 500"
+      ]
+    },
+    {
+      "id": "G3-08",
+      "title": "allOrganizations=true is ADMIN-only and stays inside the ADMIN own tenants",
+      "status": "PASS",
+      "durationMs": 225,
+      "notes": [
+        "403 for VIEWER; ADMIN scope limited to organizations the caller belongs to"
+      ]
+    },
+    {
+      "id": "G3-09",
+      "title": "GET /users/:id resolves in-tenant members and hides foreign ones as 404",
+      "status": "PASS",
+      "durationMs": 230,
+      "notes": [
+        "foreign member answers 404 rather than 403, so existence is not disclosed"
+      ]
+    },
+    {
+      "id": "G3-10",
+      "title": "PATCH /users/:id updates a member and requires at least one field",
+      "status": "PASS",
+      "durationMs": 511,
+      "notes": [
+        "partial update keeps other fields",
+        "400 on empty patch"
+      ]
+    },
+    {
+      "id": "G3-11",
+      "title": "An ADMIN cannot change their own role or status",
+      "status": "PASS",
+      "durationMs": 155,
+      "notes": [
+        "Change your own role or status from another administrator account."
+      ]
+    },
+    {
+      "id": "G3-12",
+      "title": "The last active ADMIN cannot be demoted or deactivated by a PRESALE_LEAD",
+      "status": "PASS",
+      "durationMs": 1038,
+      "notes": [
+        "The organization must keep at least one active ADMIN."
+      ]
+    },
+    {
+      "id": "G3-13",
+      "title": "Deactivating a member kills their existing session and blocks new logins",
+      "status": "PASS",
+      "durationMs": 1275,
+      "notes": [
+        "login 401 after deactivation",
+        "pre-existing refresh session revoked"
+      ]
+    },
+    {
+      "id": "G3-14",
+      "title": "PATCH /users/me edits profile fields and ignores role/status escalation",
+      "status": "PASS",
+      "durationMs": 318,
+      "notes": [
+        "role/status keys in the body are not writable here"
+      ]
+    },
+    {
+      "id": "G3-15",
+      "title": "Changing my password proves the current one and revokes other sessions",
+      "status": "PASS",
+      "durationMs": 1750,
+      "notes": [
+        "currentPassword enforced",
+        "all refresh sessions revoked"
+      ]
+    },
+    {
+      "id": "G3-16",
+      "title": "Every directory endpoint requires authentication",
+      "status": "PASS",
+      "durationMs": 11,
+      "notes": [
+        "401 on all four, no anonymous write path"
+      ]
+    },
+    {
+      "id": "G4-01",
+      "title": "POST /clients creates a client with the documented defaults",
+      "status": "PASS",
+      "durationMs": 148,
+      "notes": [
+        "client 53250ac1-0fb4-47fd-9130-a391150aed2d",
+        "country defaulted"
+      ]
+    },
+    {
+      "id": "G4-02",
+      "title": "Client writes validate the taxonomy and required fields",
+      "status": "PASS",
+      "durationMs": 784,
+      "notes": [
+        "400 unknown industry",
+        "409 duplicate per organization",
+        "uniqueness is tenant-scoped"
+      ]
+    },
+    {
+      "id": "G4-03",
+      "title": "RBAC: a VIEWER can read clients but not create, update or delete them",
+      "status": "PASS",
+      "durationMs": 152,
+      "notes": [
+        "This operation requires one of the following roles: ADMIN, PRESALE_LEAD."
+      ]
+    },
+    {
+      "id": "G4-04",
+      "title": "GET /clients paginates, searches case-insensitively and filters by industry",
+      "status": "PASS",
+      "durationMs": 553,
+      "notes": [
+        "meta.total=2",
+        "search is ILIKE and case-insensitive"
+      ]
+    },
+    {
+      "id": "G4-05",
+      "title": "Search input with SQL/ILIKE metacharacters is escaped, not interpreted",
+      "status": "PASS",
+      "durationMs": 691,
+      "notes": [
+        "bare % returns 0 rows, so LIKE wildcards are escaped"
+      ]
+    },
+    {
+      "id": "G4-06",
+      "title": "GET /clients/:id resolves in-tenant rows and hides foreign ones as 404",
+      "status": "PASS",
+      "durationMs": 432,
+      "notes": [
+        "cross-tenant read/patch/delete all answer 404 and change nothing"
+      ]
+    },
+    {
+      "id": "G4-07",
+      "title": "PATCH /clients/:id updates partially and bounds field lengths",
+      "status": "PASS",
+      "durationMs": 497,
+      "notes": [
+        "255-column email rejected at the boundary with 400, not a 500 from PostgreSQL"
+      ]
+    },
+    {
+      "id": "G4-08",
+      "title": "A client referenced by a lead cannot be deleted (409) and its leads are listable",
+      "status": "PASS",
+      "durationMs": 570,
+      "notes": [
+        "409 message: Reassign the 1 lead(s) attached to this client before deleting it.",
+        "client leads total=1"
+      ]
+    },
+    {
+      "id": "G4-09",
+      "title": "Unknown or foreign UUID references on a lead are refused with 400",
+      "status": "PASS",
+      "durationMs": 223,
+      "notes": [
+        "no FK violation reaches the client as a 500"
+      ]
+    },
+    {
+      "id": "G4-10",
+      "title": "DELETE /clients/:id returns 204 and is not replayable",
+      "status": "PASS",
+      "durationMs": 571,
+      "notes": [
+        "204 with empty body",
+        "second delete is 404, not a silent success"
+      ]
+    },
+    {
+      "id": "G4-11",
+      "title": "Client mutations are recorded in the audit trail",
+      "status": "PASS",
+      "durationMs": 136,
+      "notes": [
+        "observed actions: CLIENT_DELETED, CLIENT_CREATED, CLIENT_UPDATED"
+      ]
+    },
+    {
+      "id": "G4-12",
+      "title": "Audit read is ADMIN/PRESALE_LEAD-only and never writable over HTTP",
+      "status": "PASS",
+      "durationMs": 22,
+      "notes": [
+        "no POST/DELETE route on /audit-logs"
+      ]
+    }
+  ]
+}

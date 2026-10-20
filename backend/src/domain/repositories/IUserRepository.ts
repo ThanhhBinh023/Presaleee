@@ -31,6 +31,7 @@ export interface UpdateUserInput {
   avatarUrl?: string | null;
   role?: UserRole;
   status?: UserStatus;
+  passwordHash?: string;
 }
 
 export interface IUserRepository {

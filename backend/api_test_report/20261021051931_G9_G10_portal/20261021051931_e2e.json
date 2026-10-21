@@ -1,0 +1,239 @@
+{
+  "runId": "20261021051931",
+  "suite": "G9 Staff Portal Management + G10 Client Portal",
+  "baseUrl": "http://127.0.0.1:5099",
+  "startedAt": "2026-10-21T05:19:31.891Z",
+  "finishedAt": "2026-10-21T05:20:22.806Z",
+  "durationMs": 50915,
+  "totals": {
+    "cases": 19,
+    "PASS": 19
+  },
+  "trackedTestData": {
+    "userIds": [
+      "c9c8735f-f790-46b1-9b15-e10b8104b29e",
+      "dc8343b5-a2f5-4175-adcf-0938f13cb78e",
+      "3fcbfeee-1ed4-4231-b0cb-84efb156b22d",
+      "c6a6fbaf-3f24-4ec9-846b-5c483bf6d391",
+      "55b1537d-f142-47c8-83c3-7cf81fecb10b",
+      "bd3533ee-2d74-4f07-bb82-0dbd5a6ec2cc"
+    ],
+    "organizationIds": [
+      "3c8975be-4ea9-4ee7-aca6-8133de445311",
+      "00d576b1-55ef-4a01-884b-0076aaecf4cb"
+    ]
+  },
+  "observations": [
+    "SALES_REP and SOLUTION_ARCHITECT can open portal sessions, but only ADMIN/PRESALE_LEAD can be the first one on an APPROVED proposal (G9-04)",
+    "FINDING: VIEWER can read the staff session list (200), exposing client email + name of every portal session; the portal read routes check authentication and organization only, never role",
+    "FINDING: POST /portal-materials returns a payload without isShared/createdBy (id, title, description, fileName, fileUrl, mimeType, createdAt); the caller must re-GET the list to confirm the sharing default",
+    "FINDING: the client view returns ALL 10 sheets, including internal ones (Assumptions & Dependencies, Risk Management RAID, Appendices & Case Studies); the plan expected only client-facing sheets",
+    "5000-character question passed the validator with status 502 (guard is checked before the AI call)",
+    "G10-07 covers the AI-unavailable path only; answer quality and citations[] provenance need the AI service running on :8000."
+  ],
+  "results": [
+    {
+      "id": "G9/G10-00",
+      "title": "Bootstrap: organizations, portal roles, APPROVED proposals in both tenants",
+      "status": "PASS",
+      "durationMs": 15109,
+      "notes": [
+        "org A 3c8975be-4ea9-4ee7-aca6-8133de445311, org B 00d576b1-55ef-4a01-884b-0076aaecf4cb",
+        "approved: 99abc51e-2614-453c-b2e7-12b6fe718a79 (pricing sheet seeded), b06919a6-98dd-4cb2-a645-8dd12db741ab, 4cbc97dc-b970-45e0-9fd7-141942852fbb, foreign 89ebf8f6-284f-4d28-b55b-56b17f70e2af; IN_REVIEW e9d91f03-6005-47c2-974c-7f7287db3594"
+      ]
+    },
+    {
+      "id": "G9-01",
+      "title": "Create session contract: 201, opaque accessToken handed out once, no token hash in any payload",
+      "status": "PASS",
+      "durationMs": 1384,
+      "notes": [
+        "201 with {id, proposalId, organizationId, clientEmail, clientName, expiresAt, accessToken}; default TTL 168.0h",
+        "expiresInHours=24 honored (24.0h)",
+        "accessToken appears only in the create response; list payloads carry no credential"
+      ]
+    },
+    {
+      "id": "G9-02",
+      "title": "Session role and tenant guards: VIEWER 403, anonymous 401, foreign proposal 404, smuggled organizationId ignored",
+      "status": "PASS",
+      "durationMs": 1669,
+      "notes": [
+        "VIEWER create -> 403 (Your role cannot create client portal sessions.)",
+        "payload organizationId ignored: the session stays in the caller scope"
+      ]
+    },
+    {
+      "id": "G9-03",
+      "title": "Session input guards: proposalId, clientEmail, clientName and expiresInHours boundaries; only real proposals 404",
+      "status": "PASS",
+      "durationMs": 1641,
+      "notes": [
+        "18 invalid create-session payloads all answered 400 with the error envelope",
+        "expiresInHours 1 and 720 accepted while 0/721/2.5/NaN are refused; unknown proposal 404, non-object body 400"
+      ]
+    },
+    {
+      "id": "G9-04",
+      "title": "Status precondition: non-approved 409, first session flips APPROVED -> SENT_TO_CLIENT and audits both steps",
+      "status": "PASS",
+      "durationMs": 4133,
+      "notes": [
+        "IN_REVIEW proposal -> 409 (Only an approved proposal can be shared with a client.)",
+        "SALES_REP cannot be the first session on an APPROVED proposal (403) and the status is untouched",
+        "first session: APPROVED -> SENT_TO_CLIENT, audit CLIENT_PORTAL_SESSION_CREATED, PROPOSAL_SHARED_WITH_CLIENT, CLIENT_PORTAL_SESSION_CREATED, PROPOSAL_STATUS_CHANGED, PROPOSAL_STATUS_CHANGED"
+      ]
+    },
+    {
+      "id": "G9-05",
+      "title": "List portal sessions: shape, ordering, commentCount, revoked/lastAccessed columns and no credential",
+      "status": "PASS",
+      "durationMs": 948,
+      "notes": [
+        "8 sessions listed newest-first with expiresAt/revokedAt/lastAccessedAt/commentCount and no token hash",
+        "cross-tenant 404, malformed 400, unknown 404, anonymous 401"
+      ]
+    },
+    {
+      "id": "G9-06",
+      "title": "Portal materials: HTTPS-only fileUrl, isShared defaults to false, field limits, role and status guards",
+      "status": "PASS",
+      "durationMs": 951,
+      "notes": [
+        "201, isShared=false confirmed through the staff list (the create response omits the column)",
+        "16 invalid material payloads answered 400; fileUrl is HTTPS-only (5 URL schemes refused)",
+        "VIEWER 403, unknown/DRAFT proposal 404, malformed proposalId 400, foreign 404, anonymous 401"
+      ]
+    },
+    {
+      "id": "G9-07",
+      "title": "Staff material list and delete: unshared rows visible with isShared/createdBy, 204 then 404, tenant and role guards",
+      "status": "PASS",
+      "durationMs": 1128,
+      "notes": [
+        "3 materials listed for staff including the unshared rows, newest-first",
+        "204 delete, replay/mismatch/foreign/unknown 404, malformed 400, VIEWER 403, anonymous 401"
+      ]
+    },
+    {
+      "id": "G9-08",
+      "title": "Revoke session: 204 + audit, the token stops working at once, replay 404, role and tenant guards",
+      "status": "PASS",
+      "durationMs": 1657,
+      "notes": [
+        "a revoked token stops authenticating reads and writes on the very next call",
+        "audit trail: CLIENT_PORTAL_SESSION_CREATED + CLIENT_PORTAL_SESSION_REVOKED for the same session id",
+        "revoke is tenant-scoped: another organization cannot revoke (404)"
+      ]
+    },
+    {
+      "id": "G10-01",
+      "title": "Client token guards: missing, staff JWT, garbage and foreign proposal ids all answer 401, never 500",
+      "status": "PASS",
+      "durationMs": 662,
+      "notes": [
+        "4 client routes without a token answered 401 in the JSON envelope (no HTML, no 500)",
+        "a staff JWT replayed as a portal token is refused (401)",
+        "malformed/nil uuid and a token used on another tenant proposal all 401",
+        "token of proposal A rejected on proposal B and vice versa, reads and writes"
+      ]
+    },
+    {
+      "id": "G10-02",
+      "title": "Shared proposal view: client fields exposed, internal columns withheld",
+      "status": "PASS",
+      "durationMs": 290,
+      "notes": [
+        "view fields: id, title, version, status, totalCost, currency, estimatedTimelineWeeks, sheets; 10 sheets returned",
+        "a DRAFT/IN_REVIEW proposal is unreachable through the client route"
+      ]
+    },
+    {
+      "id": "G10-03",
+      "title": "lastAccessedAt is stamped on every authenticated client call and untouched on failures",
+      "status": "PASS",
+      "durationMs": 1796,
+      "notes": [
+        "lastAccessedAt followed the calls (2026-10-21T05:20:02.228Z -> 2026-10-21T05:20:02.660Z)",
+        "a rejected token does not touch lastAccessedAt"
+      ]
+    },
+    {
+      "id": "G10-04",
+      "title": "Client comments: author comes from the session, validation, trimming, ordering and isolation",
+      "status": "PASS",
+      "durationMs": 1804,
+      "notes": [
+        "201 with authorName/authorEmail taken from the portal session (E2E Client Corp <client-20261021051931@example.test>)",
+        "8 invalid comment payloads answered 400; the 5000-character boundary accepted",
+        "6 comments returned oldest-first",
+        "body fields cannot forge another session or proposal"
+      ]
+    },
+    {
+      "id": "G10-05",
+      "title": "Client materials list exposes only shared rows and hides staff columns",
+      "status": "PASS",
+      "durationMs": 656,
+      "notes": [
+        "1 of the staff-visible materials reached the client; the unshared row was withheld"
+      ]
+    },
+    {
+      "id": "G10-06",
+      "title": "Client PDF export: %PDF bytes, headers and the same tenant guards",
+      "status": "PASS",
+      "durationMs": 1026,
+      "notes": [
+        "%PDF 1787 bytes, exact Content-Length, attachment disposition",
+        "guards 401; the export leaves the proposal untouched"
+      ]
+    },
+    {
+      "id": "G10-07",
+      "title": "Client questions: guards before any AI call and a sanitized failure while the AI service is offline",
+      "status": "PASS",
+      "durationMs": 956,
+      "notes": [
+        "5 invalid question payloads answered 400 before any AI call; anonymous 401, cross-proposal 401",
+        "AI offline: 502 with the error envelope and no internal leak - SUCCESS PATH NOT COVERED"
+      ]
+    },
+    {
+      "id": "G10-08",
+      "title": "Expired, revoked and unshared-again sessions all stop authenticating",
+      "status": "PASS",
+      "durationMs": 7414,
+      "notes": [
+        "expired session: read, list and write all 401 with nothing stored",
+        "revoked session answered 401 on the next call",
+        "client access is cut the moment the proposal leaves SENT_TO_CLIENT/ACCEPTED (401 on all four routes, never 500)",
+        "REJECTED cannot jump back to SENT_TO_CLIENT directly (409); the documented path is through DRAFT",
+        "access returns for the surviving session once the proposal is re-shared",
+        "expired fixture session removed (1 row)"
+      ]
+    },
+    {
+      "id": "G10-09",
+      "title": "Client surface hygiene: no credential or internal leak, no staff-cookie dependence, no client-side writes",
+      "status": "PASS",
+      "durationMs": 2393,
+      "notes": [
+        "5 client routes: no 5xx, no credential or internal leak",
+        "client routes ignore staff cookies: session cookie alone 401, portal token 200",
+        "no client-side write verb is mounted on the portal surface; ACCEPTED proposals remain readable"
+      ]
+    },
+    {
+      "id": "G9/G10-99",
+      "title": "Teardown: every probe session revoked, every probe material deleted",
+      "status": "PASS",
+      "durationMs": 5295,
+      "notes": [
+        "10 sessions on the shared proposal, all revoked",
+        "all probe materials deleted from both shared proposals",
+        "the revoked client token is dead at the end of the run"
+      ]
+    }
+  ]
+}

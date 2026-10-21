@@ -1,6 +1,7 @@
 import { IProposalRepository, UpdateProposalParams } from '../../domain/repositories/IProposalRepository.js';
 import { Proposal } from '../../domain/entities/Proposal.js';
 import { AppError, ConflictError, NotFoundError, ValidationError } from '../../domain/errors/AppError.js';
+import { requiredUuid } from '../services/RequestValidation.js';
 
 export interface UpdateProposalDTO {
   id: string;
@@ -20,17 +21,13 @@ export class UpdateProposalUseCase {
   constructor(private readonly proposalRepo: IProposalRepository) {}
 
   async execute(dto: UpdateProposalDTO): Promise<Proposal> {
-    if (!dto.id || dto.id.trim() === '') {
-      throw new ValidationError('Proposal ID is required.');
-    }
     if (!dto.organizationId || !dto.actorId) throw new ValidationError('Authenticated user and organization are required.');
     const validStatuses: Proposal['status'][] = ['DRAFT', 'IN_REVIEW', 'APPROVED', 'SENT_TO_CLIENT', 'ACCEPTED', 'REJECTED'];
     if (dto.status !== undefined && !validStatuses.includes(dto.status)) throw new ValidationError('Invalid proposal status.');
 
-    const existing = await this.proposalRepo.findById(dto.id, dto.organizationId);
-    if (!existing) {
-      throw new NotFoundError(`Proposal with ID '${dto.id}' was not found.`);
-    }
+    const proposalId = requiredUuid(dto.id, 'id');
+    const existing = await this.proposalRepo.findById(proposalId, dto.organizationId);
+    if (!existing) throw new NotFoundError('Proposal not found.');
 
     const updates: UpdateProposalParams = {};
     if (dto.title !== undefined) {
@@ -82,17 +79,17 @@ export class UpdateProposalUseCase {
       }
       if (dto.status !== existing.status) {
         const updatedStatus = await this.proposalRepo.updateStatus(
-          dto.id, dto.organizationId, dto.actorId, dto.status, [existing.status]
+          proposalId, dto.organizationId, dto.actorId, dto.status, [existing.status]
         );
         if (!updatedStatus) throw new ConflictError('Proposal status changed concurrently. Reload and retry.');
       }
     }
     if (Object.keys(updates).length === 0) {
-      const current = await this.proposalRepo.findById(dto.id, dto.organizationId);
+      const current = await this.proposalRepo.findById(proposalId, dto.organizationId);
       if (!current) throw new NotFoundError('Proposal not found.');
       return current;
     }
-    const updated = await this.proposalRepo.update(dto.id, dto.organizationId, updates);
+    const updated = await this.proposalRepo.update(proposalId, dto.organizationId, updates);
     if (!updated) throw new NotFoundError('Proposal not found.');
     return updated;
   }

@@ -1,19 +1,15 @@
 import { IProposalRepository } from '../../domain/repositories/IProposalRepository.js';
-import { NotFoundError, ValidationError } from '../../domain/errors/AppError.js';
+import { NotFoundError } from '../../domain/errors/AppError.js';
+import { requiredUuid } from '../services/RequestValidation.js';
 
 export class DeleteProposalUseCase {
   constructor(private readonly proposalRepo: IProposalRepository) {}
 
   async execute(id: string, organizationId: string): Promise<boolean> {
-    if (!id || id.trim() === '') {
-      throw new ValidationError('Proposal ID is required.');
-    }
+    const proposalId = requiredUuid(id, 'id');
+    const existing = await this.proposalRepo.findById(proposalId, organizationId);
+    if (!existing) throw new NotFoundError('Proposal not found.');
 
-    const existing = await this.proposalRepo.findById(id, organizationId);
-    if (!existing) {
-      throw new NotFoundError(`Proposal with ID '${id}' was not found.`);
-    }
-
-    return await this.proposalRepo.delete(id, organizationId);
+    return await this.proposalRepo.delete(proposalId, organizationId);
   }
 }

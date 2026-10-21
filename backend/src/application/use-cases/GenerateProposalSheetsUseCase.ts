@@ -5,6 +5,7 @@ import { ConflictError, NotFoundError, ValidationError } from '../../domain/erro
 import { STANDARD_PROPOSAL_SHEETS, ProposalSheet } from '../../domain/entities/Proposal.js';
 import { SearchHybridRAGUseCase } from './SearchHybridRAGUseCase.js';
 import { IMeetingRepository } from '../../domain/repositories/IMeetingRepository.js';
+import { requiredUuid } from '../services/RequestValidation.js';
 
 const MAX_INSTRUCTIONS = 4000;
 const MAX_RFP_LENGTH = 50_000;
@@ -57,7 +58,8 @@ export class GenerateProposalSheetsUseCase {
   ) {}
 
   async execute(input: GenerateProposalSheetsInput): Promise<GeneratedProposalSheetResult> {
-    const proposal = await this.proposalRepository.findById(input.proposalId, input.organizationId);
+    const proposalId = requiredUuid(input.proposalId, 'proposalId');
+    const proposal = await this.proposalRepository.findById(proposalId, input.organizationId);
     if (!proposal) throw new NotFoundError('Proposal not found.');
     if (proposal.status !== 'DRAFT') throw new ConflictError('Only a DRAFT proposal can be generated or regenerated.');
     const sheetNames = validateSheetNames(input.sheetNames);

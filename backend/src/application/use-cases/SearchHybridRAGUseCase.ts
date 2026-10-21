@@ -10,11 +10,16 @@ export class SearchHybridRAGUseCase {
   ) {}
 
   async execute(input: RAGSearchInputDTO): Promise<RAGSearchOutputDTO> {
-    if (!input.query || !input.query.trim()) {
+    if (typeof input.query !== 'string' || !input.query.trim()) {
       throw new ValidationError('Search query must not be empty.');
     }
-
     const trimmedQuery = input.query.trim();
+    if (trimmedQuery.length > 20_000) throw new ValidationError('query must not exceed 20,000 characters.');
+    if (input.domain !== undefined && input.domain !== null
+      && (typeof input.domain !== 'string' || !input.domain.trim() || input.domain.length > 100)) {
+      throw new ValidationError('domain must be text up to 100 characters.');
+    }
+
     const topK = input.topK ?? 3;
     if (!Number.isInteger(topK) || topK < 1 || topK > 20) throw new ValidationError('topK must be an integer from 1 to 20.');
 
@@ -26,7 +31,7 @@ export class SearchHybridRAGUseCase {
       queryText: trimmedQuery,
       queryEmbedding,
       matchCount: topK,
-      domain: input.domain || null,
+      domain: typeof input.domain === 'string' && input.domain.trim() ? input.domain.trim() : null,
       organizationId: input.organizationId || null
     });
 

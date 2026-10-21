@@ -14,7 +14,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "test:e2e:meetings-proposals": "node api_test/g7_g8_meetings_and_proposals.e2e.mjs",
-    "test:e2e:portal": "node api_test/g9_g10_portal.e2e.mjs"
+    "test:e2e:portal": "node api_test/g9_g10_portal.e2e.mjs",
+    "test:e2e:knowledge-rag": "node api_test/g11_g12_knowledge_rag.e2e.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.29.0",

@@ -1,9 +1,9 @@
 import { DocumentChunk } from '../../domain/entities/DocumentChunk.js';
 
 export interface GenerateProposalInputDTO {
-  rfpText: string;
+  rfpText: unknown;
   organizationId: string;
-  domain?: string;
+  domain?: unknown;
   maxTokens?: number;
 }
 

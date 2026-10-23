@@ -72,6 +72,7 @@ export class PostgresLeadRepository implements ILeadRepository {
     if (filters.status) { values.push(filters.status); conditions.push(`status = $${values.length}`); }
     if (filters.source) { values.push(filters.source); conditions.push(`source = $${values.length}`); }
     if (filters.assignedTo) { values.push(filters.assignedTo); conditions.push(`assigned_to = $${values.length}`); }
+    if (filters.clientId) { values.push(filters.clientId); conditions.push(`client_id = $${values.length}`); }
     if (filters.search) {
       values.push(`%${filters.search.replace(/[\\%_]/g, '\\$&')}%`);
       conditions.push(`(title ILIKE $${values.length} ESCAPE '\\' OR raw_rfp_content ILIKE $${values.length} ESCAPE '\\')`);

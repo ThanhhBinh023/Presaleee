@@ -1,9 +1,14 @@
-import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto';
-import { promisify } from 'node:util';
 import { AuthenticationError, ConflictError, UnauthorizedError, ValidationError } from '../../domain/errors/AppError.js';
 import { AuthSessionContext, PublicAuthUser } from '../../domain/entities/AuthUser.js';
 import { IAuthRepository } from '../../domain/repositories/IAuthRepository.js';
 import { env } from '../../infrastructure/config/env.js';
+import {
+  EMPTY_PASSWORD_HASH,
+  PASSWORD_MAX_LENGTH,
+  hashPassword,
+  validatePasswordStrength,
+  verifyPassword
+} from '../services/AuthCredentialsService.js';
 import {
   createOpaqueToken,
   hashToken,
@@ -12,24 +17,7 @@ import {
   toPublicUser
 } from '../services/AuthTokenService.js';
 
-const PASSWORD_MIN_LENGTH = 12;
-const PASSWORD_MAX_LENGTH = 128;
 const GENERIC_LOGIN_ERROR = 'Invalid email or password.';
-const scrypt = promisify(scryptCallback);
-
-async function hashPassword(password: string): Promise<string> {
-  const salt = randomBytes(16).toString('hex');
-  const derivedKey = await scrypt(password, salt, 64) as Buffer;
-  return `scrypt$${salt}$${derivedKey.toString('hex')}`;
-}
-
-async function verifyPassword(password: string, encodedHash: string): Promise<boolean> {
-  const [algorithm, salt, storedHex] = encodedHash.split('$');
-  if (algorithm !== 'scrypt' || !salt || !storedHex || !/^[a-f0-9]{128}$/i.test(storedHex)) return false;
-  const expected = Buffer.from(storedHex, 'hex');
-  const actual = await scrypt(password, salt, expected.length) as Buffer;
-  return actual.length === expected.length && timingSafeEqual(actual, expected);
-}
 
 function normalizeEmail(email: unknown): string {
   if (typeof email !== 'string') throw new ValidationError('A valid email is required.');
@@ -38,13 +26,6 @@ function normalizeEmail(email: unknown): string {
     throw new ValidationError('A valid email is required.');
   }
   return normalized;
-}
-
-function validatePassword(password: unknown): string {
-  if (typeof password !== 'string' || password.length < PASSWORD_MIN_LENGTH || password.length > PASSWORD_MAX_LENGTH) {
-    throw new ValidationError(`Password must be between ${PASSWORD_MIN_LENGTH} and ${PASSWORD_MAX_LENGTH} characters.`);
-  }
-  return password;
 }
 
 function refreshExpiry(): Date {
@@ -68,7 +49,7 @@ export class LoginUseCase {
     const user = await this.authRepository.findUserByEmail(normalizedEmail);
     const passwordMatches = user?.passwordHash
       ? await verifyPassword(password, user.passwordHash)
-      : await verifyPassword(password, 'scrypt$00000000000000000000000000000000$0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000');
+      : await verifyPassword(password, EMPTY_PASSWORD_HASH);
     if (!user || !passwordMatches || user.status !== 'ACTIVE') {
       throw new AuthenticationError(GENERIC_LOGIN_ERROR);
     }
@@ -152,7 +133,7 @@ export class ResetPasswordUseCase {
     if (typeof token !== 'string' || token.length < 32 || token.length > 256) {
       throw new ValidationError('A valid password reset token is required.');
     }
-    const newPassword = validatePassword(password);
+    const newPassword = validatePasswordStrength(password);
     const passwordHash = await hashPassword(newPassword);
     const reset = await this.authRepository.resetPassword(hashToken(token), passwordHash);
     if (!reset) throw new ConflictError('Password reset token is invalid, expired, or already used.');

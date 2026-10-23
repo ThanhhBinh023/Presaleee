@@ -1,6 +1,6 @@
 import { Pool } from 'pg';
 import { IPortalRepository, PortalSessionContext } from '../../../domain/repositories/IPortalRepository.js';
-import { PortalComment, PortalMaterial, PortalSession } from '../../../domain/entities/Portal.js';
+import { PortalComment, PortalMaterial, PortalMaterialDetail, PortalSession, PortalSessionDetail } from '../../../domain/entities/Portal.js';
 
 function mapSession(row: any): PortalSessionContext {
   return {
@@ -166,5 +166,42 @@ export class PostgresPortalRepository implements IPortalRepository {
       [proposalId, materialId, organizationId]
     );
     return (result.rowCount ?? 0) > 0;
+  }
+
+  async listSessionsForProposal(proposalId: string, organizationId: string): Promise<PortalSessionDetail[]> {
+    const result = await this.pool.query(
+      `SELECT s.id, s.proposal_id, s.client_email, s.client_name, s.expires_at, s.revoked_at,
+              s.last_accessed_at, s.created_at,
+              (SELECT COUNT(*) FROM proposal_portal_comments c WHERE c.portal_session_id = s.id) AS comment_count
+       FROM portal_sessions s
+       WHERE s.proposal_id = $1 AND s.organization_id = $2
+       ORDER BY s.created_at DESC;`,
+      [proposalId, organizationId]
+    );
+    return result.rows.map(row => ({
+      id: row.id,
+      proposalId: row.proposal_id,
+      clientEmail: row.client_email,
+      clientName: row.client_name,
+      expiresAt: new Date(row.expires_at).toISOString(),
+      revokedAt: row.revoked_at ? new Date(row.revoked_at).toISOString() : null,
+      lastAccessedAt: row.last_accessed_at ? new Date(row.last_accessed_at).toISOString() : null,
+      createdAt: new Date(row.created_at).toISOString(),
+      commentCount: Number.parseInt(String(row.comment_count || '0'), 10)
+    }));
+  }
+
+  async listMaterialsForStaff(proposalId: string, organizationId: string): Promise<PortalMaterialDetail[]> {
+    const result = await this.pool.query(
+      `SELECT id, title, description, file_name, file_url, mime_type, is_shared, created_by, created_at
+       FROM proposal_portal_materials WHERE proposal_id = $1 AND organization_id = $2
+       ORDER BY created_at DESC;`,
+      [proposalId, organizationId]
+    );
+    return result.rows.map(row => ({
+      id: row.id, title: row.title, description: row.description, fileName: row.file_name,
+      fileUrl: row.file_url, mimeType: row.mime_type, isShared: row.is_shared,
+      createdBy: row.created_by, createdAt: new Date(row.created_at).toISOString()
+    }));
   }
 }

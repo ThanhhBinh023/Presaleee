@@ -26,3 +26,20 @@ export interface PortalMaterial {
   mimeType: string | null;
   createdAt: string;
 }
+
+export interface PortalSessionDetail {
+  id: string;
+  proposalId: string;
+  clientEmail: string;
+  clientName: string | null;
+  expiresAt: string;
+  revokedAt: string | null;
+  lastAccessedAt: string | null;
+  createdAt: string;
+  commentCount: number;
+}
+
+export interface PortalMaterialDetail extends PortalMaterial {
+  isShared: boolean;
+  createdBy: string | null;
+}

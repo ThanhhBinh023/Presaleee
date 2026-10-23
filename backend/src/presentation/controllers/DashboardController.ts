@@ -7,6 +7,11 @@ function organizationId(req: Request): string {
   return req.auth.organizationId;
 }
 
+function requestedLimit(value: unknown): number | undefined {
+  if (value === undefined || value === '') return undefined;
+  return Number(value);
+}
+
 export class DashboardController {
   constructor(
     private readonly overviewUseCase: GetDashboardOverviewUseCase,
@@ -23,7 +28,7 @@ export class DashboardController {
 
   leads = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const limit = req.query.limit === undefined ? 20 : Number(req.query.limit);
+      const limit = requestedLimit(req.query.limit) ?? 20;
       const data = await this.leadsUseCase.execute(organizationId(req), req.query.limit);
       res.status(200).json({ success: true, data, meta: { total: data.length, limit } });
     } catch (error) { next(error); }
@@ -31,7 +36,7 @@ export class DashboardController {
 
   activity = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const limit = req.query.limit === undefined ? 20 : Number(req.query.limit);
+      const limit = requestedLimit(req.query.limit) ?? 20;
       const data = await this.activityUseCase.execute(organizationId(req), req.query.limit);
       res.status(200).json({ success: true, data, meta: { total: data.length, limit } });
     } catch (error) { next(error); }

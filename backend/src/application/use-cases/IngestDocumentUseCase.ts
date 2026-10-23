@@ -4,6 +4,20 @@ import { IngestDocumentInputDTO, IngestDocumentOutputDTO } from '../dtos/IngestD
 import { TextSplitterService } from '../services/TextSplitterService.js';
 import { ValidationError } from '../../domain/errors/AppError.js';
 
+const MAX_CONTENT_LENGTH = 1_000_000;
+
+function requiredText(value: unknown, field: string, maxLength: number): string {
+  if (typeof value !== 'string' || !value.trim()) throw new ValidationError(`${field} is required.`);
+  if (value.length > maxLength) throw new ValidationError(`${field} must not exceed ${maxLength} characters.`);
+  return value;
+}
+
+function optionalLabel(value: unknown, field: string): string {
+  if (value === undefined || value === null) return 'GENERAL';
+  const label = requiredText(value, field, 100).trim();
+  return label;
+}
+
 export class IngestDocumentUseCase {
   constructor(
     private readonly knowledgeRepo: IKnowledgeRepository,
@@ -11,28 +25,25 @@ export class IngestDocumentUseCase {
   ) {}
 
   async execute(input: IngestDocumentInputDTO): Promise<IngestDocumentOutputDTO> {
-    if (!input.title || !input.title.trim()) {
-      throw new ValidationError('Document title is required.');
-    }
-    if (!input.content || !input.content.trim()) {
-      throw new ValidationError('Document content is required.');
-    }
+    const title = requiredText(input.title, 'Document title', 255).trim();
+    if (typeof input.content !== 'string' || !input.content.trim()) throw new ValidationError('Document content is required.');
+    if (input.content.length > MAX_CONTENT_LENGTH) throw new ValidationError('Text content must not exceed 1,000,000 characters.');
+    const content = input.content;
     if (!input.organizationId || !input.uploadedBy) throw new ValidationError('Authenticated organization and user are required.');
-    if (input.title.trim().length > 255) throw new ValidationError('Document title must not exceed 255 characters.');
-    if (input.category.length > 100 || input.domain.length > 100) throw new ValidationError('category and domain must not exceed 100 characters.');
-    if (input.content.length > 1_000_000) throw new ValidationError('Text content must not exceed 1,000,000 characters.');
+    const category = optionalLabel(input.category, 'category');
+    const domain = optionalLabel(input.domain, 'domain');
 
-    const textChunks = TextSplitterService.splitIntoChunks(input.content);
+    const textChunks = TextSplitterService.splitIntoChunks(content);
     if (!textChunks.length) throw new ValidationError('Document content did not produce any indexable text.');
     const docId = await this.knowledgeRepo.createDocument({
-      title: input.title.trim(),
-      category: input.category || 'GENERAL',
-      domain: input.domain || 'GENERAL',
-      content: input.content,
+      title,
+      category,
+      domain,
+      content,
       organizationId: input.organizationId,
       uploadedBy: input.uploadedBy,
       fileType: 'TEXT',
-      totalTokens: input.content.trim().split(/\s+/).length
+      totalTokens: content.trim().split(/\s+/).length
     });
 
     try {
@@ -41,7 +52,7 @@ export class IngestDocumentUseCase {
       const chunkEntities = textChunks.map((chunkContent, idx) => ({
         chunkIndex: idx,
         chunkContent,
-        metadata: { title: input.title.trim(), category: input.category || 'GENERAL', domain: input.domain || 'GENERAL' },
+        metadata: { title, category, domain },
         embedding: embeddings[idx]
       }));
       await this.knowledgeRepo.saveDocumentChunks(docId, chunkEntities);
@@ -56,4 +67,3 @@ export class IngestDocumentUseCase {
     };
   }
 }
-

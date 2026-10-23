@@ -1,0 +1,353 @@
+{
+  "runId": "20261021071729",
+  "suite": "G5 Rate Cards & Pricing + G6 Leads / RFP Intake",
+  "baseUrl": "http://127.0.0.1:5099",
+  "startedAt": "2026-10-21T07:17:29.469Z",
+  "finishedAt": "2026-10-21T07:17:53.703Z",
+  "durationMs": 24234,
+  "totals": {
+    "cases": 31,
+    "PASS": 29,
+    "SKIP": 2
+  },
+  "trackedTestData": {
+    "userIds": [
+      "447ab658-626c-48bd-9cea-c37994da2279",
+      "a82b0196-4117-4855-a1b8-989a4e448423",
+      "ed81c157-437e-496a-985b-7c59ea210f07",
+      "7f1a5970-3a98-45f1-bf36-a11e74fe3bc4"
+    ],
+    "organizationIds": [
+      "9cc78065-0a4b-4950-9437-5db2424cce2b",
+      "f7226da9-c58a-43fa-acbc-402fe7b1a38d"
+    ]
+  },
+  "observations": [
+    "DELETE /leads/:id cascades to proposals.lead_id with ON DELETE SET NULL: the quotation survives but loses its traceable source lead, and nothing warns the caller.",
+    "BANT scoring could not be asserted end to end because the AI service on http://localhost:8000 is offline; the endpoint fails as 502 with the JSON envelope instead.",
+    "G5 pricing is asserted against the deterministic domain service: the AI service plays no part, so the same sheet must always produce the same total.",
+    "Rate-card list rows expose createdAt/updatedAt and the resolved numeric rates. Lead list rows drop rawRfpContent and bantDetails; only GET /leads/:id returns the full RFP text.",
+    "G6-11 cannot pass on this database: migration 006_discovery_meetings was baselined into schema_migrations without ever running, so meetings.organization_id does not exist and every meeting write answers 500. Applying it (additive columns only) needs approval because the Supabase dev database is shared."
+  ],
+  "results": [
+    {
+      "id": "G5-01",
+      "title": "Bootstrap: two organizations, a member and the rate-card fixtures used by the pricing matrix",
+      "status": "PASS",
+      "durationMs": 4081,
+      "notes": [
+        "9 cards in org A, 1 in org B",
+        "owner ed81c157-437e-496a-985b-7c59ea210f07"
+      ]
+    },
+    {
+      "id": "G5-02",
+      "title": "GET /rate-cards paginates, returns NUMERIC as JSON numbers and stays tenant-scoped",
+      "status": "PASS",
+      "durationMs": 308,
+      "notes": [
+        "meta.total=8",
+        "rates are numbers, tenant scope holds"
+      ]
+    },
+    {
+      "id": "G5-03",
+      "title": "GET /rate-cards filters by role name, level, currency and active flag",
+      "status": "PASS",
+      "durationMs": 761,
+      "notes": [
+        "ILIKE roleName is escaped",
+        "includeInactive gate",
+        "enum and limit guards return 400"
+      ]
+    },
+    {
+      "id": "G5-04",
+      "title": "POST /rate-cards validates rates, level default, currency and the unique (role, level, currency) key",
+      "status": "PASS",
+      "durationMs": 840,
+      "notes": [
+        "400 rate policy",
+        "409 duplicate inside the tenant",
+        "same role allowed in another tenant"
+      ]
+    },
+    {
+      "id": "G5-05",
+      "title": "RBAC: a VIEWER reads and prices but cannot write rate cards; anonymous callers get 401",
+      "status": "PASS",
+      "durationMs": 298,
+      "notes": [
+        "403 for the three write verbs",
+        "401 anonymous including pricing"
+      ]
+    },
+    {
+      "id": "G5-06",
+      "title": "GET/PATCH/DELETE /rate-cards/:id lifecycle, partial update and malformed or foreign ids",
+      "status": "PASS",
+      "durationMs": 1165,
+      "notes": [
+        "monthly derived from daily on patch",
+        "malformed id answers 400 (regression)",
+        "204 then 404 on replay"
+      ]
+    },
+    {
+      "id": "G5-07",
+      "title": "Pricing input guards: empty list, oversized list, invalid effort and malformed references",
+      "status": "PASS",
+      "durationMs": 27,
+      "notes": [
+        "100-line cap",
+        "manMonths rejects 0, negatives, >1200 and non-numbers"
+      ]
+    },
+    {
+      "id": "G5-08",
+      "title": "Rate resolution: monthly wins, else daily x 21, else hourly x 8 x 21",
+      "status": "PASS",
+      "durationMs": 431,
+      "notes": [
+        "monthly 4800 wins",
+        "daily 200 -> 4200",
+        "hourly 33.33 -> 5599.44"
+      ]
+    },
+    {
+      "id": "G5-09",
+      "title": "monthlyRateOverride short-circuits the rate card and is reported as MANUAL_OVERRIDE",
+      "status": "PASS",
+      "durationMs": 288,
+      "notes": [
+        "override rounded",
+        "override ignores the card",
+        "0 accepted"
+      ]
+    },
+    {
+      "id": "G5-10",
+      "title": "Pinned rateCardId wins over name resolution, inactive cards and foreign tenants are refused",
+      "status": "PASS",
+      "durationMs": 513,
+      "notes": [
+        "pin beats name",
+        "inactive card unusable",
+        "foreign card invisible (400, not 403/500)"
+      ]
+    },
+    {
+      "id": "G5-11",
+      "title": "Level matching falls back within the role and UNKNOWN_ROLE answers with the available role list",
+      "status": "PASS",
+      "durationMs": 509,
+      "notes": [
+        "level matched and echoed",
+        "level fallback keeps the same role",
+        "UNKNOWN_ROLE lists own-tenant roles"
+      ]
+    },
+    {
+      "id": "G5-12",
+      "title": "Currency selects the candidate cards and the calculation echoes a single currency",
+      "status": "PASS",
+      "durationMs": 287,
+      "notes": [
+        "EUR card only prices in EUR",
+        "a USD run cannot silently borrow the EUR card"
+      ]
+    },
+    {
+      "id": "G5-13",
+      "title": "Totals are cent-rounded and equal the sum of the lines for a realistic staffing sheet",
+      "status": "PASS",
+      "durationMs": 286,
+      "notes": [
+        "total 25119.72",
+        "effort 8 man-months",
+        "re-run identical"
+      ]
+    },
+    {
+      "id": "G5-14",
+      "title": "Applying pricing writes the proposal once and leaves it untouched when apply is false",
+      "status": "PASS",
+      "durationMs": 2102,
+      "notes": [
+        "apply:false read-only",
+        "apply writes totalCost + currency",
+        "foreign or unknown proposalId answers 404"
+      ]
+    },
+    {
+      "id": "G5-15",
+      "title": "Pricing and rate-card writes are recorded in the audit trail",
+      "status": "PASS",
+      "durationMs": 1012,
+      "notes": [
+        "PRICING_CALCULATED",
+        "PRICING_APPLIED",
+        "RATE_CARD_CREATED",
+        "RATE_CARD_UPDATED",
+        "RATE_CARD_DELETED"
+      ]
+    },
+    {
+      "id": "G6-01",
+      "title": "POST /leads persists an intake draft with the documented defaults",
+      "status": "PASS",
+      "durationMs": 436,
+      "notes": [
+        "lead 63902921-a326-4c19-a4e3-daed8df4141f",
+        "refs accepted (client + owner)"
+      ]
+    },
+    {
+      "id": "G6-02",
+      "title": "Lead writes validate required text, size limits and enums",
+      "status": "PASS",
+      "durationMs": 301,
+      "notes": [
+        "50k RFP boundary accepted, 50001 refused",
+        "metadata and source enums guarded"
+      ]
+    },
+    {
+      "id": "G6-03",
+      "title": "Unknown or cross-tenant clientId/assignedTo references are refused on create and update",
+      "status": "PASS",
+      "durationMs": 609,
+      "notes": [
+        "create guards references",
+        "update re-validates them",
+        "null unlinks"
+      ]
+    },
+    {
+      "id": "G6-04",
+      "title": "A client cannot move a lead into another organization by sending organizationId",
+      "status": "PASS",
+      "durationMs": 1087,
+      "notes": [
+        "create/list/update keep the JWT organization",
+        "body organizationId and userId are ignored"
+      ]
+    },
+    {
+      "id": "G6-05",
+      "title": "GET /leads paginates and every filter is guarded",
+      "status": "PASS",
+      "durationMs": 734,
+      "notes": [
+        "meta {\"total\":4,\"page\":1,\"limit\":2,\"totalPages\":2}",
+        "7 invalid queries answered 400"
+      ]
+    },
+    {
+      "id": "G6-06",
+      "title": "GET /leads/:id resolves own rows and answers 400/404 for malformed or foreign ids",
+      "status": "PASS",
+      "durationMs": 517,
+      "notes": [
+        "cross-tenant read/write/delete all 404",
+        "4 malformed uuid verbs exercised"
+      ]
+    },
+    {
+      "id": "G6-07",
+      "title": "PATCH /leads/:id updates partially, rejects an empty body and keeps unread fields",
+      "status": "PASS",
+      "durationMs": 159,
+      "notes": [
+        "partial update",
+        "empty body 400",
+        "status via generic patch refused (400)"
+      ]
+    },
+    {
+      "id": "G6-08",
+      "title": "The lead status endpoint enforces the state machine",
+      "status": "PASS",
+      "durationMs": 1094,
+      "notes": [
+        "illegal jumps 409",
+        "same status is a no-op",
+        "APPROVED gated on a BANT score"
+      ]
+    },
+    {
+      "id": "G6-09",
+      "title": "A lead can be closed as WON or LOST only from a drafting or approved stage",
+      "status": "PASS",
+      "durationMs": 2608,
+      "notes": [
+        "WON and LOST reachable from PROPOSAL_DRAFTING",
+        "QUALIFIED cannot jump to WON",
+        "WON is terminal"
+      ]
+    },
+    {
+      "id": "G6-10",
+      "title": "A lead can only become a proposal once it is qualified",
+      "status": "PASS",
+      "durationMs": 1357,
+      "notes": [
+        "NEW lead refused with 409",
+        "QUALIFIED lead produced a proposal linked to the lead"
+      ]
+    },
+    {
+      "id": "G6-11",
+      "title": "Meetings attach to a lead through /leads/:leadId/meetings",
+      "status": "PASS",
+      "durationMs": 903,
+      "notes": [
+        "201 + Location + lead link",
+        "tenant-scoped reads",
+        "date, title and attendee guards"
+      ]
+    },
+    {
+      "id": "G6-12",
+      "title": "Deleting a lead is idempotent-guarded and unlinks proposals instead of failing",
+      "status": "PASS",
+      "durationMs": 824,
+      "notes": [
+        "204 then 404",
+        "proposal survives with leadId null (ON DELETE SET NULL)"
+      ]
+    },
+    {
+      "id": "G6-13",
+      "title": "Every lead route requires authentication and never serializes credentials",
+      "status": "PASS",
+      "durationMs": 100,
+      "notes": [
+        "401 on all 10 anonymous calls"
+      ]
+    },
+    {
+      "id": "G6-14",
+      "title": "RFP intake keeps its contract when the AI service is consulted",
+      "status": "SKIP",
+      "durationMs": 64,
+      "reason": "semantic intake assertions need the AI service on http://localhost:8000; it is not running"
+    },
+    {
+      "id": "G6-15",
+      "title": "Qualification endpoints guard authorization and tenancy before spending AI calls",
+      "status": "SKIP",
+      "durationMs": 380,
+      "reason": "AI service offline: the /qualifications 502 path was asserted, the score shape was not"
+    },
+    {
+      "id": "G6-16",
+      "title": "Lead writes are auditable like every other tenant mutation",
+      "status": "PASS",
+      "durationMs": 145,
+      "notes": [
+        "LEAD_DELETED, LEAD_DELETED, LEAD_CREATED, LEAD_STATUS_CHANGED, LEAD_STATUS_CHANGED, LEAD_STATUS_CHANGED, LEAD_STATUS_CHANGED, LEAD_STATUS_CHANGED, LEAD_CREATED, LEAD_STATUS_CHANGED, LEAD_STATUS_CHANGED, LEAD_STATUS_CHANGED, LEAD_STATUS_CHANGED, LEAD_STATUS_CHANGED, LEAD_CREATED, LEAD_STATUS_CHANGED, LEAD_STATUS_CHANGED, LEAD_STATUS_CHANGED, LEAD_UPDATED, LEAD_UPDATED, LEAD_CREATED, LEAD_UPDATED, LEAD_UPDATED, LEAD_CREATED, LEAD_CREATED, LEAD_CREATED"
+      ]
+    }
+  ]
+}

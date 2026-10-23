@@ -1,5 +1,6 @@
 import { IKnowledgeRepository } from '../../domain/repositories/IKnowledgeRepository.js';
 import { KnowledgeDocument } from '../../domain/entities/KnowledgeDocument.js';
+import { requiredUuid } from '../services/RequestValidation.js';
 import { NotFoundError, ValidationError } from '../../domain/errors/AppError.js';
 
 export interface ListKnowledgeDocumentsInput {
@@ -44,8 +45,9 @@ export class GetKnowledgeDocumentUseCase {
   constructor(private readonly repository: IKnowledgeRepository) {}
 
   async execute(id: string, organizationId: string): Promise<KnowledgeDocument> {
-    if (!id || !organizationId) throw new ValidationError('Document ID and organization are required.');
-    const document = await this.repository.findDocumentById(id, organizationId);
+    const documentId = requiredUuid(id, 'id');
+    if (!organizationId) throw new ValidationError('Authenticated organization is required.');
+    const document = await this.repository.findDocumentById(documentId, organizationId);
     if (!document) throw new NotFoundError('Knowledge document not found.');
     return document;
   }
@@ -55,8 +57,9 @@ export class DeleteKnowledgeDocumentUseCase {
   constructor(private readonly repository: IKnowledgeRepository) {}
 
   async execute(id: string, organizationId: string): Promise<void> {
-    if (!id || !organizationId) throw new ValidationError('Document ID and organization are required.');
-    const deleted = await this.repository.deleteDocument(id, organizationId);
+    const documentId = requiredUuid(id, 'id');
+    if (!organizationId) throw new ValidationError('Authenticated organization is required.');
+    const deleted = await this.repository.deleteDocument(documentId, organizationId);
     if (!deleted) throw new NotFoundError('Knowledge document not found.');
   }
 }

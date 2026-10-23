@@ -5,12 +5,12 @@ import { NotFoundError, ValidationError } from '../../domain/errors/AppError.js'
 export class GetProposalByIdUseCase {
   constructor(private readonly proposalRepo: IProposalRepository) {}
 
-  async execute(id: string): Promise<ProposalWithSheets> {
+  async execute(id: string, organizationId: string): Promise<ProposalWithSheets> {
     if (!id || id.trim() === '') {
       throw new ValidationError('Proposal ID is required.');
     }
 
-    const proposal = await this.proposalRepo.findById(id);
+    const proposal = await this.proposalRepo.findById(id, organizationId);
     if (!proposal) {
       throw new NotFoundError(`Proposal with ID '${id}' was not found.`);
     }

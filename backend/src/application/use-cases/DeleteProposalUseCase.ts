@@ -4,16 +4,16 @@ import { NotFoundError, ValidationError } from '../../domain/errors/AppError.js'
 export class DeleteProposalUseCase {
   constructor(private readonly proposalRepo: IProposalRepository) {}
 
-  async execute(id: string): Promise<boolean> {
+  async execute(id: string, organizationId: string): Promise<boolean> {
     if (!id || id.trim() === '') {
       throw new ValidationError('Proposal ID is required.');
     }
 
-    const existing = await this.proposalRepo.findById(id);
+    const existing = await this.proposalRepo.findById(id, organizationId);
     if (!existing) {
       throw new NotFoundError(`Proposal with ID '${id}' was not found.`);
     }
 
-    return await this.proposalRepo.delete(id);
+    return await this.proposalRepo.delete(id, organizationId);
   }
 }

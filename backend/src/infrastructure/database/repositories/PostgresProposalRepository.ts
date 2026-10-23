@@ -23,9 +23,9 @@ export class PostgresProposalRepository implements IProposalRepository {
           params.createdBy || null,
           params.version || 'v1.0',
           params.status || 'DRAFT',
-          params.totalCost || null,
+          params.totalCost ?? null,
           params.currency || 'USD',
-          params.estimatedTimelineWeeks || null
+          params.estimatedTimelineWeeks ?? null
         ]
       );
 
@@ -68,10 +68,10 @@ export class PostgresProposalRepository implements IProposalRepository {
     }
   }
 
-  async findById(id: string): Promise<ProposalWithSheets | null> {
+  async findById(id: string, organizationId: string): Promise<ProposalWithSheets | null> {
     const proposalRes = await this.pool.query(
-      `SELECT * FROM proposals WHERE id = $1;`,
-      [id]
+      `SELECT * FROM proposals WHERE id = $1 AND organization_id = $2;`,
+      [id, organizationId]
     );
 
     if (proposalRes.rows.length === 0) {
@@ -81,8 +81,10 @@ export class PostgresProposalRepository implements IProposalRepository {
     const proposal = this.mapProposal(proposalRes.rows[0]);
 
     const sheetsRes = await this.pool.query(
-      `SELECT * FROM proposal_sheets WHERE proposal_id = $1 ORDER BY sheet_order ASC;`,
-      [id]
+      `SELECT * FROM proposal_sheets WHERE proposal_id = $1 AND EXISTS (
+         SELECT 1 FROM proposals p WHERE p.id = proposal_sheets.proposal_id AND p.organization_id = $2
+       ) ORDER BY sheet_order ASC;`,
+      [id, organizationId]
     );
 
     const sheets = sheetsRes.rows.map(row => this.mapSheet(row));
@@ -93,15 +95,13 @@ export class PostgresProposalRepository implements IProposalRepository {
     };
   }
 
-  async findAll(filter: ProposalFilterParams = {}): Promise<{ proposals: Proposal[]; total: number }> {
+  async findAll(filter: ProposalFilterParams): Promise<{ proposals: Proposal[]; total: number }> {
     const conditions: string[] = [];
     const values: any[] = [];
     let idx = 1;
 
-    if (filter.organizationId) {
-      conditions.push(`organization_id = $${idx++}`);
-      values.push(filter.organizationId);
-    }
+    conditions.push(`organization_id = $${idx++}`);
+    values.push(filter.organizationId);
 
     if (filter.status) {
       conditions.push(`status = $${idx++}`);
@@ -140,7 +140,7 @@ export class PostgresProposalRepository implements IProposalRepository {
     return { proposals, total };
   }
 
-  async update(id: string, params: UpdateProposalParams): Promise<Proposal> {
+  async update(id: string, organizationId: string, params: UpdateProposalParams): Promise<Proposal | null> {
     const fields: string[] = [];
     const values: any[] = [];
     let idx = 1;
@@ -175,52 +175,103 @@ export class PostgresProposalRepository implements IProposalRepository {
     }
 
     fields.push(`updated_at = NOW()`);
-    values.push(id);
+    values.push(id, organizationId);
 
     const res = await this.pool.query(
       `UPDATE proposals
        SET ${fields.join(', ')}
-       WHERE id = $${idx}
+       WHERE id = $${idx} AND organization_id = $${idx + 1}
        RETURNING *;`,
       values
     );
 
-    return this.mapProposal(res.rows[0]);
+    return res.rows[0] ? this.mapProposal(res.rows[0]) : null;
+  }
+
+  async updateStatus(
+    id: string,
+    organizationId: string,
+    actorId: string,
+    status: Proposal['status'],
+    allowedCurrentStatuses: Proposal['status'][]
+  ): Promise<Proposal | null> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const result = await client.query(
+        `UPDATE proposals SET status = $3, updated_at = NOW()
+         WHERE id = $1 AND organization_id = $2 AND status = ANY($4::varchar[])
+         RETURNING *;`,
+        [id, organizationId, status, allowedCurrentStatuses]
+      );
+      if (!result.rows[0]) {
+        await client.query('ROLLBACK');
+        return null;
+      }
+      await client.query(
+        `INSERT INTO audit_logs (organization_id, user_id, action, entity_type, entity_id, payload)
+         VALUES ($1, $2, 'PROPOSAL_STATUS_CHANGED', 'proposal', $3, $4::jsonb);`,
+        [organizationId, actorId, id, JSON.stringify({ status })]
+      );
+      await client.query('COMMIT');
+      return this.mapProposal(result.rows[0]);
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async updateSheet(
     proposalId: string,
+    organizationId: string,
     sheetName: string,
+    sheetOrder: number,
     sheetData: Record<string, any>,
     aiGenerated: boolean = false
-  ): Promise<ProposalSheet> {
-    const res = await this.pool.query(
-      `INSERT INTO proposal_sheets (proposal_id, sheet_name, sheet_order, sheet_data, ai_generated, updated_at)
-       VALUES ($1::uuid, $2::varchar, 
-         COALESCE((SELECT sheet_order FROM proposal_sheets WHERE proposal_id = $1::uuid AND sheet_name = $2::varchar), 1),
-         $3::jsonb, $4::boolean, NOW())
-       ON CONFLICT (proposal_id, sheet_name)
-       DO UPDATE SET
-         sheet_data = EXCLUDED.sheet_data,
-         ai_generated = EXCLUDED.ai_generated,
-         updated_at = NOW()
-       RETURNING *;`,
-      [proposalId, sheetName, JSON.stringify(sheetData), aiGenerated]
-    );
-
-    // Also update parent proposal updated_at
-    await this.pool.query(
-      `UPDATE proposals SET updated_at = NOW() WHERE id = $1;`,
-      [proposalId]
-    );
-
-    return this.mapSheet(res.rows[0]);
+  ): Promise<ProposalSheet | null> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const owned = await client.query(
+        "SELECT 1 FROM proposals WHERE id = $1 AND organization_id = $2 AND status = 'DRAFT' FOR UPDATE;",
+        [proposalId, organizationId]
+      );
+      if (!owned.rows[0]) { await client.query('ROLLBACK'); return null; }
+      const res = await client.query(
+        `INSERT INTO proposal_sheets (proposal_id, sheet_name, sheet_order, sheet_data, ai_generated, updated_at)
+         VALUES ($1::uuid, $2::varchar, $3::integer, $4::jsonb, $5::boolean, NOW())
+         ON CONFLICT (proposal_id, sheet_name)
+         DO UPDATE SET sheet_data = EXCLUDED.sheet_data, ai_generated = EXCLUDED.ai_generated, updated_at = NOW()
+         RETURNING *;`,
+        [proposalId, sheetName, sheetOrder, JSON.stringify(sheetData), aiGenerated]
+      );
+      if (sheetName === 'Pricing & Quotation' && typeof sheetData.grandTotal === 'number') {
+        await client.query(
+          'UPDATE proposals SET total_cost = $3, updated_at = NOW() WHERE id = $1 AND organization_id = $2;',
+          [proposalId, organizationId, sheetData.grandTotal]
+        );
+      }
+      if (sheetName === 'Timeline & Milestones' && typeof sheetData.totalWeeks === 'number') {
+        await client.query(
+          'UPDATE proposals SET estimated_timeline_weeks = $3, updated_at = NOW() WHERE id = $1 AND organization_id = $2;',
+          [proposalId, organizationId, sheetData.totalWeeks]
+        );
+      }
+      await client.query('UPDATE proposals SET updated_at = NOW() WHERE id = $1 AND organization_id = $2;', [proposalId, organizationId]);
+      await client.query('COMMIT');
+      return this.mapSheet(res.rows[0]);
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally { client.release(); }
   }
 
-  async delete(id: string): Promise<boolean> {
+  async delete(id: string, organizationId: string): Promise<boolean> {
     const res = await this.pool.query(
-      `DELETE FROM proposals WHERE id = $1 RETURNING id;`,
-      [id]
+      `DELETE FROM proposals WHERE id = $1 AND organization_id = $2 RETURNING id;`,
+      [id, organizationId]
     );
     return res.rows.length > 0;
   }

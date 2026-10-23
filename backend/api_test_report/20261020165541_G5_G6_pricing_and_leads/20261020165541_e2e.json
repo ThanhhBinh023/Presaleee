@@ -1,0 +1,311 @@
+{
+  "runId": "20261020165541",
+  "suite": "G5 Rate Cards & Pricing + G6 Leads / RFP Intake",
+  "baseUrl": "http://127.0.0.1:5099",
+  "startedAt": "2026-10-20T16:55:41.133Z",
+  "finishedAt": "2026-10-20T16:56:03.682Z",
+  "durationMs": 22549,
+  "totals": {
+    "cases": 31,
+    "PASS": 18,
+    "FAIL": 12,
+    "SKIP": 1
+  },
+  "trackedTestData": {
+    "userIds": [
+      "6b4a51e5-f0eb-41ab-9503-569c56200545",
+      "0930900b-26cd-4c40-a4b2-7cd49bf9912e",
+      "026a9bb1-f0a3-4f91-9ef1-6f01c072d098",
+      "67090efb-dea1-42c4-a634-898ced5c43c4"
+    ],
+    "organizationIds": [
+      "6a03a6b6-6298-46a9-a4a7-de30109c42e4",
+      "05700583-b9ff-448e-bf45-917b7f38a6a2"
+    ]
+  },
+  "observations": [
+    "DELETE /leads/:id cascades to proposals.lead_id with ON DELETE SET NULL: the quotation survives but loses its traceable source lead, and nothing warns the caller.",
+    "G5 pricing is asserted against the deterministic domain service: the AI service plays no part, so the same sheet must always produce the same total.",
+    "Rate-card list rows expose createdAt/updatedAt and the resolved numeric rates; leads still return rawRfpContent in the list projection."
+  ],
+  "results": [
+    {
+      "id": "G5-01",
+      "title": "Bootstrap: two organizations, a member and the rate-card fixtures used by the pricing matrix",
+      "status": "PASS",
+      "durationMs": 5468,
+      "notes": [
+        "9 cards in org A, 1 in org B",
+        "owner 026a9bb1-f0a3-4f91-9ef1-6f01c072d098"
+      ]
+    },
+    {
+      "id": "G5-02",
+      "title": "GET /rate-cards paginates, returns NUMERIC as JSON numbers and stays tenant-scoped",
+      "status": "FAIL",
+      "durationMs": 151,
+      "reason": "Error: expected the 9 seeded cards, got total=8"
+    },
+    {
+      "id": "G5-03",
+      "title": "GET /rate-cards filters by role name, level, currency and active flag",
+      "status": "PASS",
+      "durationMs": 781,
+      "notes": [
+        "ILIKE roleName is escaped",
+        "includeInactive gate",
+        "enum and limit guards return 400"
+      ]
+    },
+    {
+      "id": "G5-04",
+      "title": "POST /rate-cards validates rates, level default, currency and the unique (role, level, currency) key",
+      "status": "PASS",
+      "durationMs": 909,
+      "notes": [
+        "400 rate policy",
+        "409 duplicate inside the tenant",
+        "same role allowed in another tenant"
+      ]
+    },
+    {
+      "id": "G5-05",
+      "title": "RBAC: a VIEWER reads and prices but cannot write rate cards; anonymous callers get 401",
+      "status": "PASS",
+      "durationMs": 330,
+      "notes": [
+        "403 for the three write verbs",
+        "401 anonymous including pricing"
+      ]
+    },
+    {
+      "id": "G5-06",
+      "title": "GET/PATCH/DELETE /rate-cards/:id lifecycle, partial update and malformed or foreign ids",
+      "status": "FAIL",
+      "durationMs": 336,
+      "reason": "Error: monthly must be derived when the daily rate changes"
+    },
+    {
+      "id": "G5-07",
+      "title": "Pricing input guards: empty list, oversized list, invalid effort and malformed references",
+      "status": "PASS",
+      "durationMs": 52,
+      "notes": [
+        "100-line cap",
+        "manMonths rejects 0, negatives, >1200 and non-numbers"
+      ]
+    },
+    {
+      "id": "G5-08",
+      "title": "Rate resolution: monthly wins, else daily x 21, else hourly x 8 x 21",
+      "status": "PASS",
+      "durationMs": 467,
+      "notes": [
+        "monthly 4800 wins",
+        "daily 200 -> 4200",
+        "hourly 33.33 -> 5599.44"
+      ]
+    },
+    {
+      "id": "G5-09",
+      "title": "monthlyRateOverride short-circuits the rate card and is reported as MANUAL_OVERRIDE",
+      "status": "PASS",
+      "durationMs": 307,
+      "notes": [
+        "override rounded",
+        "override ignores the card",
+        "0 accepted"
+      ]
+    },
+    {
+      "id": "G5-10",
+      "title": "Pinned rateCardId wins over name resolution, inactive cards and foreign tenants are refused",
+      "status": "PASS",
+      "durationMs": 532,
+      "notes": [
+        "pin beats name",
+        "inactive card unusable",
+        "foreign card invisible (400, not 403/500)"
+      ]
+    },
+    {
+      "id": "G5-11",
+      "title": "Level matching falls back within the role and UNKNOWN_ROLE answers with the available role list",
+      "status": "FAIL",
+      "durationMs": 458,
+      "reason": "Error: the resolved card level wins over the requested level"
+    },
+    {
+      "id": "G5-12",
+      "title": "Currency selects the candidate cards and the calculation echoes a single currency",
+      "status": "FAIL",
+      "durationMs": 305,
+      "reason": "Error: expected {success:false, error, statusCode:400} envelope, got 200 {\"success\":true,\"data\":{\"pricing\":{\"currency\":\"USD\",\"totalEffortManMonths\":1,\"totalCost\":2100,\"billableDaysPerMonth\":21,\"billableHoursPerDay\":8,\"lines\":[{\"roleName\":\"E2E Euro 20261020165541\",\"level\":\""
+    },
+    {
+      "id": "G5-13",
+      "title": "Totals are cent-rounded and equal the sum of the lines for a realistic staffing sheet",
+      "status": "FAIL",
+      "durationMs": 144,
+      "reason": "Error: more than 2 decimals leaked: 7200"
+    },
+    {
+      "id": "G5-14",
+      "title": "Applying pricing writes the proposal once and leaves it untouched when apply is false",
+      "status": "PASS",
+      "durationMs": 2454,
+      "notes": [
+        "apply:false read-only",
+        "apply writes totalCost + currency",
+        "foreign or unknown proposalId answers 404"
+      ]
+    },
+    {
+      "id": "G5-15",
+      "title": "Pricing and rate-card writes are recorded in the audit trail",
+      "status": "FAIL",
+      "durationMs": 779,
+      "reason": "Error: RATE_CARD_DELETED was never audited"
+    },
+    {
+      "id": "G6-01",
+      "title": "POST /leads persists an intake draft with the documented defaults",
+      "status": "PASS",
+      "durationMs": 348,
+      "notes": [
+        "lead 1e05ef04-1661-40eb-b430-ef6bed5b3088",
+        "refs accepted (client + owner)"
+      ]
+    },
+    {
+      "id": "G6-02",
+      "title": "Lead writes validate required text, size limits and enums",
+      "status": "PASS",
+      "durationMs": 318,
+      "notes": [
+        "50k RFP boundary accepted, 50001 refused",
+        "metadata and source enums guarded"
+      ]
+    },
+    {
+      "id": "G6-03",
+      "title": "Unknown or cross-tenant clientId/assignedTo references are refused on create and update",
+      "status": "PASS",
+      "durationMs": 457,
+      "notes": [
+        "create guards references",
+        "update re-validates them",
+        "null unlinks"
+      ]
+    },
+    {
+      "id": "G6-04",
+      "title": "A client cannot move a lead into another organization by sending organizationId",
+      "status": "FAIL",
+      "durationMs": 228,
+      "reason": "Error: BODY OVERRIDE: a lead created through organization A is visible in organization B"
+    },
+    {
+      "id": "G6-05",
+      "title": "GET /leads paginates and every filter is guarded",
+      "status": "PASS",
+      "durationMs": 810,
+      "notes": [
+        "meta {\"total\":3,\"page\":1,\"limit\":2,\"totalPages\":2}",
+        "7 invalid queries answered 400"
+      ]
+    },
+    {
+      "id": "G6-06",
+      "title": "GET /leads/:id resolves own rows and answers 400/404 for malformed or foreign ids",
+      "status": "FAIL",
+      "durationMs": 551,
+      "reason": "Error: expected {success:false, error, statusCode:400} envelope, got 500 {\"success\":false,\"error\":\"Internal server error occurred.\",\"statusCode\":500}"
+    },
+    {
+      "id": "G6-07",
+      "title": "PATCH /leads/:id updates partially, rejects an empty body and keeps unread fields",
+      "status": "PASS",
+      "durationMs": 575,
+      "notes": [
+        "partial update",
+        "empty body 400",
+        "status via generic patch: 400"
+      ]
+    },
+    {
+      "id": "G6-08",
+      "title": "The lead status endpoint enforces the state machine",
+      "status": "PASS",
+      "durationMs": 1090,
+      "notes": [
+        "illegal jumps 409",
+        "same status is a no-op",
+        "APPROVED gated on a BANT score"
+      ]
+    },
+    {
+      "id": "G6-09",
+      "title": "WON and LOST are not reachable through the state machine (open finding)",
+      "status": "PASS",
+      "durationMs": 172,
+      "notes": [
+        "documented as a gap: no transition table entry targets WON or LOST, so a lead can never be closed"
+      ]
+    },
+    {
+      "id": "G6-10",
+      "title": "A lead can only become a proposal once it is qualified",
+      "status": "FAIL",
+      "durationMs": 1636,
+      "reason": "Error: expected {success:false, error, statusCode:400} envelope, got 500 {\"success\":false,\"error\":\"Internal server error occurred.\",\"statusCode\":500}"
+    },
+    {
+      "id": "G6-11",
+      "title": "Meetings attach to a lead through /leads/:leadId/meetings",
+      "status": "FAIL",
+      "durationMs": 670,
+      "reason": "Error: meeting expected 201, got 500 {\"success\":false,\"error\":\"Internal server error occurred.\",\"statusCode\":500}"
+    },
+    {
+      "id": "G6-12",
+      "title": "Deleting a lead is idempotent-guarded and unlinks proposals instead of failing",
+      "status": "PASS",
+      "durationMs": 1074,
+      "notes": [
+        "204 then 404",
+        "proposal survives with leadId null (ON DELETE SET NULL)"
+      ]
+    },
+    {
+      "id": "G6-13",
+      "title": "Every lead route requires authentication and never serializes credentials",
+      "status": "PASS",
+      "durationMs": 105,
+      "notes": [
+        "401 on all 10 anonymous calls"
+      ]
+    },
+    {
+      "id": "G6-14",
+      "title": "RFP intake keeps its contract when the AI service is consulted",
+      "status": "SKIP",
+      "durationMs": 77,
+      "reason": "semantic intake assertions need the AI service on http://localhost:8000; it is not running"
+    },
+    {
+      "id": "G6-15",
+      "title": "Qualification endpoints guard authorization and tenancy before spending AI calls",
+      "status": "FAIL",
+      "durationMs": 238,
+      "reason": "Error: expected {success:false, error, statusCode:400} envelope, got 500 {\"success\":false,\"error\":\"Internal server error occurred.\",\"statusCode\":500}"
+    },
+    {
+      "id": "G6-16",
+      "title": "Lead writes are auditable like every other tenant mutation",
+      "status": "FAIL",
+      "durationMs": 724,
+      "reason": "Error: no LEAD_* audit entry exists: lead create/update/status/delete are invisible to the audit trail while clients, users and rate cards are recorded"
+    }
+  ]
+}

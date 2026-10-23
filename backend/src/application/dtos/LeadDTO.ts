@@ -6,6 +6,7 @@ export interface AuthenticatedLeadScope {
   organizationId: string;
   userId: string;
   claims: AuthRequestClaims;
+  ipAddress?: string;
 }
 
 export interface CreateLeadDTO extends AuthenticatedLeadScope {
@@ -23,6 +24,7 @@ export interface UpdateLeadDTO extends AuthenticatedLeadScope {
   assignedTo?: unknown;
   title?: unknown;
   source?: unknown;
+  status?: unknown;
   rawRfpContent?: unknown;
   extractedMetadata?: unknown;
 }

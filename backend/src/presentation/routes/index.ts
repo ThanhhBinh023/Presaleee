@@ -10,17 +10,21 @@ import { createAuthRouter } from './authRoutes.js';
 import { DashboardController } from '../controllers/DashboardController.js';
 import { createDashboardRouter } from './dashboardRoutes.js';
 import { requireAuth, requireOrganization } from '../middlewares/requireAuth.js';
+import { KnowledgeController } from '../controllers/KnowledgeController.js';
+import { createKnowledgeRouter } from './knowledgeRoutes.js';
 
 export function createApiRouter(
   ragController: RAGController,
   proposalController: ProposalController,
   leadIntakeController: LeadIntakeController,
   authController: AuthController,
-  dashboardController: DashboardController
+  dashboardController: DashboardController,
+  knowledgeController: KnowledgeController
 ): Router {
   const router = Router();
 
   router.use('/rag', createRAGRouter(ragController));
+  router.use('/knowledge', createKnowledgeRouter(knowledgeController));
   router.use('/proposals', createProposalRouter(proposalController));
   router.use('/leads', createLeadIntakeRouter(leadIntakeController));
   router.post('/leads/:leadId/proposals', requireAuth, requireOrganization, proposalController.createFromLead);

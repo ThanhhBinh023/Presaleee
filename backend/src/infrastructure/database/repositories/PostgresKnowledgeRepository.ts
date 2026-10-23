@@ -1,5 +1,5 @@
 import { Pool } from 'pg';
-import { IKnowledgeRepository, HybridSearchParams } from '../../../domain/repositories/IKnowledgeRepository.js';
+import { IKnowledgeRepository, HybridSearchParams, KnowledgeDocumentFilter } from '../../../domain/repositories/IKnowledgeRepository.js';
 import { KnowledgeDocument } from '../../../domain/entities/KnowledgeDocument.js';
 import { DocumentChunk } from '../../../domain/entities/DocumentChunk.js';
 
@@ -8,12 +8,72 @@ export class PostgresKnowledgeRepository implements IKnowledgeRepository {
 
   async createDocument(doc: Omit<KnowledgeDocument, 'id'>): Promise<string> {
     const res = await this.pool.query(
-      `INSERT INTO knowledge_docs (title, category, domain, organization_id)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO knowledge_docs (title, category, domain, organization_id, uploaded_by, file_type, total_tokens)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING id;`,
-      [doc.title, doc.category, doc.domain, doc.organizationId || null]
+      [doc.title, doc.category, doc.domain, doc.organizationId || null, doc.uploadedBy || null, doc.fileType || 'TEXT', doc.totalTokens || 0]
     );
     return res.rows[0].id;
+  }
+
+  async findDocuments(filter: KnowledgeDocumentFilter): Promise<{ documents: KnowledgeDocument[]; total: number }> {
+    const conditions = ['organization_id = $1'];
+    const values: unknown[] = [filter.organizationId];
+    if (filter.category) { values.push(filter.category); conditions.push(`category = $${values.length}`); }
+    if (filter.domain) { values.push(filter.domain); conditions.push(`domain = $${values.length}`); }
+    if (filter.search) { values.push(`%${filter.search}%`); conditions.push(`title ILIKE $${values.length}`); }
+    const where = conditions.join(' AND ');
+    const count = await this.pool.query(`SELECT COUNT(*)::int AS total FROM knowledge_docs WHERE ${where};`, values);
+    const total = Number(count.rows[0]?.total || 0);
+    const pageValues = [...values, filter.limit, filter.offset];
+    const result = await this.pool.query(
+      `SELECT kd.id, kd.organization_id, kd.uploaded_by, kd.title, kd.category, kd.domain,
+              kd.file_url, kd.file_type, kd.total_tokens, kd.created_at, kd.updated_at,
+              COUNT(dc.id)::int AS total_chunks
+       FROM knowledge_docs kd LEFT JOIN document_chunks dc ON dc.doc_id = kd.id
+       WHERE ${where}
+       GROUP BY kd.id ORDER BY kd.updated_at DESC, kd.created_at DESC
+       LIMIT $${pageValues.length - 1} OFFSET $${pageValues.length};`,
+      pageValues
+    );
+    return { documents: result.rows.map(row => this.mapDocument(row)), total };
+  }
+
+  async findDocumentById(id: string, organizationId: string): Promise<KnowledgeDocument | null> {
+    const result = await this.pool.query(
+      `SELECT kd.id, kd.organization_id, kd.uploaded_by, kd.title, kd.category, kd.domain,
+              kd.file_url, kd.file_type, kd.total_tokens, kd.created_at, kd.updated_at,
+              COUNT(dc.id)::int AS total_chunks
+       FROM knowledge_docs kd LEFT JOIN document_chunks dc ON dc.doc_id = kd.id
+       WHERE kd.id = $1 AND kd.organization_id = $2 GROUP BY kd.id;`,
+      [id, organizationId]
+    );
+    return result.rows[0] ? this.mapDocument(result.rows[0]) : null;
+  }
+
+  async deleteDocument(id: string, organizationId: string): Promise<boolean> {
+    const result = await this.pool.query(
+      'DELETE FROM knowledge_docs WHERE id = $1 AND organization_id = $2 RETURNING id;',
+      [id, organizationId]
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  private mapDocument(row: any): KnowledgeDocument {
+    return {
+      id: row.id,
+      organizationId: row.organization_id,
+      uploadedBy: row.uploaded_by,
+      title: row.title,
+      category: row.category,
+      domain: row.domain,
+      fileUrl: row.file_url,
+      fileType: row.file_type,
+      totalTokens: Number(row.total_tokens || 0),
+      totalChunks: Number(row.total_chunks || 0),
+      createdAt: row.created_at ? new Date(row.created_at) : undefined,
+      updatedAt: row.updated_at ? new Date(row.updated_at) : undefined
+    };
   }
 
   async saveDocumentChunks(

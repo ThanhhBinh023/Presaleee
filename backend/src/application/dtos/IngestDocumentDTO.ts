@@ -3,7 +3,8 @@ export interface IngestDocumentInputDTO {
   category: string;
   domain: string;
   content: string;
-  organizationId?: string;
+  organizationId: string;
+  uploadedBy: string;
 }
 
 export interface IngestDocumentOutputDTO {

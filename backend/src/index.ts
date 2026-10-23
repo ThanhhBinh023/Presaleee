@@ -21,7 +21,11 @@ app.get('/health', (_req: Request, res: Response) => {
 });
 
 // Presentation API routes
-app.use('/api/v1', createApiRouter(container.ragController, container.proposalController));
+app.use('/api/v1', createApiRouter(
+  container.ragController,
+  container.proposalController,
+  container.leadIntakeController
+));
 
 // Centralized error handling middleware
 app.use(errorHandler);

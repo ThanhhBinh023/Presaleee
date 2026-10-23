@@ -19,6 +19,8 @@ import { ExportProposalToExcelUseCase } from './application/use-cases/ExportProp
 
 import { RAGController } from './presentation/controllers/RAGController.js';
 import { ProposalController } from './presentation/controllers/ProposalController.js';
+import { LeadIntakeController } from './presentation/controllers/LeadIntakeController.js';
+import { AnalyzeLeadIntakeUseCase } from './application/use-cases/AnalyzeLeadIntakeUseCase.js';
 
 export interface ServiceContainer {
   knowledgeRepository: PostgresKnowledgeRepository;
@@ -44,6 +46,7 @@ export interface ServiceContainer {
   // Presentation Controllers
   ragController: RAGController;
   proposalController: ProposalController;
+  leadIntakeController: LeadIntakeController;
 }
 
 export function createContainer(): ServiceContainer {
@@ -58,6 +61,7 @@ export function createContainer(): ServiceContainer {
   const searchHybridRAGUseCase = new SearchHybridRAGUseCase(knowledgeRepository, embeddingGateway);
   const ingestDocumentUseCase = new IngestDocumentUseCase(knowledgeRepository, embeddingGateway);
   const generateProposalUseCase = new GenerateProposalUseCase(searchHybridRAGUseCase, llmGateway);
+  const analyzeLeadIntakeUseCase = new AnalyzeLeadIntakeUseCase(llmGateway);
 
   const createProposalUseCase = new CreateProposalUseCase(proposalRepository);
   const getProposalByIdUseCase = new GetProposalByIdUseCase(proposalRepository);
@@ -83,6 +87,7 @@ export function createContainer(): ServiceContainer {
     deleteProposalUseCase,
     exportProposalToExcelUseCase
   );
+  const leadIntakeController = new LeadIntakeController(analyzeLeadIntakeUseCase);
 
   return {
     knowledgeRepository,
@@ -104,7 +109,8 @@ export function createContainer(): ServiceContainer {
     exportProposalToExcelUseCase,
 
     ragController,
-    proposalController
+    proposalController,
+    leadIntakeController
   };
 }
 

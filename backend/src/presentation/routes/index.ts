@@ -12,6 +12,8 @@ import { createDashboardRouter } from './dashboardRoutes.js';
 import { requireAuth, requireOrganization } from '../middlewares/requireAuth.js';
 import { KnowledgeController } from '../controllers/KnowledgeController.js';
 import { createKnowledgeRouter } from './knowledgeRoutes.js';
+import { MeetingController } from '../controllers/MeetingController.js';
+import { createMeetingRouter } from './meetingRoutes.js';
 
 export function createApiRouter(
   ragController: RAGController,
@@ -19,7 +21,8 @@ export function createApiRouter(
   leadIntakeController: LeadIntakeController,
   authController: AuthController,
   dashboardController: DashboardController,
-  knowledgeController: KnowledgeController
+  knowledgeController: KnowledgeController,
+  meetingController: MeetingController
 ): Router {
   const router = Router();
 
@@ -27,7 +30,10 @@ export function createApiRouter(
   router.use('/knowledge', createKnowledgeRouter(knowledgeController));
   router.use('/proposals', createProposalRouter(proposalController));
   router.use('/leads', createLeadIntakeRouter(leadIntakeController));
+  router.get('/leads/:leadId/meetings', requireAuth, requireOrganization, meetingController.listForLead);
+  router.post('/leads/:leadId/meetings', requireAuth, requireOrganization, meetingController.createForLead);
   router.post('/leads/:leadId/proposals', requireAuth, requireOrganization, proposalController.createFromLead);
+  router.use('/meetings', createMeetingRouter(meetingController));
   router.use('/auth', createAuthRouter(authController));
   router.use('/dashboard', createDashboardRouter(dashboardController));
 

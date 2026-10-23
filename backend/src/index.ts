@@ -37,7 +37,8 @@ app.use('/api/v1', createApiRouter(
   container.leadIntakeController,
   container.authController,
   container.dashboardController,
-  container.knowledgeController
+  container.knowledgeController,
+  container.meetingController
 ));
 
 

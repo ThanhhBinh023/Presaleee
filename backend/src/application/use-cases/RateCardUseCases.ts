@@ -99,7 +99,7 @@ export class GetRateCardUseCase {
   constructor(private readonly rateCardRepository: IRateCardRepository) {}
 
   async execute(scope: AuthenticatedScope, id: string): Promise<RateCard> {
-    const rateCard = await this.rateCardRepository.findById(id, { organizationId: scope.organizationId });
+    const rateCard = await this.rateCardRepository.findById(requiredUuid(id, 'id'), { organizationId: scope.organizationId });
     if (!rateCard) throw new NotFoundError('Rate card not found.');
     return rateCard;
   }
@@ -112,7 +112,8 @@ export class UpdateRateCardUseCase {
   ) {}
 
   async execute(scope: AuthenticatedScope, id: string, dto: Record<string, unknown>): Promise<RateCard> {
-    const existing = await this.rateCardRepository.findById(id, { organizationId: scope.organizationId });
+    const targetId = requiredUuid(id, 'id');
+    const existing = await this.rateCardRepository.findById(targetId, { organizationId: scope.organizationId });
     if (!existing) throw new NotFoundError('Rate card not found.');
 
     const updates: UpdateRateCardInput = {};
@@ -134,7 +135,7 @@ export class UpdateRateCardUseCase {
       updates.monthlyRateUsd = rates.monthly;
     }
 
-    const rateCard = await this.rateCardRepository.update(id, { organizationId: scope.organizationId }, updates);
+    const rateCard = await this.rateCardRepository.update(targetId, { organizationId: scope.organizationId }, updates);
     if (!rateCard) throw new NotFoundError('Rate card not found.');
     await this.auditRepository.record({
       organizationId: scope.organizationId,
@@ -156,16 +157,17 @@ export class DeleteRateCardUseCase {
   ) {}
 
   async execute(scope: AuthenticatedScope, id: string): Promise<void> {
-    const existing = await this.rateCardRepository.findById(id, { organizationId: scope.organizationId });
+    const targetId = requiredUuid(id, 'id');
+    const existing = await this.rateCardRepository.findById(targetId, { organizationId: scope.organizationId });
     if (!existing) throw new NotFoundError('Rate card not found.');
-    const deleted = await this.rateCardRepository.delete(id, { organizationId: scope.organizationId });
+    const deleted = await this.rateCardRepository.delete(targetId, { organizationId: scope.organizationId });
     if (!deleted) throw new NotFoundError('Rate card not found.');
     await this.auditRepository.record({
       organizationId: scope.organizationId,
       actorId: scope.userId,
       action: 'RATE_CARD_DELETED',
       entityType: 'rate_card',
-      entityId: id,
+      entityId: targetId,
       payload: { roleName: existing.roleName, level: existing.level },
       ipAddress: scope.ipAddress
     });

@@ -11,6 +11,15 @@ function parseJson(value: unknown, fallback: any): any {
   try { return JSON.parse(value); } catch { return fallback; }
 }
 
+const EMPTY_GAP_ANALYSIS = { risks: [], missingInformation: [], followUpQuestions: [] };
+
+/** gap_analysis is stored as an empty object before analysis, but the Meeting contract types it as three arrays. */
+function gapAnalysisOf(value: unknown): Meeting['gapAnalysis'] {
+  const parsed = parseJson(value, {});
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { ...EMPTY_GAP_ANALYSIS };
+  return { ...EMPTY_GAP_ANALYSIS, ...parsed };
+}
+
 function mapMeeting(row: any): Meeting {
   return {
     id: row.id,
@@ -26,7 +35,7 @@ function mapMeeting(row: any): Meeting {
     decisions: parseJson(row.decisions, []),
     actionItems: parseJson(row.action_items, []),
     openQuestions: parseJson(row.open_questions, []),
-    gapAnalysis: parseJson(row.gap_analysis, { risks: [], missingInformation: [], followUpQuestions: [] }),
+    gapAnalysis: gapAnalysisOf(row.gap_analysis),
     analysis: parseJson(row.analysis, {}),
     analyzedAt: row.analyzed_at ? new Date(row.analyzed_at).toISOString() : null,
     createdAt: new Date(row.created_at).toISOString(),

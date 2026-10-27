@@ -1,9 +1,11 @@
-import { ILLMGateway } from '../../domain/repositories/ILLMGateway.js';
+import { ILLMGateway, LLMTaskMode } from '../../domain/repositories/ILLMGateway.js';
 import { ExternalServiceError, ValidationError } from '../../domain/errors/AppError.js';
 import {
   AnalyzeLeadIntakeInputDTO,
   AnalyzeLeadIntakeOutputDTO,
-  LeadIntakeExtractedMetadata
+  LEAD_SOURCES,
+  LeadIntakeExtractedMetadata,
+  LeadSource
 } from '../dtos/AnalyzeLeadIntakeDTO.js';
 
 const MAX_RFP_CHARACTERS = 50_000;
@@ -58,12 +60,19 @@ function nullableString(value: unknown, fieldName: string): string | null {
   return value.trim() || null;
 }
 
-function nullableNumber(value: unknown, fieldName: string): number | null {
+function nullableNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null;
-  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
-    throw new ExternalServiceError(`AI Intake returned an invalid '${fieldName}' field.`);
+  if (typeof value === 'number') {
+    return Number.isFinite(value) && value >= 0 ? value : null;
   }
-  return value;
+  if (typeof value === 'string') {
+    // LLMs frequently emit amounts as "$50,000" or "1,200"; a non-critical field must not fail the intake.
+    const digits = value.replace(/[^0-9.]/g, '');
+    if (!digits) return null;
+    const parsed = Number(digits);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+  }
+  return null;
 }
 
 function stringArray(value: unknown, fieldName: string): string[] {
@@ -94,8 +103,8 @@ function toExtractedMetadata(data: Record<string, unknown>): LeadIntakeExtracted
     projectName: nullableString(data.project_name, 'project_name'),
     clientIndustry: nullableString(data.client_industry, 'client_industry'),
     businessGoal: nullableString(data.business_goal, 'business_goal'),
-    timelineWeeks: nullableNumber(data.timeline_weeks, 'timeline_weeks'),
-    budgetUsd: nullableNumber(data.budget_usd, 'budget_usd'),
+    timelineWeeks: nullableNumber(data.timeline_weeks),
+    budgetUsd: nullableNumber(data.budget_usd),
     targetPlatforms: stringArray(data.target_platforms, 'target_platforms'),
     coreFunctionalModules: stringArray(data.core_functional_modules, 'core_functional_modules'),
     integrationsRequired: stringArray(data.integrations_required, 'integrations_required'),
@@ -117,10 +126,9 @@ export class AnalyzeLeadIntakeUseCase {
       throw new ValidationError(`RFP content must not exceed ${MAX_RFP_CHARACTERS} characters.`);
     }
 
-    const source = input.source || 'MANUAL';
-    const allowedSources = ['INBOUND_EMAIL', 'WEBSITE', 'REFERRAL', 'MEETING', 'MANUAL'];
-    if (!allowedSources.includes(source)) {
-      throw new ValidationError('Source must be one of INBOUND_EMAIL, WEBSITE, REFERRAL, MEETING, or MANUAL.');
+    const source: LeadSource = input.source || 'MANUAL';
+    if (!LEAD_SOURCES.includes(source)) {
+      throw new ValidationError(`Source must be one of ${LEAD_SOURCES.join(', ')}.`);
     }
 
     const prompt = [
@@ -137,7 +145,7 @@ export class AnalyzeLeadIntakeUseCase {
     ].join('\n\n');
 
     const output = await this.llmGateway.generate({
-      taskMode: 1,
+      taskMode: LLMTaskMode.LEAD_INTAKE,
       prompt,
       temperature: 0.1,
       maxTokens: 1200

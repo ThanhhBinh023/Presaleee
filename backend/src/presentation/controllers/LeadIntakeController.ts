@@ -1,12 +1,17 @@
 import { Request, Response, NextFunction } from 'express';
 import { AnalyzeLeadIntakeUseCase } from '../../application/use-cases/AnalyzeLeadIntakeUseCase.js';
+import { AnalyzeLeadIntakeInputDTO } from '../../application/dtos/AnalyzeLeadIntakeDTO.js';
 
 export class LeadIntakeController {
   constructor(private readonly analyzeUseCase: AnalyzeLeadIntakeUseCase) {}
 
-  analyze = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  analyze = async (
+    req: Request<unknown, unknown, AnalyzeLeadIntakeInputDTO>,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
-      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const body = req.body ?? ({} as AnalyzeLeadIntakeInputDTO);
       const { rawRfpContent, source } = body;
       const result = await this.analyzeUseCase.execute({ rawRfpContent, source });
 

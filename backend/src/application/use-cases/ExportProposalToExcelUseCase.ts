@@ -1,6 +1,7 @@
 import { IProposalRepository } from '../../domain/repositories/IProposalRepository.js';
 import { IExcelExporterService } from '../../domain/repositories/IExcelExporterService.js';
 import { ProposalWithSheets } from '../../domain/entities/Proposal.js';
+import { toFilenameSlug } from '../services/ExportFilename.js';
 import { NotFoundError, ValidationError } from '../../domain/errors/AppError.js';
 
 export interface ExportExcelResult {
@@ -26,7 +27,7 @@ export class ExportProposalToExcelUseCase {
     }
 
     const buffer = await this.excelExporter.generateProposalWorkbook(proposal);
-    const safeTitle = proposal.title.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_+/g, '_');
+    const safeTitle = toFilenameSlug(proposal.title);
     const filename = `${safeTitle}_Proposal_${proposal.version || 'v1.0'}.xlsx`;
 
     return {

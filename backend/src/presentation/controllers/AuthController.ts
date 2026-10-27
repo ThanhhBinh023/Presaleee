@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { AppError, UnauthorizedError, ValidationError } from '../../domain/errors/AppError.js';
+import { AppError, ForbiddenError, UnauthorizedError, ValidationError } from '../../domain/errors/AppError.js';
 import { GetCurrentUserUseCase, LoginUseCase, RefreshSessionUseCase, LogoutUseCase, ForgotPasswordUseCase, ResetPasswordUseCase } from '../../application/use-cases/AuthUseCases.js';
 import { RegisterUseCase } from '../../application/use-cases/UserUseCases.js';
 import { AuthSessionContext } from '../../domain/entities/AuthUser.js';
@@ -66,7 +66,7 @@ function validateCsrfOrigin(req: Request): void {
     throw new ValidationError('Invalid request origin.');
   }
   const expectedOrigin = new URL(env.frontendUrl).origin;
-  if (requestOrigin !== expectedOrigin) throw new AppError('Request origin is not allowed.', 403);
+  if (requestOrigin !== expectedOrigin) throw new ForbiddenError('Request origin is not allowed.');
   if (env.authCookieSameSite === 'none' && !env.authCookieSecure) {
     throw new AppError('Secure cookies are required for cross-site authentication.', 503);
   }

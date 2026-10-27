@@ -10,6 +10,12 @@ export interface MeetingAnalysis {
   gapAnalysis: { risks: string[]; missingInformation: string[]; followUpQuestions: string[] };
 }
 
+export interface MeetingAttendee {
+  name: string;
+  email?: string;
+  role?: string;
+}
+
 export interface Meeting {
   id: string;
   leadId: string;
@@ -17,7 +23,7 @@ export interface Meeting {
   createdBy: string | null;
   title: string;
   meetingDate: string;
-  attendees: Array<{ name: string; email?: string; role?: string }>;
+  attendees: MeetingAttendee[];
   status: MeetingStatus;
   rawTranscript: string | null;
   cleanNotes: string | null;

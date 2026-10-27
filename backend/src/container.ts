@@ -207,13 +207,13 @@ export function createContainer(): ServiceContainer {
   );
   const leadIntakeController = new LeadIntakeController(
     analyzeLeadIntakeUseCase,
-    new CreateLeadUseCase(leadRepository, referenceValidator),
+    new CreateLeadUseCase(leadRepository, referenceValidator, auditRepository),
     new ListLeadsUseCase(leadRepository),
     new GetLeadUseCase(leadRepository),
-    new UpdateLeadUseCase(leadRepository, referenceValidator),
-    new UpdateLeadStatusUseCase(leadRepository),
-    new DeleteLeadUseCase(leadRepository),
-    new QualifyLeadUseCase(leadRepository, llmGateway),
+    new UpdateLeadUseCase(leadRepository, referenceValidator, auditRepository),
+    new UpdateLeadStatusUseCase(leadRepository, auditRepository),
+    new DeleteLeadUseCase(leadRepository, auditRepository),
+    new QualifyLeadUseCase(leadRepository, llmGateway, auditRepository),
     new GetLatestQualificationUseCase(leadRepository)
   );
   const authController = new AuthController(

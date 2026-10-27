@@ -6,6 +6,7 @@ export interface AuthenticatedLeadScope {
   organizationId: string;
   userId: string;
   claims: AuthRequestClaims;
+  ipAddress?: string;
 }
 
 /**
@@ -25,6 +26,8 @@ export interface CreateLeadDTO extends AuthenticatedLeadScope, LeadWriteInput {}
 
 export interface UpdateLeadDTO extends AuthenticatedLeadScope, LeadWriteInput {
   id: string;
+  /** Present only so the use case can reject it; status changes go through PATCH /leads/:id/status. */
+  status?: LeadStatus;
 }
 
 export interface LeadListQuery {

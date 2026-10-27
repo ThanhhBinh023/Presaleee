@@ -1,6 +1,6 @@
 import { NotFoundError, ValidationError } from '../../domain/errors/AppError.js';
 import { Proposal } from '../../domain/entities/Proposal.js';
-import { PricingCalculationError, calculatePricing } from '../../domain/services/calculatePricing.js';
+import { PricingCalculationError, calculatePricing, deriveMonthlyRate } from '../../domain/services/calculatePricing.js';
 import { RATE_CARD_LEVELS, RateCard } from '../../domain/entities/RateCard.js';
 import { IRateCardRepository, RateCardInput as RateCardCreateInput, UpdateRateCardInput } from '../../domain/repositories/IRateCardRepository.js';
 import { IAuditRepository } from '../../domain/repositories/IAuditRepository.js';
@@ -131,8 +131,9 @@ export class UpdateRateCardUseCase {
       updates.dailyRateUsd ?? existing.dailyRateUsd,
       updates.monthlyRateUsd === undefined ? existing.monthlyRateUsd : updates.monthlyRateUsd
     );
-    if (updates.monthlyRateUsd === undefined && (updates.hourlyRateUsd !== undefined || updates.dailyRateUsd !== undefined)) {
-      updates.monthlyRateUsd = rates.monthly;
+    if (updates.monthlyRateUsd === undefined && existing.monthlyRateUsd === null
+      && (updates.hourlyRateUsd !== undefined || updates.dailyRateUsd !== undefined)) {
+      updates.monthlyRateUsd = deriveMonthlyRate({ hourlyRateUsd: rates.hourly, dailyRateUsd: rates.daily });
     }
 
     const rateCard = await this.rateCardRepository.update(targetId, { organizationId: scope.organizationId }, updates);
@@ -215,14 +216,16 @@ export class CalculateQuotationPricingUseCase {
       currency = proposal.currency || undefined;
     }
 
-    const rateCards = await this.rateCardRepository.listActive(scope.organizationId, currency);
+    const effectiveCurrency = (currency || 'USD').toUpperCase();
+    // Unfiltered so the domain service can distinguish "no card for this role" from "card exists in another currency".
+    const rateCards = await this.rateCardRepository.listActive(scope.organizationId);
     let pricing: PricingCalculationResult;
     try {
-      pricing = calculatePricing({ lines, currency: currency || 'USD', rateCards });
+      pricing = calculatePricing({ lines, currency: effectiveCurrency, rateCards });
     } catch (error) {
       if (error instanceof PricingCalculationError) {
         throw error.code === 'UNKNOWN_ROLE'
-          ? new ValidationError(`${error.message} Available roles: ${rateCards.map(card => card.roleName).join(', ') || 'none'}.`)
+          ? new ValidationError(`${error.message} Available roles: ${availableRoles(rateCards, effectiveCurrency)}.`)
           : new ValidationError(error.message);
       }
       throw error;
@@ -251,6 +254,11 @@ export class CalculateQuotationPricingUseCase {
 
     return { pricing, proposal };
   }
+}
+
+function availableRoles(rateCards: RateCard[], currency: string): string {
+  const names = rateCards.filter(card => (card.currency || 'USD').toUpperCase() === currency).map(card => card.roleName);
+  return [...new Set(names)].join(', ') || 'none';
 }
 
 function positiveAmount(value: unknown, field: string): number {

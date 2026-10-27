@@ -30,10 +30,20 @@ export class LeadIntakeController {
     private readonly getLatestQualificationUseCase: GetLatestQualificationUseCase
   ) {}
 
-  private scope(req: Pick<Request, 'auth'>) {
+  private scope(req: Pick<Request, 'auth' | 'socket'>) {
     if (!req.auth?.sub) throw new UnauthorizedError();
     if (!req.auth.organizationId) throw new ValidationError('Authenticated organization is required.');
-    return { organizationId: req.auth.organizationId, userId: req.auth.sub, claims: req.auth };
+    return {
+      organizationId: req.auth.organizationId,
+      userId: req.auth.sub,
+      claims: req.auth,
+      ipAddress: req.socket.remoteAddress
+    };
+  }
+
+  /** Request payload first, authenticated scope last: a body or query field can never move work into another tenant. */
+  private scoped(req: Request, payload: Record<string, unknown>) {
+    return { ...payload, ...this.scope(req) };
   }
 
   analyze = async (
@@ -62,14 +72,14 @@ export class LeadIntakeController {
 
   create = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const lead = await this.createUseCase.execute({ ...this.scope(req), ...(req.body || {}) });
+      const lead = await this.createUseCase.execute(this.scoped(req, req.body || {}));
       res.status(201).location(`/api/v1/leads/${lead.id}`).json({ success: true, data: lead });
     } catch (error) { next(error); }
   };
 
   list = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const result = await this.listUseCase.execute({ ...this.scope(req), ...req.query });
+      const result = await this.listUseCase.execute(this.scoped(req, req.query as Record<string, unknown>));
       res.status(200).json({ success: true, data: result.leads, meta: {
         total: result.total, page: result.page, limit: result.limit, totalPages: result.totalPages
       } });
@@ -85,28 +95,29 @@ export class LeadIntakeController {
 
   update = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const lead = await this.updateUseCase.execute({ ...this.scope(req), id: paramId(req.params.id), ...(req.body || {}) });
+      const lead = await this.updateUseCase.execute({ ...this.scoped(req, req.body || {}), id: paramId(req.params.id) });
       res.status(200).json({ success: true, data: lead });
     } catch (error) { next(error); }
   };
 
   updateStatus = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const lead = await this.updateStatusUseCase.execute(paramId(req.params.id), this.scope(req).organizationId, req.body?.status);
+      const body = req.body && typeof req.body === 'object' ? req.body as Record<string, unknown> : {};
+      const lead = await this.updateStatusUseCase.execute(paramId(req.params.id), this.scope(req), body.status);
       res.status(200).json({ success: true, data: lead });
     } catch (error) { next(error); }
   };
 
   delete = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      await this.deleteUseCase.execute(paramId(req.params.id), this.scope(req).organizationId);
+      await this.deleteUseCase.execute(paramId(req.params.id), this.scope(req));
       res.status(204).end();
     } catch (error) { next(error); }
   };
 
   qualify = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const qualification = await this.qualifyUseCase.execute(paramId(req.params.id), this.scope(req).organizationId);
+      const qualification = await this.qualifyUseCase.execute(paramId(req.params.id), this.scope(req));
       res.status(200).json({ success: true, data: qualification });
     } catch (error) { next(error); }
   };

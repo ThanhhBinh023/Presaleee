@@ -2,6 +2,7 @@ import { IMeetingRepository } from '../../domain/repositories/IMeetingRepository
 import { ILeadRepository } from '../../domain/repositories/ILeadRepository.js';
 import { ILLMGateway } from '../../domain/repositories/ILLMGateway.js';
 import { Meeting, MeetingAnalysis, MeetingStatus } from '../../domain/entities/Meeting.js';
+import { requiredUuid } from '../services/RequestValidation.js';
 import { ConflictError, NotFoundError, ValidationError } from '../../domain/errors/AppError.js';
 import { CreateMeetingDTO } from '../dtos/MeetingDTO.js';
 
@@ -10,7 +11,7 @@ export class CreateMeetingUseCase {
 
   async execute(input: CreateMeetingDTO): Promise<Meeting> {
     if (!input.organizationId || !input.userId) throw new ValidationError('Authenticated user and organization are required.');
-    const lead = await this.leadRepository.findById(input.leadId, { organizationId: input.organizationId });
+    const lead = await this.leadRepository.findById(requiredUuid(input.leadId, 'leadId'), { organizationId: input.organizationId });
     if (!lead) throw new NotFoundError('Lead not found.');
     const meeting = await this.meetingRepository.create({
       leadId: lead.id, organizationId: input.organizationId, createdBy: input.userId,
@@ -24,17 +25,17 @@ export class CreateMeetingUseCase {
 export class ListLeadMeetingsUseCase {
   constructor(private readonly meetingRepository: IMeetingRepository, private readonly leadRepository: ILeadRepository) {}
   async execute(leadId: string, organizationId: string): Promise<Meeting[]> {
-    const lead = await this.leadRepository.findById(leadId, { organizationId });
+    const targetLeadId = requiredUuid(leadId, 'leadId');
+    const lead = await this.leadRepository.findById(targetLeadId, { organizationId });
     if (!lead) throw new NotFoundError('Lead not found.');
-    return this.meetingRepository.listByLead(leadId, { organizationId });
+    return this.meetingRepository.listByLead(targetLeadId, { organizationId });
   }
 }
 
 export class GetMeetingUseCase {
   constructor(private readonly meetingRepository: IMeetingRepository) {}
   async execute(meetingId: string, organizationId: string): Promise<Meeting> {
-    if (!meetingId) throw new ValidationError('Meeting ID is required.');
-    const meeting = await this.meetingRepository.findById(meetingId, { organizationId });
+    const meeting = await this.meetingRepository.findById(requiredUuid(meetingId, 'meetingId'), { organizationId });
     if (!meeting) throw new NotFoundError('Meeting not found.');
     return meeting;
   }
@@ -46,9 +47,10 @@ export class SaveMeetingTranscriptUseCase {
     if (typeof transcript !== 'string' || !transcript.trim()) throw new ValidationError('transcript is required.');
     if (transcript.length > 500_000) throw new ValidationError('transcript must not exceed 500,000 characters.');
     if (append !== undefined && typeof append !== 'boolean') throw new ValidationError('append must be a boolean.');
-    const meeting = await this.meetingRepository.saveTranscript(meetingId, { organizationId }, transcript.trim(), append === true);
+    const targetId = requiredUuid(meetingId, 'meetingId');
+    const meeting = await this.meetingRepository.saveTranscript(targetId, { organizationId }, transcript.trim(), append === true);
     if (!meeting) {
-      const existing = await this.meetingRepository.findById(meetingId, { organizationId });
+      const existing = await this.meetingRepository.findById(targetId, { organizationId });
       if (!existing) throw new NotFoundError('Meeting not found.');
       throw new ConflictError('Transcript can only be changed while the meeting is OPEN.');
     }
@@ -103,7 +105,8 @@ export class AnalyzeMeetingUseCase {
   ) {}
 
   async execute(meetingId: string, organizationId: string): Promise<Meeting> {
-    const meeting = await this.meetingRepository.findById(meetingId, { organizationId });
+    const targetId = requiredUuid(meetingId, 'meetingId');
+    const meeting = await this.meetingRepository.findById(targetId, { organizationId });
     if (!meeting) throw new NotFoundError('Meeting not found.');
     if (!meeting.rawTranscript?.trim()) throw new ConflictError('Add a transcript before analyzing the meeting.');
     const lead = await this.leadRepository.findById(meeting.leadId, { organizationId });
@@ -136,7 +139,8 @@ export class UpdateMeetingStatusUseCase {
     const statuses: MeetingStatus[] = ['OPEN', 'LOCKED', 'INSPECTED'];
     if (typeof value !== 'string' || !statuses.includes(value as MeetingStatus)) throw new ValidationError('status must be OPEN, LOCKED, or INSPECTED.');
     const status = value as MeetingStatus;
-    const current = await this.meetingRepository.findById(meetingId, { organizationId });
+    const targetId = requiredUuid(meetingId, 'meetingId');
+    const current = await this.meetingRepository.findById(targetId, { organizationId });
     if (!current) throw new NotFoundError('Meeting not found.');
     const transitions: Record<MeetingStatus, MeetingStatus[]> = {
       OPEN: ['LOCKED'], LOCKED: ['OPEN'], INSPECTED: ['OPEN']
@@ -145,7 +149,7 @@ export class UpdateMeetingStatusUseCase {
     if (!transitions[current.status].includes(status)) {
       throw new ConflictError('INSPECTED status is set by successful AI analysis; reopen a meeting by changing it to OPEN.');
     }
-    const updated = await this.meetingRepository.changeStatus(meetingId, { organizationId }, status, [current.status]);
+    const updated = await this.meetingRepository.changeStatus(targetId, { organizationId }, status, [current.status]);
     if (!updated) throw new ConflictError('Meeting status changed concurrently. Reload and retry.');
     return updated;
   }

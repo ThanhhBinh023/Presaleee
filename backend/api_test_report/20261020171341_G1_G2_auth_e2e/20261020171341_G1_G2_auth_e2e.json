@@ -1,0 +1,293 @@
+{
+  "runId": "20261020171341",
+  "suite": "G1 system health + G2 auth & session",
+  "baseUrl": "http://127.0.0.1:5099",
+  "startedAt": "2026-10-20T17:13:41.665Z",
+  "finishedAt": "2026-10-20T17:13:50.054Z",
+  "durationMs": 8389,
+  "totals": {
+    "cases": 29,
+    "PASS": 29
+  },
+  "testAccount": {
+    "email": "e2e-g2-20261020171341@presaleee-e2e.test",
+    "organizationName": "E2E G2 Workspace 20261020171341",
+    "userIds": [
+      "f94675f8-af59-4977-b0ad-478d4e37c218",
+      "d6b2240f-2a1e-407d-90c6-d142c5a14f90"
+    ],
+    "organizationIds": [
+      "6d2bf829-0a8f-4b44-8ae3-19d524ab7ed0",
+      "cf373766-315d-4774-b644-71529e8285a7"
+    ]
+  },
+  "observations": [
+    "Logout does not invalidate the 15-minute access token; /auth/me still succeeds with it (stateless JWT trade-off).",
+    "Unknown routes under /api/v1 return the Express default (text/html) instead of the {success:false, error, statusCode} envelope."
+  ],
+  "results": [
+    {
+      "id": "G1-01",
+      "title": "GET /health returns service metadata without secrets",
+      "status": "PASS",
+      "durationMs": 100,
+      "notes": [
+        "service=presaleee-backend"
+      ]
+    },
+    {
+      "id": "G2-01",
+      "title": "POST /auth/register creates organization + ADMIN and sets only the access cookie",
+      "status": "PASS",
+      "durationMs": 758,
+      "notes": [
+        "user id f94675f8-af59-4977-b0ad-478d4e37c218",
+        "org id 6d2bf829-0a8f-4b44-8ae3-19d524ab7ed0",
+        "attributes: max-age=900 | path=/api/v1/auth | expires=tue, 20 oct 2026 17:28:42 gmt | httponly | samesite=lax"
+      ]
+    },
+    {
+      "id": "G2-02",
+      "title": "GET /auth/me accepts the access cookie and returns the session user",
+      "status": "PASS",
+      "durationMs": 105,
+      "notes": [
+        "no passwordHash in projection"
+      ]
+    },
+    {
+      "id": "G2-03",
+      "title": "GET /auth/me also accepts Authorization: Bearer <access token>",
+      "status": "PASS",
+      "durationMs": 116,
+      "notes": [
+        "cookie and bearer transports are equivalent"
+      ]
+    },
+    {
+      "id": "G2-04",
+      "title": "POST /auth/login issues both HttpOnly cookies with the auth path scope",
+      "status": "PASS",
+      "durationMs": 279,
+      "notes": [
+        "both cookies present and flagged"
+      ]
+    },
+    {
+      "id": "G2-05",
+      "title": "Login with an incorrect password returns the generic 401 message",
+      "status": "PASS",
+      "durationMs": 170,
+      "notes": [
+        "Invalid email or password."
+      ]
+    },
+    {
+      "id": "G2-06",
+      "title": "Login with an unknown email is indistinguishable from a wrong password",
+      "status": "PASS",
+      "durationMs": 192,
+      "notes": [
+        "same message as G2-05 -> no account enumeration"
+      ]
+    },
+    {
+      "id": "G2-07",
+      "title": "Login with an empty password fails as 401 rather than leaking validation detail",
+      "status": "PASS",
+      "durationMs": 3,
+      "notes": [
+        "timing-equalising placeholder hash path exercised"
+      ]
+    },
+    {
+      "id": "G2-08",
+      "title": "Malformed credentials are rejected at the boundary with 400",
+      "status": "PASS",
+      "durationMs": 14,
+      "notes": [
+        "all four malformed inputs rejected without 500"
+      ]
+    },
+    {
+      "id": "G2-09",
+      "title": "Registering a duplicate email returns 409 and never exposes the hash",
+      "status": "PASS",
+      "durationMs": 108,
+      "notes": [
+        "unique email constraint surfaced as 409"
+      ]
+    },
+    {
+      "id": "G2-10",
+      "title": "Passwords shorter than the policy minimum are rejected with 400",
+      "status": "PASS",
+      "durationMs": 6,
+      "notes": [
+        "Password must be between 12 and 128 characters."
+      ]
+    },
+    {
+      "id": "G2-11",
+      "title": "Register rejects a missing organization name with 400",
+      "status": "PASS",
+      "durationMs": 2,
+      "notes": [
+        "organizationName is required."
+      ]
+    },
+    {
+      "id": "G2-12",
+      "title": "Cross-origin state change on /auth/register is refused with 403 (CSRF origin check)",
+      "status": "PASS",
+      "durationMs": 2,
+      "notes": [
+        "foreign Origin blocked before any DB write"
+      ]
+    },
+    {
+      "id": "G2-13",
+      "title": "Same registered-origin request is accepted (origin check is not over-blocking)",
+      "status": "PASS",
+      "durationMs": 720,
+      "notes": [
+        "allowed origin http://localhost:5173"
+      ]
+    },
+    {
+      "id": "G2-14",
+      "title": "GET /auth/me without credentials returns 401",
+      "status": "PASS",
+      "durationMs": 2,
+      "notes": [
+        "Authentication required."
+      ]
+    },
+    {
+      "id": "G2-15",
+      "title": "A tampered JWT is rejected by signature verification",
+      "status": "PASS",
+      "durationMs": 42,
+      "notes": [
+        "claims were sub,email,organizationId,role,iat,exp"
+      ]
+    },
+    {
+      "id": "G2-16",
+      "title": "POST /auth/refresh rotates the refresh token",
+      "status": "PASS",
+      "durationMs": 545,
+      "notes": [
+        "single-use refresh chain enforced"
+      ]
+    },
+    {
+      "id": "G2-17",
+      "title": "Replaying a rotated refresh token is refused with 401",
+      "status": "PASS",
+      "durationMs": 1120,
+      "notes": [
+        "revoke-and-reject implemented; no reuse window"
+      ]
+    },
+    {
+      "id": "G2-18",
+      "title": "Refresh with no cookie or a malformed token returns 401",
+      "status": "PASS",
+      "durationMs": 4,
+      "notes": [
+        "length guard rejects before hashing"
+      ]
+    },
+    {
+      "id": "G2-19",
+      "title": "POST /auth/refresh enforces the CSRF origin check",
+      "status": "PASS",
+      "durationMs": 2,
+      "notes": [
+        "refresh cannot be driven from a foreign origin"
+      ]
+    },
+    {
+      "id": "G2-20",
+      "title": "Forgot password never confirms whether an account exists",
+      "status": "PASS",
+      "durationMs": 641,
+      "notes": [
+        "same message for both branches; token only in non-production"
+      ]
+    },
+    {
+      "id": "G2-21",
+      "title": "Reset with a weak password is rejected and does not consume the token",
+      "status": "PASS",
+      "durationMs": 695,
+      "notes": [
+        "password policy validated before the token is spent"
+      ]
+    },
+    {
+      "id": "G2-22",
+      "title": "A reset token cannot be replayed",
+      "status": "PASS",
+      "durationMs": 353,
+      "notes": [
+        "used_at is enforced server-side"
+      ]
+    },
+    {
+      "id": "G2-23",
+      "title": "Reset-password invalidates the old password and every live session",
+      "status": "PASS",
+      "durationMs": 726,
+      "notes": [
+        "all auth_refresh_tokens rows revoked inside the reset transaction"
+      ]
+    },
+    {
+      "id": "G2-24",
+      "title": "Reset with a malformed or unknown token is refused",
+      "status": "PASS",
+      "durationMs": 373,
+      "notes": [
+        "no 500 on either branch"
+      ]
+    },
+    {
+      "id": "G2-25",
+      "title": "Logout revokes the refresh token and is idempotent",
+      "status": "PASS",
+      "durationMs": 638,
+      "notes": [
+        "revoked server-side; repeat logout is a no-op by design"
+      ]
+    },
+    {
+      "id": "G2-26",
+      "title": "Access token still works after logout until it expires",
+      "status": "PASS",
+      "durationMs": 472,
+      "notes": [
+        "POST /auth/logout did not revoke the active access token (status 200)"
+      ]
+    },
+    {
+      "id": "G2-27",
+      "title": "Error envelope is consistent across auth failures",
+      "status": "PASS",
+      "durationMs": 187,
+      "notes": [
+        "{success:false, error, statusCode} on every branch"
+      ]
+    },
+    {
+      "id": "G2-28",
+      "title": "Unmatched API route does not return an HTML 404 inside a JSON client flow",
+      "status": "PASS",
+      "durationMs": 7,
+      "notes": [
+        "status 404, content-type text/html; charset=utf-8"
+      ]
+    }
+  ]
+}

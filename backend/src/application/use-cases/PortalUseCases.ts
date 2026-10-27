@@ -4,21 +4,22 @@ import { IProposalRepository } from '../../domain/repositories/IProposalReposito
 import { ILLMGateway } from '../../domain/repositories/ILLMGateway.js';
 import { ExportProposalToPdfUseCase } from './ExportProposalToPdfUseCase.js';
 import { PortalSession } from '../../domain/entities/Portal.js';
-import { ConflictError, NotFoundError, ValidationError } from '../../domain/errors/AppError.js';
-import { AppError } from '../../domain/errors/AppError.js';
+import { UserRole } from '../../domain/entities/AuthUser.js';
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../domain/errors/AppError.js';
 
-const PORTAL_MANAGER_ROLES = ['ADMIN', 'PRESALE_LEAD', 'SALES_REP', 'PRESALE_CONSULTANT', 'SOLUTION_ARCHITECT'];
+const PORTAL_MANAGER_ROLES: readonly UserRole[] = ['ADMIN', 'PRESALE_LEAD', 'SALES_REP', 'PRESALE_CONSULTANT', 'SOLUTION_ARCHITECT'];
+const APPROVED_PROPOSAL_SHARE_ROLES: readonly UserRole[] = ['ADMIN', 'PRESALE_LEAD'];
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export class CreatePortalSessionUseCase {
   constructor(private readonly portalRepository: IPortalRepository, private readonly proposalRepository: IProposalRepository) {}
 
   async execute(input: {
-    proposalId: string; organizationId: string; userId: string; role: string;
+    proposalId: string; organizationId: string; userId: string; role: UserRole;
     clientEmail: unknown; clientName?: unknown; expiresInHours?: unknown;
   }): Promise<PortalSession & { accessToken: string }> {
-    if (!['ADMIN', 'PRESALE_LEAD', 'SALES_REP', 'PRESALE_CONSULTANT', 'SOLUTION_ARCHITECT'].includes(input.role)) {
-      throw new AppError('Your role cannot create client portal sessions.', 403);
+    if (!PORTAL_MANAGER_ROLES.includes(input.role)) {
+      throw new ForbiddenError('Your role cannot create client portal sessions.');
     }
     if (!UUID_PATTERN.test(input.proposalId)) {
       throw new ValidationError('proposalId must be a valid UUID.');
@@ -41,8 +42,8 @@ export class CreatePortalSessionUseCase {
     if (!['APPROVED', 'SENT_TO_CLIENT', 'ACCEPTED'].includes(proposal.status)) {
       throw new ConflictError('Only an approved proposal can be shared with a client.');
     }
-    if (proposal.status === 'APPROVED' && !['ADMIN', 'PRESALE_LEAD'].includes(input.role)) {
-      throw new AppError('Only an administrator or presales lead can send an approved proposal to a client.', 403);
+    if (proposal.status === 'APPROVED' && !APPROVED_PROPOSAL_SHARE_ROLES.includes(input.role)) {
+      throw new ForbiddenError('Only an administrator or presales lead can send an approved proposal to a client.');
     }
     const accessToken = createOpaqueToken();
     const session = await this.portalRepository.createSession({
@@ -152,10 +153,10 @@ export class ExportPortalProposalPdfUseCase {
 
 export class RevokePortalSessionUseCase {
   constructor(private readonly repository: IPortalRepository) {}
-  async execute(sessionId: string, organizationId: string, actorId: string, role: string): Promise<void> {
+  async execute(sessionId: string, organizationId: string, actorId: string, role: UserRole): Promise<void> {
     if (!sessionId || !organizationId || !actorId) throw new ValidationError('Session, organization, and authenticated user are required.');
     if (!UUID_PATTERN.test(sessionId)) throw new ValidationError('sessionId must be a valid UUID.');
-    if (!PORTAL_MANAGER_ROLES.includes(role)) throw new AppError('Your role cannot revoke client portal sessions.', 403);
+    if (!PORTAL_MANAGER_ROLES.includes(role)) throw new ForbiddenError('Your role cannot revoke client portal sessions.');
     if (!await this.repository.revokeSession(sessionId, organizationId, actorId)) throw new NotFoundError('Active portal session not found.');
   }
 }
@@ -163,10 +164,10 @@ export class RevokePortalSessionUseCase {
 export class CreatePortalMaterialUseCase {
   constructor(private readonly repository: IPortalRepository) {}
   async execute(input: {
-    proposalId: string; organizationId: string; actorId: string; role: string;
+    proposalId: string; organizationId: string; actorId: string; role: UserRole;
     title: unknown; description?: unknown; fileName: unknown; fileUrl: unknown; mimeType?: unknown; isShared?: unknown;
   }) {
-    if (!PORTAL_MANAGER_ROLES.includes(input.role)) throw new AppError('Your role cannot manage client portal materials.', 403);
+    if (!PORTAL_MANAGER_ROLES.includes(input.role)) throw new ForbiddenError('Your role cannot manage client portal materials.');
     if (!input.proposalId || !input.organizationId || !input.actorId) throw new ValidationError('Proposal, organization, and authenticated user are required.');
     if (!UUID_PATTERN.test(input.proposalId)) throw new ValidationError('proposalId must be a valid UUID.');
     if (typeof input.title !== 'string' || !input.title.trim() || input.title.length > 255) throw new ValidationError('title is required and must not exceed 255 characters.');
@@ -190,8 +191,8 @@ export class CreatePortalMaterialUseCase {
 
 export class DeletePortalMaterialUseCase {
   constructor(private readonly repository: IPortalRepository) {}
-  async execute(input: { proposalId: string; materialId: string; organizationId: string; role: string }): Promise<void> {
-    if (!PORTAL_MANAGER_ROLES.includes(input.role)) throw new AppError('Your role cannot manage client portal materials.', 403);
+  async execute(input: { proposalId: string; materialId: string; organizationId: string; role: UserRole }): Promise<void> {
+    if (!PORTAL_MANAGER_ROLES.includes(input.role)) throw new ForbiddenError('Your role cannot manage client portal materials.');
     if (!UUID_PATTERN.test(input.proposalId) || !UUID_PATTERN.test(input.materialId)) throw new ValidationError('proposalId and materialId must be valid UUIDs.');
     if (!await this.repository.deleteMaterial(input.proposalId, input.materialId, input.organizationId)) throw new NotFoundError('Portal material not found.');
   }

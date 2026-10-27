@@ -1,19 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
-import { UnauthorizedError } from '../../domain/errors/AppError.js';
-import { AccessTokenClaims, verifyAccessToken } from '../../application/services/AuthTokenService.js';
-import { AppError } from '../../domain/errors/AppError.js';
-
-declare global {
-  namespace Express {
-    interface Request {
-      auth?: AccessTokenClaims;
-    }
-  }
-}
+import { ForbiddenError, UnauthorizedError } from '../../domain/errors/AppError.js';
+import { verifyAccessToken } from '../../application/services/AuthTokenService.js';
 
 export function requireOrganization(req: Request, _res: Response, next: NextFunction): void {
   if (!req.auth?.organizationId) {
-    next(new AppError('An organization is required for this operation.', 403));
+    next(new ForbiddenError('An organization is required for this operation.'));
     return;
   }
   next();

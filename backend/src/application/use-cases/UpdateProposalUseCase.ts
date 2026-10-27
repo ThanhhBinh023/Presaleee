@@ -1,6 +1,6 @@
 import { IProposalRepository, UpdateProposalParams } from '../../domain/repositories/IProposalRepository.js';
 import { Proposal } from '../../domain/entities/Proposal.js';
-import { AppError, ConflictError, NotFoundError, ValidationError } from '../../domain/errors/AppError.js';
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../domain/errors/AppError.js';
 import { requiredUuid } from '../services/RequestValidation.js';
 
 export interface UpdateProposalDTO {
@@ -64,7 +64,7 @@ export class UpdateProposalUseCase {
     if (dto.status !== undefined) {
       const privilegedTransitions: Proposal['status'][] = ['APPROVED', 'REJECTED', 'SENT_TO_CLIENT', 'ACCEPTED'];
       if (privilegedTransitions.includes(dto.status) && !['ADMIN', 'PRESALE_LEAD'].includes(dto.actorRole)) {
-        throw new AppError('Your role cannot approve, reject, or send this proposal.', 403);
+        throw new ForbiddenError('Your role cannot approve, reject, or send this proposal.');
       }
       const transitions: Record<Proposal['status'], Proposal['status'][]> = {
         DRAFT: ['IN_REVIEW', 'REJECTED'],

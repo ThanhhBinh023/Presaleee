@@ -18,7 +18,7 @@ if (env.authCookieSameSite === 'none' && !env.authCookieSecure) {
 const app = express();
 
 app.use(cors({ origin: env.frontendUrl, credentials: true }));
-app.use(express.json());
+app.use(express.json({ limit: '2mb' }));
 
 // System healthcheck endpoint
 app.get('/health', (_req: Request, res: Response) => {
@@ -36,7 +36,8 @@ app.use('/api/v1', createApiRouter(
   container.proposalController,
   container.leadIntakeController,
   container.authController,
-  container.dashboardController
+  container.dashboardController,
+  container.knowledgeController
 ));
 
 

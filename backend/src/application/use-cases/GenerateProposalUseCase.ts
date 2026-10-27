@@ -20,6 +20,7 @@ export class GenerateProposalUseCase {
     const searchResult = await this.searchUseCase.execute({
       query: trimmedRfp,
       domain: input.domain,
+      organizationId: input.organizationId,
       topK: 3
     });
 

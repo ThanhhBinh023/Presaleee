@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { AppError, UnauthorizedError, ValidationError } from '../../domain/errors/AppError.js';
+import { ForbiddenError, UnauthorizedError, ValidationError } from '../../domain/errors/AppError.js';
 import { CreateProposalUseCase } from '../../application/use-cases/CreateProposalUseCase.js';
 import { CreateProposalFromLeadUseCase } from '../../application/use-cases/CreateProposalFromLeadUseCase.js';
 import { GetProposalByIdUseCase } from '../../application/use-cases/GetProposalByIdUseCase.js';
@@ -17,7 +17,7 @@ function getParam(param: string | string[] | undefined): string {
 
 function authContext(req: Request): { organizationId: string; userId: string } {
   if (!req.auth?.sub) throw new UnauthorizedError();
-  if (!req.auth.organizationId) throw new AppError('An organization is required for this operation.', 403);
+  if (!req.auth.organizationId) throw new ForbiddenError('An organization is required for this operation.');
   return { organizationId: req.auth.organizationId, userId: req.auth.sub };
 }
 

@@ -49,6 +49,9 @@ import {
 import { PostgresDashboardRepository } from './infrastructure/database/repositories/PostgresDashboardRepository.js';
 import { GetDashboardOverviewUseCase, ListDashboardActivityUseCase, ListDashboardLeadsUseCase } from './application/use-cases/DashboardUseCases.js';
 import { DashboardController } from './presentation/controllers/DashboardController.js';
+import { KnowledgeController } from './presentation/controllers/KnowledgeController.js';
+import { ListKnowledgeDocumentsUseCase, GetKnowledgeDocumentUseCase, DeleteKnowledgeDocumentUseCase } from './application/use-cases/KnowledgeVaultUseCases.js';
+import { AskKnowledgeUseCase } from './application/use-cases/AskKnowledgeUseCase.js';
 
 export interface ServiceContainer {
   knowledgeRepository: PostgresKnowledgeRepository;
@@ -83,6 +86,7 @@ export interface ServiceContainer {
   leadIntakeController: LeadIntakeController;
   authController: AuthController;
   dashboardController: DashboardController;
+  knowledgeController: KnowledgeController;
 }
 
 export function createContainer(): ServiceContainer {
@@ -165,6 +169,13 @@ export function createContainer(): ServiceContainer {
     new ListDashboardLeadsUseCase(dashboardRepository),
     new ListDashboardActivityUseCase(dashboardRepository)
   );
+  const knowledgeController = new KnowledgeController(
+    ingestDocumentUseCase,
+    new ListKnowledgeDocumentsUseCase(knowledgeRepository),
+    new GetKnowledgeDocumentUseCase(knowledgeRepository),
+    new DeleteKnowledgeDocumentUseCase(knowledgeRepository),
+    new AskKnowledgeUseCase(searchHybridRAGUseCase, llmGateway)
+  );
 
   return {
     knowledgeRepository,
@@ -195,7 +206,8 @@ export function createContainer(): ServiceContainer {
     proposalController,
     leadIntakeController,
     authController,
-    dashboardController
+    dashboardController,
+    knowledgeController
   };
 }
 

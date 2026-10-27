@@ -15,7 +15,8 @@ export class SearchHybridRAGUseCase {
     }
 
     const trimmedQuery = input.query.trim();
-    const topK = input.topK && input.topK > 0 ? input.topK : 3;
+    const topK = input.topK ?? 3;
+    if (!Number.isInteger(topK) || topK < 1 || topK > 20) throw new ValidationError('topK must be an integer from 1 to 20.');
 
     // 1. Generate query dense embedding (768 dims)
     const [queryEmbedding] = await this.embeddingGateway.generateEmbeddings([trimmedQuery]);

@@ -2,10 +2,10 @@ import { Request, Response, NextFunction } from 'express';
 import { SearchHybridRAGUseCase } from '../../application/use-cases/SearchHybridRAGUseCase.js';
 import { IngestDocumentUseCase } from '../../application/use-cases/IngestDocumentUseCase.js';
 import { GenerateProposalUseCase } from '../../application/use-cases/GenerateProposalUseCase.js';
-import { AppError } from '../../domain/errors/AppError.js';
+import { ForbiddenError } from '../../domain/errors/AppError.js';
 
 function organizationId(req: Request): string {
-  if (!req.auth?.organizationId) throw new AppError('An organization is required for this operation.', 403);
+  if (!req.auth?.organizationId) throw new ForbiddenError('An organization is required for this operation.');
   return req.auth.organizationId;
 }
 

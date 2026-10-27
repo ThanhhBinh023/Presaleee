@@ -1,13 +1,13 @@
 import { createHmac, createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { UnauthorizedError } from '../../domain/errors/AppError.js';
-import { AuthUser, PublicAuthUser } from '../../domain/entities/AuthUser.js';
+import { AuthUser, PublicAuthUser, toUserRole, UserRole } from '../../domain/entities/AuthUser.js';
 import { env } from '../../infrastructure/config/env.js';
 
 export interface AccessTokenClaims {
   sub: string;
   email: string;
   organizationId: string | null;
-  role: string;
+  role: UserRole;
 }
 
 const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
@@ -57,7 +57,7 @@ export function verifyAccessToken(token: string): AccessTokenClaims {
       sub: payload.sub,
       email: payload.email,
       organizationId: typeof payload.organizationId === 'string' ? payload.organizationId : null,
-      role: typeof payload.role === 'string' ? payload.role : 'VIEWER'
+      role: toUserRole(typeof payload.role === 'string' ? payload.role : '')
     };
   } catch {
     throw new UnauthorizedError('Invalid or expired access token.');

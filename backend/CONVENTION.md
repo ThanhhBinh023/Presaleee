@@ -16,7 +16,8 @@ backend/src/
 ├── application/                 # [Application Business Rules] - Luồng nghiệp vụ cụ thể (Use Cases & DTOs)
 │   ├── use-cases/               # Use cases thực thi (SearchHybridRAGUseCase, IngestDocumentUseCase,...)
 │   ├── dtos/                    # Input / Output Data Transfer Objects
-│   └── services/                # Tiện ích nghiệp vụ nội bộ (TextSplitterService)
+│   ├── services/                # Tiện ích nghiệp vụ nội bộ (TextSplitterService)
+│   └── prompts/                 # Cấu hình prompt/schema tách khỏi use case (LeadQualificationPrompt)
 │
 ├── infrastructure/              # [Frameworks & Drivers] - Triển khai thực tế công nghệ & dịch vụ bên ngoài
 │   ├── config/                  # Quản lý biến môi trường strongly-typed (env.ts)

@@ -1,4 +1,4 @@
-import { ILLMGateway } from '../../domain/repositories/ILLMGateway.js';
+import { ILLMGateway, LLMTaskMode } from '../../domain/repositories/ILLMGateway.js';
 import { SearchHybridRAGUseCase } from './SearchHybridRAGUseCase.js';
 import { GenerateProposalInputDTO, GenerateProposalOutputDTO } from '../dtos/GenerateProposalDTO.js';
 import { ValidationError } from '../../domain/errors/AppError.js';
@@ -52,9 +52,9 @@ export class GenerateProposalUseCase {
       augmentedPrompt += `Based on the client's RFP requirements and the proven technical references provided above, synthesize a professional Executive Proposal Overview covering: 1) Solution Vision, 2) Proposed Architecture & Verified Tech Stack, 3) Security & Compliance Commitments, and 4) Why This Solution is optimal for the client.`;
     }
 
-    // 3. Generate response using LLM Gateway (Task mode 5: Proposal Builder)
+    // 3. Generate response using LLM Gateway
     const generatedText = await this.llmGateway.generate({
-      taskMode: 5,
+      taskMode: LLMTaskMode.PROPOSAL_BUILDER,
       prompt: augmentedPrompt,
       temperature: 0.2,
       maxTokens: input.maxTokens || 1500

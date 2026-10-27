@@ -8,13 +8,16 @@ const ACCESS_COOKIE = 'presaleee_access';
 const REFRESH_COOKIE = 'presaleee_refresh';
 const ACCESS_TTL_MS = 15 * 60 * 1000;
 const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+// The access cookie must accompany every protected route; only the refresh cookie is auth-endpoint scoped.
+const ACCESS_COOKIE_PATH = '/api/v1';
+const REFRESH_COOKIE_PATH = '/api/v1/auth';
 
-function cookieOptions(maxAge: number) {
+function cookieOptions(maxAge: number, path: string) {
   return {
     httpOnly: true,
     secure: env.authCookieSecure,
     sameSite: env.authCookieSameSite,
-    path: '/api/v1/auth',
+    path,
     maxAge
   };
 }
@@ -43,13 +46,13 @@ function cookieValue(req: Request, cookieName: string): string | undefined {
 }
 
 function setSessionCookies(res: Response, accessToken: string, refreshToken: string): void {
-  res.cookie(ACCESS_COOKIE, accessToken, cookieOptions(ACCESS_TTL_MS));
-  res.cookie(REFRESH_COOKIE, refreshToken, cookieOptions(REFRESH_TTL_MS));
+  res.cookie(ACCESS_COOKIE, accessToken, cookieOptions(ACCESS_TTL_MS, ACCESS_COOKIE_PATH));
+  res.cookie(REFRESH_COOKIE, refreshToken, cookieOptions(REFRESH_TTL_MS, REFRESH_COOKIE_PATH));
 }
 
 function clearSessionCookies(res: Response): void {
-  res.clearCookie(ACCESS_COOKIE, cookieOptions(0));
-  res.clearCookie(REFRESH_COOKIE, cookieOptions(0));
+  res.clearCookie(ACCESS_COOKIE, cookieOptions(0, ACCESS_COOKIE_PATH));
+  res.clearCookie(REFRESH_COOKIE, cookieOptions(0, REFRESH_COOKIE_PATH));
 }
 
 function validateCsrfOrigin(req: Request): void {

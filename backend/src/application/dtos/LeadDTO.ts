@@ -1,4 +1,4 @@
-import { LeadSource, LeadStatus } from '../../domain/entities/Lead.js';
+import { LEAD_SOURCES, LEAD_STATUSES, LeadSource, LeadStatus } from '../../domain/entities/Lead.js';
 import { AuthRequestClaims } from '../../domain/entities/AuthUser.js';
 import { ValidationError } from '../../domain/errors/AppError.js';
 
@@ -8,52 +8,51 @@ export interface AuthenticatedLeadScope {
   claims: AuthRequestClaims;
 }
 
-export interface CreateLeadDTO extends AuthenticatedLeadScope {
-  clientId?: unknown;
-  assignedTo?: unknown;
-  title?: unknown;
-  source?: unknown;
-  rawRfpContent?: unknown;
-  extractedMetadata?: unknown;
+/**
+ * Write fields arrive straight from `req.body` and are not trusted until the use case
+ * validation helpers have accepted them, so every field stays optional.
+ */
+export interface LeadWriteInput {
+  clientId?: string | null;
+  assignedTo?: string | null;
+  title?: string;
+  source?: LeadSource;
+  rawRfpContent?: string;
+  extractedMetadata?: Record<string, unknown>;
 }
 
-export interface UpdateLeadDTO extends AuthenticatedLeadScope {
+export interface CreateLeadDTO extends AuthenticatedLeadScope, LeadWriteInput {}
+
+export interface UpdateLeadDTO extends AuthenticatedLeadScope, LeadWriteInput {
   id: string;
-  clientId?: unknown;
-  assignedTo?: unknown;
-  title?: unknown;
-  source?: unknown;
-  rawRfpContent?: unknown;
-  extractedMetadata?: unknown;
 }
 
-export interface ListLeadsDTO extends AuthenticatedLeadScope {
-  page?: unknown;
-  limit?: unknown;
-  status?: unknown;
-  source?: unknown;
-  assignedTo?: unknown;
-  search?: unknown;
+export interface LeadListQuery {
+  page?: string | number;
+  limit?: string | number;
+  status?: LeadStatus;
+  source?: LeadSource;
+  assignedTo?: string | null;
+  search?: string;
 }
 
-export interface UpdateLeadStatusDTO extends AuthenticatedLeadScope {
-  id: string;
-  status?: unknown;
+export interface ListLeadsDTO extends AuthenticatedLeadScope, LeadListQuery {}
+
+function enumViolationMessage(field: string, values: readonly string[]): string {
+  return `${field} must be one of ${values.slice(0, -1).join(', ')}, or ${values[values.length - 1]}.`;
 }
 
 export function parseLeadSource(value: unknown, defaultValue?: LeadSource): LeadSource {
   if (value === undefined && defaultValue) return defaultValue;
-  const allowed: readonly string[] = ['INBOUND_EMAIL', 'WEBSITE', 'REFERRAL', 'MEETING', 'MANUAL'];
-  if (typeof value !== 'string' || !allowed.includes(value)) {
-    throw new ValidationError('Source must be one of INBOUND_EMAIL, WEBSITE, REFERRAL, MEETING, or MANUAL.');
+  if (typeof value !== 'string' || !(LEAD_SOURCES as readonly string[]).includes(value)) {
+    throw new ValidationError(enumViolationMessage('Source', LEAD_SOURCES));
   }
   return value as LeadSource;
 }
 
 export function parseLeadStatus(value: unknown): LeadStatus {
-  const allowed: readonly string[] = ['NEW', 'IN_REVIEW', 'QUALIFYING', 'QUALIFIED', 'PROPOSAL_DRAFTING', 'APPROVED', 'REJECTED', 'WON', 'LOST'];
-  if (typeof value !== 'string' || !allowed.includes(value)) {
-    throw new ValidationError(`Status must be one of ${allowed.join(', ')}.`);
+  if (typeof value !== 'string' || !(LEAD_STATUSES as readonly string[]).includes(value)) {
+    throw new ValidationError(enumViolationMessage('Status', LEAD_STATUSES));
   }
   return value as LeadStatus;
 }

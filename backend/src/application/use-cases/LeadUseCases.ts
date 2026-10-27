@@ -1,23 +1,11 @@
 import { ILeadRepository } from '../../domain/repositories/ILeadRepository.js';
 import { ConflictError, NotFoundError, ValidationError } from '../../domain/errors/AppError.js';
 import { Lead, LeadQualification, LeadSource, LeadStatus, LEAD_SOURCES, LEAD_STATUSES } from '../../domain/entities/Lead.js';
-import { ILLMGateway } from '../../domain/repositories/ILLMGateway.js';
+import { ILLMGateway, LLMTaskMode } from '../../domain/repositories/ILLMGateway.js';
 import { CreateLeadDTO, ListLeadsDTO, parseLeadSource, parseLeadStatus, UpdateLeadDTO } from '../dtos/LeadDTO.js';
+import { LEAD_QUALIFICATION_SCHEMA } from '../prompts/LeadQualificationPrompt.js';
 
 const MAX_RFP_CHARACTERS = 50_000;
-const QUALIFICATION_SCHEMA = `{
-  "score": "integer 0-100",
-  "recommendation": "QUALIFY, REVIEW, or DISQUALIFY",
-  "summary": "short explanation",
-  "criteria": {
-    "budget": { "score": "integer 0-25", "assessment": "text", "evidence": ["text"] },
-    "authority": { "score": "integer 0-25", "assessment": "text", "evidence": ["text"] },
-    "need": { "score": "integer 0-25", "assessment": "text", "evidence": ["text"] },
-    "timeline": { "score": "integer 0-25", "assessment": "text", "evidence": ["text"] }
-  },
-  "risks": ["text"],
-  "next_steps": ["text"]
-}`;
 
 function requiredText(value: unknown, field: string, maxLength: number): string {
   if (typeof value !== 'string' || !value.trim()) throw new ValidationError(`${field} is required.`);
@@ -233,7 +221,7 @@ export class QualifyLeadUseCase {
       'Score each criterion from 0 to 25 and make total score equal the sum of all four criterion scores.',
       'Do not invent facts. Put unknown evidence in the assessment and flag it as a risk.',
       'Return one JSON object only using this schema:',
-      QUALIFICATION_SCHEMA,
+      LEAD_QUALIFICATION_SCHEMA,
       `Lead title: ${lead.title}`,
       `Source: ${lead.source}`,
       `Extracted metadata: ${JSON.stringify(lead.extractedMetadata)}`,
@@ -241,7 +229,7 @@ export class QualifyLeadUseCase {
       lead.rawRfpContent,
       '</rfp_content>'
     ].join('\n\n');
-    const output = await this.llmGateway.generate({ taskMode: 4, prompt, temperature: 0.1, maxTokens: 1400 });
+    const output = await this.llmGateway.generate({ taskMode: LLMTaskMode.LEAD_QUALIFICATION, prompt, temperature: 0.1, maxTokens: 1400 });
     const qualification = normalizeQualification(parseJsonObject(output));
     const saved = await this.leadRepository.saveQualification(id, { organizationId }, qualification);
     if (!saved) throw new NotFoundError('Lead not found.');

@@ -1,8 +1,8 @@
 export interface IngestDocumentInputDTO {
-  title: string;
-  category: string;
-  domain: string;
-  content: string;
+  title: unknown;
+  category: unknown;
+  domain: unknown;
+  content: unknown;
   organizationId: string;
   uploadedBy: string;
 }

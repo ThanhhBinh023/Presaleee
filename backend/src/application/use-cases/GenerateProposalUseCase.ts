@@ -10,11 +10,15 @@ export class GenerateProposalUseCase {
   ) {}
 
   async execute(input: GenerateProposalInputDTO): Promise<GenerateProposalOutputDTO> {
-    if (!input.rfpText || !input.rfpText.trim()) {
+    if (typeof input.rfpText !== 'string' || !input.rfpText.trim()) {
       throw new ValidationError('RFP text is required to generate a proposal.');
     }
 
     const trimmedRfp = input.rfpText.trim();
+    if (trimmedRfp.length > 20_000) throw new ValidationError('rfpText must not exceed 20,000 characters.');
+    if (input.maxTokens !== undefined && (!Number.isInteger(input.maxTokens) || input.maxTokens < 1 || input.maxTokens > 8000)) {
+      throw new ValidationError('maxTokens must be an integer from 1 to 8,000.');
+    }
 
     // 1. Retrieve most relevant context chunks using Hybrid RAG
     const searchResult = await this.searchUseCase.execute({

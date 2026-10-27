@@ -1,8 +1,8 @@
 import { DocumentChunk } from '../../domain/entities/DocumentChunk.js';
 
 export interface RAGSearchInputDTO {
-  query: string;
-  domain?: string;
+  query: unknown;
+  domain?: unknown;
   topK?: number;
   organizationId?: string;
 }

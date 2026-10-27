@@ -32,10 +32,10 @@ export class KnowledgeController {
     try {
       const body = requestBody(req);
       const result = await this.ingestUseCase.execute({
-        title: body.title as string,
-        category: typeof body.category === 'string' ? body.category : 'GENERAL',
-        domain: typeof body.domain === 'string' ? body.domain : 'GENERAL',
-        content: body.content as string,
+        title: body.title,
+        category: body.category,
+        domain: body.domain,
+        content: body.content,
         organizationId: organizationId(req),
         uploadedBy: req.auth!.sub
       });

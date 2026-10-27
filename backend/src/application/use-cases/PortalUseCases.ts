@@ -197,3 +197,23 @@ export class DeletePortalMaterialUseCase {
     if (!await this.repository.deleteMaterial(input.proposalId, input.materialId, input.organizationId)) throw new NotFoundError('Portal material not found.');
   }
 }
+
+export class ListProposalPortalSessionsUseCase {
+  constructor(private readonly repository: IPortalRepository, private readonly proposalRepository: IProposalRepository) {}
+  async execute(proposalId: string, organizationId: string) {
+    if (!UUID_PATTERN.test(proposalId)) throw new ValidationError('proposalId must be a valid UUID.');
+    const proposal = await this.proposalRepository.findById(proposalId, organizationId);
+    if (!proposal) throw new NotFoundError('Proposal not found.');
+    return this.repository.listSessionsForProposal(proposalId, organizationId);
+  }
+}
+
+export class ListProposalPortalMaterialsUseCase {
+  constructor(private readonly repository: IPortalRepository, private readonly proposalRepository: IProposalRepository) {}
+  async execute(proposalId: string, organizationId: string) {
+    if (!UUID_PATTERN.test(proposalId)) throw new ValidationError('proposalId must be a valid UUID.');
+    const proposal = await this.proposalRepository.findById(proposalId, organizationId);
+    if (!proposal) throw new NotFoundError('Proposal not found.');
+    return this.repository.listMaterialsForStaff(proposalId, organizationId);
+  }
+}

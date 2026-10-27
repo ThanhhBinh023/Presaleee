@@ -33,6 +33,7 @@ export interface LeadListQuery {
   status?: LeadStatus;
   source?: LeadSource;
   assignedTo?: string | null;
+  clientId?: string | null;
   search?: string;
 }
 

@@ -17,6 +17,14 @@ import { createMeetingRouter } from './meetingRoutes.js';
 import { PortalController } from '../controllers/PortalController.js';
 import { createPortalRouter } from './portalRoutes.js';
 import { IPortalRepository } from '../../domain/repositories/IPortalRepository.js';
+import { ClientController } from '../controllers/ClientController.js';
+import { createClientRouter } from './clientRoutes.js';
+import { RateCardController } from '../controllers/RateCardController.js';
+import { createRateCardRouter } from './rateCardRoutes.js';
+import { UserController } from '../controllers/UserController.js';
+import { createUserRouter } from './userRoutes.js';
+import { AuditController } from '../controllers/AuditController.js';
+import { createAuditRouter } from './auditRoutes.js';
 
 export function createApiRouter(
   ragController: RAGController,
@@ -27,7 +35,11 @@ export function createApiRouter(
   knowledgeController: KnowledgeController,
   meetingController: MeetingController,
   portalController: PortalController,
-  portalRepository: IPortalRepository
+  portalRepository: IPortalRepository,
+  clientController: ClientController,
+  rateCardController: RateCardController,
+  userController: UserController,
+  auditController: AuditController
 ): Router {
   const router = Router();
 
@@ -40,8 +52,14 @@ export function createApiRouter(
   router.post('/leads/:leadId/proposals', requireAuth, requireOrganization, proposalController.createFromLead);
   router.use('/meetings', createMeetingRouter(meetingController));
   router.use('/portal', createPortalRouter(portalController, portalRepository));
+  router.get('/proposals/:proposalId/portal-materials', requireAuth, requireOrganization, portalController.listProposalMaterials);
   router.post('/proposals/:proposalId/portal-materials', requireAuth, requireOrganization, portalController.createMaterial);
   router.delete('/proposals/:proposalId/portal-materials/:materialId', requireAuth, requireOrganization, portalController.deleteMaterial);
+  router.get('/proposals/:proposalId/portal-sessions', requireAuth, requireOrganization, portalController.listProposalSessions);
+  router.use('/clients', createClientRouter(clientController));
+  router.use('/rate-cards', createRateCardRouter(rateCardController));
+  router.use('/users', createUserRouter(userController));
+  router.use('/audit-logs', createAuditRouter(auditController));
   router.use('/auth', createAuthRouter(authController));
   router.use('/dashboard', createDashboardRouter(dashboardController));
 

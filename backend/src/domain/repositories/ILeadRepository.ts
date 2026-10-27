@@ -7,6 +7,7 @@ export interface ListLeadFilters extends LeadScope {
   status?: LeadStatus;
   source?: LeadSource;
   assignedTo?: string;
+  clientId?: string;
   search?: string;
 }
 export interface CreateLeadInput extends LeadScope {

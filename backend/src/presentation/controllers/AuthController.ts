@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { AppError, ForbiddenError, UnauthorizedError, ValidationError } from '../../domain/errors/AppError.js';
 import { GetCurrentUserUseCase, LoginUseCase, RefreshSessionUseCase, LogoutUseCase, ForgotPasswordUseCase, ResetPasswordUseCase } from '../../application/use-cases/AuthUseCases.js';
+import { RegisterUseCase } from '../../application/use-cases/UserUseCases.js';
 import { AuthSessionContext } from '../../domain/entities/AuthUser.js';
 import { env } from '../../infrastructure/config/env.js';
 
@@ -78,8 +79,19 @@ export class AuthController {
     private readonly logoutUseCase: LogoutUseCase,
     private readonly currentUserUseCase: GetCurrentUserUseCase,
     private readonly forgotPasswordUseCase: ForgotPasswordUseCase,
-    private readonly resetPasswordUseCase: ResetPasswordUseCase
+    private readonly resetPasswordUseCase: ResetPasswordUseCase,
+    private readonly registerUseCase: RegisterUseCase
   ) {}
+
+  register = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      validateCsrfOrigin(req);
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const { accessToken, ...session } = await this.registerUseCase.execute(body);
+      res.cookie(ACCESS_COOKIE, accessToken, cookieOptions(ACCESS_TTL_MS, ACCESS_COOKIE_PATH));
+      res.status(201).json({ success: true, data: session });
+    } catch (error) { next(error); }
+  };
 
   login = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {

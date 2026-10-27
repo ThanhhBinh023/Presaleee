@@ -11,6 +11,7 @@ import {
   pagination,
   parseEnum,
   requiredText,
+  requiredUuid,
   optionalEnum
 } from '../services/RequestValidation.js';
 import { CLIENT_INDUSTRIES } from '../../domain/entities/Client.js';
@@ -105,7 +106,7 @@ export class GetClientUseCase {
   constructor(private readonly clientRepository: IClientRepository) {}
 
   async execute(scope: AuthenticatedScope, id: string): Promise<Client> {
-    const client = await this.clientRepository.findById(id, { organizationId: scope.organizationId });
+    const client = await this.clientRepository.findById(requiredUuid(id, 'id'), { organizationId: scope.organizationId });
     if (!client) throw new NotFoundError('Client not found.');
     return client;
   }
@@ -118,10 +119,11 @@ export class UpdateClientUseCase {
   ) {}
 
   async execute(scope: AuthenticatedScope, id: string, dto: Record<string, unknown>): Promise<Client> {
-    const existing = await this.clientRepository.findById(id, { organizationId: scope.organizationId });
+    const targetId = requiredUuid(id, 'id');
+    const existing = await this.clientRepository.findById(targetId, { organizationId: scope.organizationId });
     if (!existing) throw new NotFoundError('Client not found.');
     const updates = normalizeUpdate(dto);
-    const client = await this.clientRepository.update(id, { organizationId: scope.organizationId }, updates);
+    const client = await this.clientRepository.update(targetId, { organizationId: scope.organizationId }, updates);
     if (!client) throw new NotFoundError('Client not found.');
     await this.auditRepository.record({
       organizationId: scope.organizationId,
@@ -143,20 +145,21 @@ export class DeleteClientUseCase {
   ) {}
 
   async execute(scope: AuthenticatedScope, id: string): Promise<void> {
-    const existing = await this.clientRepository.findById(id, { organizationId: scope.organizationId });
+    const targetId = requiredUuid(id, 'id');
+    const existing = await this.clientRepository.findById(targetId, { organizationId: scope.organizationId });
     if (!existing) throw new NotFoundError('Client not found.');
-    const linkedLeads = await this.clientRepository.countLeads(id, { organizationId: scope.organizationId });
+    const linkedLeads = await this.clientRepository.countLeads(targetId, { organizationId: scope.organizationId });
     if (linkedLeads > 0) {
       throw new ConflictError(`Reassign the ${linkedLeads} lead(s) attached to this client before deleting it.`);
     }
-    const deleted = await this.clientRepository.delete(id, { organizationId: scope.organizationId });
+    const deleted = await this.clientRepository.delete(targetId, { organizationId: scope.organizationId });
     if (!deleted) throw new NotFoundError('Client not found.');
     await this.auditRepository.record({
       organizationId: scope.organizationId,
       actorId: scope.userId,
       action: 'CLIENT_DELETED',
       entityType: 'client',
-      entityId: id,
+      entityId: targetId,
       payload: { companyName: existing.companyName },
       ipAddress: scope.ipAddress
     });
@@ -167,7 +170,7 @@ export class ListClientLeadsUseCase {
   constructor(private readonly clientRepository: IClientRepository, private readonly leadRepository: ILeadRepository) {}
 
   async execute(scope: AuthenticatedScope, clientId: string, query: Record<string, unknown>) {
-    const client = await this.clientRepository.findById(clientId, { organizationId: scope.organizationId });
+    const client = await this.clientRepository.findById(requiredUuid(clientId, 'id'), { organizationId: scope.organizationId });
     if (!client) throw new NotFoundError('Client not found.');
     const page = pagination(query.page, 'page', 100_000, 1);
     const limit = pagination(query.limit, 'limit', 100, 20);

@@ -40,7 +40,7 @@ export class PostgresAuthRepository implements IAuthRepository {
 
   async findUserById(id: string): Promise<AuthUser | null> {
     const result = await this.pool.query<AuthUserRow>(
-      `SELECT id, organization_id, email, full_name, avatar_url, role, status
+      `SELECT id, organization_id, email, full_name, avatar_url, role, status, password_hash
        FROM users WHERE id = $1 LIMIT 1;`,
       [id]
     );

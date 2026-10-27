@@ -154,6 +154,7 @@ export class PostgresUserRepository implements IUserRepository {
     if (input.avatarUrl !== undefined) addField('avatar_url', input.avatarUrl);
     if (input.role !== undefined) addField('role', input.role);
     if (input.status !== undefined) addField('status', input.status);
+    if (input.passwordHash !== undefined) addField('password_hash', input.passwordHash);
     if (fields.length === 0) return this.findById(id);
     fields.push('updated_at = NOW()');
     values.push(id);

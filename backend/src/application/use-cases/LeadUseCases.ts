@@ -1,7 +1,7 @@
 import { ILeadRepository } from '../../domain/repositories/ILeadRepository.js';
 import { ConflictError, NotFoundError, ValidationError } from '../../domain/errors/AppError.js';
 import { Lead, LeadQualification, LeadSource, LeadStatus, LEAD_SOURCES, LEAD_STATUSES } from '../../domain/entities/Lead.js';
-import { ILLMGateway } from '../../domain/repositories/ILLMGateway.js';
+import { ILLMGateway, LLMTaskMode } from '../../domain/repositories/ILLMGateway.js';
 import { CreateLeadDTO, ListLeadsDTO, parseLeadSource, parseLeadStatus, UpdateLeadDTO } from '../dtos/LeadDTO.js';
 import { LEAD_QUALIFICATION_SCHEMA } from '../prompts/LeadQualificationPrompt.js';
 
@@ -229,7 +229,7 @@ export class QualifyLeadUseCase {
       lead.rawRfpContent,
       '</rfp_content>'
     ].join('\n\n');
-    const output = await this.llmGateway.generate({ taskMode: 4, prompt, temperature: 0.1, maxTokens: 1400 });
+    const output = await this.llmGateway.generate({ taskMode: LLMTaskMode.LEAD_QUALIFICATION, prompt, temperature: 0.1, maxTokens: 1400 });
     const qualification = normalizeQualification(parseJsonObject(output));
     const saved = await this.leadRepository.saveQualification(id, { organizationId }, qualification);
     if (!saved) throw new NotFoundError('Lead not found.');

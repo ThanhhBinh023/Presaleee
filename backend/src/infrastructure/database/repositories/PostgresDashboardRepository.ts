@@ -3,8 +3,9 @@ import { DASHBOARD_PIPELINE_STATUSES, DashboardActivity, DashboardLead, Dashboar
 import { IDashboardRepository, DashboardScope } from '../../../domain/repositories/IDashboardRepository.js';
 
 interface CountRow { total: string; active: string; qualified: string; proposals_in_progress: string; }
+interface StageCountRow { status: DashboardPipelineStage['status']; count: string; }
 interface ValueRow { currency: string; amount: string | null; }
-interface PipelineRow { status: DashboardPipelineStage['status']; count: string; currency: string | null; amount: string | null; }
+interface PipelineRow { status: DashboardPipelineStage['status']; currency: string | null; amount: string | null; }
 interface LeadRow {
   id: string; title: string; source: string; status: DashboardLead['status']; bant_score: number | null;
   client_name: string | null; assigned_to: string | null; created_at: Date | string; updated_at: Date | string;
@@ -30,7 +31,7 @@ export class PostgresDashboardRepository implements IDashboardRepository {
   constructor(private readonly pool: Pool) {}
 
   async getOverview(scope: DashboardScope, leadLimit: number): Promise<DashboardOverview> {
-    const [counts, valueRows, pipelineRows, activeLeads] = await Promise.all([
+    const [counts, valueRows, stageCountRows, pipelineRows, activeLeads] = await Promise.all([
       this.pool.query<CountRow>(
         `SELECT COUNT(*)::text AS total,
            COUNT(*) FILTER (WHERE status NOT IN ('WON', 'LOST', 'REJECTED'))::text AS active,
@@ -45,12 +46,17 @@ export class PostgresDashboardRepository implements IDashboardRepository {
          GROUP BY currency ORDER BY currency;`,
         [scope.organizationId]
       ),
+      this.pool.query<StageCountRow>(
+        `SELECT status, COUNT(*)::text AS count FROM leads
+         WHERE organization_id = $1 GROUP BY status;`,
+        [scope.organizationId]
+      ),
       this.pool.query<PipelineRow>(
-        `SELECT l.status, COUNT(DISTINCT l.id)::text AS count, p.currency, SUM(p.total_cost)::text AS amount
+        `SELECT l.status, p.currency, SUM(p.total_cost)::text AS amount
          FROM leads l
-         LEFT JOIN proposals p ON p.lead_id = l.id AND p.organization_id = l.organization_id AND p.status <> 'REJECTED'
+         JOIN proposals p ON p.lead_id = l.id AND p.organization_id = l.organization_id AND p.status <> 'REJECTED'
          WHERE l.organization_id = $1
-         GROUP BY l.status, p.currency;`,
+         GROUP BY l.status, p.currency ORDER BY l.status, p.currency;`,
         [scope.organizationId]
       ),
       this.listLeads(scope, leadLimit)
@@ -62,11 +68,14 @@ export class PostgresDashboardRepository implements IDashboardRepository {
       count: 0,
       estimatedValueByCurrency: [] as Array<{ currency: string; amount: number }>
     }]));
+    for (const row of stageCountRows.rows) {
+      const stage = pipelineMap.get(row.status);
+      if (stage) stage.count = toNumber(row.count);
+    }
     for (const row of pipelineRows.rows) {
       const stage = pipelineMap.get(row.status);
-      if (!stage) continue;
-      stage.count = toNumber(row.count);
-      if (row.currency) stage.estimatedValueByCurrency.push({ currency: row.currency, amount: toNumber(row.amount) });
+      if (!stage || !row.currency) continue;
+      stage.estimatedValueByCurrency.push({ currency: row.currency, amount: toNumber(row.amount) });
     }
     const valueByCurrency = valueRows.rows.map(row => ({ currency: row.currency || 'USD', amount: toNumber(row.amount) }));
     const pipeline = Array.from(pipelineMap.values());

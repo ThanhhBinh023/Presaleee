@@ -1,11 +1,11 @@
 import { UnauthorizedError, ValidationError } from '../../domain/errors/AppError.js';
 import { IDashboardRepository } from '../../domain/repositories/IDashboardRepository.js';
 
-function parseLimit(value: string | number | undefined, defaultValue: number, max: number): number {
-  if (value === undefined) return defaultValue;
+function parseLimit(value: string | number | undefined, defaultValue: number, max: number, field = 'limit'): number {
+  if (value === undefined || value === '') return defaultValue;
   const parsed = typeof value === 'string' ? Number(value) : value;
   if (!Number.isInteger(parsed) || parsed < 1 || parsed > max) {
-    throw new ValidationError(`limit must be an integer from 1 to ${max}.`);
+    throw new ValidationError(`${field} must be an integer from 1 to ${max}.`);
   }
   return parsed;
 }
@@ -14,7 +14,7 @@ export class GetDashboardOverviewUseCase {
   constructor(private readonly dashboardRepository: IDashboardRepository) {}
   async execute(organizationId: string, requestedLeadLimit?: string | number) {
     if (!organizationId) throw new UnauthorizedError('Authenticated organization is required.');
-    const leadLimit = parseLimit(requestedLeadLimit, 8, 50);
+    const leadLimit = parseLimit(requestedLeadLimit, 8, 50, 'leadLimit');
     return this.dashboardRepository.getOverview({ organizationId }, leadLimit);
   }
 }

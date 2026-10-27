@@ -14,6 +14,12 @@ function queryScalar(value: unknown): string | number | undefined {
   return typeof first === 'string' || typeof first === 'number' ? first : String(first);
 }
 
+/** Mirrors the use case default so the echoed meta limit matches the rows actually returned. */
+function requestedLimit(value: string | number | undefined): number | undefined {
+  if (value === undefined || value === '') return undefined;
+  return Number(value);
+}
+
 export class DashboardController {
   constructor(
     private readonly overviewUseCase: GetDashboardOverviewUseCase,
@@ -30,16 +36,18 @@ export class DashboardController {
 
   leads = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const limit = req.query.limit === undefined ? 20 : Number(req.query.limit);
-      const data = await this.leadsUseCase.execute(organizationId(req), queryScalar(req.query.limit));
+      const requested = queryScalar(req.query.limit);
+      const limit = requestedLimit(requested) ?? 20;
+      const data = await this.leadsUseCase.execute(organizationId(req), requested);
       res.status(200).json({ success: true, data, meta: { total: data.length, limit } });
     } catch (error) { next(error); }
   };
 
   activity = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const limit = req.query.limit === undefined ? 20 : Number(req.query.limit);
-      const data = await this.activityUseCase.execute(organizationId(req), queryScalar(req.query.limit));
+      const requested = queryScalar(req.query.limit);
+      const limit = requestedLimit(requested) ?? 20;
+      const data = await this.activityUseCase.execute(organizationId(req), requested);
       res.status(200).json({ success: true, data, meta: { total: data.length, limit } });
     } catch (error) { next(error); }
   };

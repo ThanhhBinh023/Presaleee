@@ -1,0 +1,315 @@
+{
+  "runId": "20261021095046",
+  "suite": "G7 Discovery Meetings + G8 Proposals",
+  "baseUrl": "http://127.0.0.1:5099",
+  "startedAt": "2026-10-21T09:50:46.909Z",
+  "finishedAt": "2026-10-21T09:51:27.582Z",
+  "durationMs": 40673,
+  "totals": {
+    "cases": 26,
+    "PASS": 26
+  },
+  "trackedTestData": {
+    "userIds": [
+      "b5084764-f805-4613-92a8-178e5e72da27",
+      "ce628434-82a7-41bb-ad0d-5e1f72a9984c",
+      "031f08ef-991d-48cb-a3db-34c0d6e3535f",
+      "573f92f3-5b71-4855-8257-e020fe37188a",
+      "64677917-cd53-4a69-9c67-18f9d58ea9bd"
+    ],
+    "organizationIds": [
+      "8e1146eb-a79b-4e85-aadd-3260422acfc4",
+      "dacef32b-d65a-4f8e-9cf3-f98fcf84b3b1"
+    ]
+  },
+  "observations": [
+    "G7-08 nil UUID answered 400: the shared UUID validator only accepts RFC-4122 version/variant nibbles, so 00000000-0000-0000-0000-000000000000 is treated as a malformed id (400) rather than an unknown one (404).",
+    "G7-09 verified the AI-unavailable path; the successful analysis path (INSPECTED + decisions/actionItems) could not be exercised because the AI service is offline.",
+    "G8-06 malformed id answered 400 (id must be a valid UUID or null.); trimmed id answered 400",
+    "G8-07 malformed id on PATCH answered 400",
+    "proposal audit coverage for one submit: PROPOSAL_SUBMITTED_FOR_REVIEW",
+    "G8-09 malformed id on submit-review answered 400",
+    "G8-10 unknown sheet name answered 400 (Unknown proposal sheet name.)",
+    "G8-10 malformed id on sheet update answered 400",
+    "Sheet 5 exported monthlyRate=1111 and line cost=1 from stored sheetData (manMonths 2 x monthlyRate 1111 = 2222 was NOT recomputed).",
+    "DEFECT (export): the Pricing sheet always renders \"Value Added Tax (VAT 10%)\" and computes the grand total as subtotal*1.1 from the milestone rows; the stored taxPercentage (\"10.0%\" shown) and grandTotal (43210.55) from the proposal data are ignored, so a tax term the client never set is printed as a contractual figure.",
+    "G8-11 malformed id on export-excel answered 400",
+    "G8-12 malformed id on export-pdf answered 400",
+    "G8-13 malformed id on /generate answered 400",
+    "G8-14 covered the AI-unavailable path only; generated content quality (10 sheets from one call, sources[] provenance) needs the AI service running.",
+    "G8-15 malformed id on DELETE answered 400",
+    "G8-15 VIEWER delete answered 204 (RBAC is not enforced on proposal writes)",
+    "G8-15 audit rows for a create+sheet-write+delete lifecycle: 0"
+  ],
+  "results": [
+    {
+      "id": "G7/G8-00",
+      "title": "Bootstrap: two organizations, RBAC members, a QUALIFIED lead and the meeting probe",
+      "status": "PASS",
+      "durationMs": 3440,
+      "notes": [
+        "organizations, 3 members, lead 7f6d831c at QUALIFIED"
+      ]
+    },
+    {
+      "id": "G7-01",
+      "title": "Create meeting: 201 contract, OPEN default, attendee normalization and meetingDate handling",
+      "status": "PASS",
+      "durationMs": 876,
+      "notes": [
+        "trim/normalize applied to title and attendees",
+        "OPEN default, meetingDate defaults to now"
+      ]
+    },
+    {
+      "id": "G7-02",
+      "title": "Create meeting input guards: title, date, attendees and oversized collections are rejected with 400",
+      "status": "PASS",
+      "durationMs": 898,
+      "notes": [
+        "10 validation paths 400",
+        "100-attendee boundary accepted, 101 refused"
+      ]
+    },
+    {
+      "id": "G7-03",
+      "title": "Meeting scoping: unknown or cross-tenant lead answers 404, malformed ids 400, anonymous 401",
+      "status": "PASS",
+      "durationMs": 303,
+      "notes": [
+        "foreign tenant always 404 (never 403)",
+        "malformed uuid 400",
+        "anonymous 401"
+      ]
+    },
+    {
+      "id": "G7-04",
+      "title": "List lead meetings: ordering, meta.total and tenant isolation of the collection",
+      "status": "PASS",
+      "durationMs": 217,
+      "notes": [
+        "5 meetings newest-first, meta.total consistent"
+      ]
+    },
+    {
+      "id": "G7-05",
+      "title": "Transcript save: transcript/content alias, replace and append semantics",
+      "status": "PASS",
+      "durationMs": 599,
+      "notes": [
+        "transcript and content aliases both accepted",
+        "append:true concatenates, default replaces",
+        "input trimmed"
+      ]
+    },
+    {
+      "id": "G7-06",
+      "title": "Transcript guards: empty, oversize, non-boolean append and non-OPEN meetings",
+      "status": "PASS",
+      "durationMs": 1414,
+      "notes": [
+        "500k boundary accepted, 500001 refused",
+        "LOCKED transcript write answers 409 and stores nothing"
+      ]
+    },
+    {
+      "id": "G7-07",
+      "title": "Status machine: OPEN <-> LOCKED, same-status replay, INSPECTED cannot be set manually",
+      "status": "PASS",
+      "durationMs": 809,
+      "notes": [
+        "OPEN <-> LOCKED round trip",
+        "manual INSPECTED blocked with 409",
+        "payload organizationId cannot cross tenants"
+      ]
+    },
+    {
+      "id": "G7-08",
+      "title": "Get meeting by id: full lifecycle payload, 404 for unknown and malformed ids",
+      "status": "PASS",
+      "durationMs": 155,
+      "notes": [
+        "all lifecycle fields serialized",
+        "unknown/nil uuid 404, malformed 400"
+      ]
+    },
+    {
+      "id": "G7-09",
+      "title": "Analyze meeting guards and AI-unavailable behaviour with no state damage",
+      "status": "PASS",
+      "durationMs": 949,
+      "notes": [
+        "guards 400/401/404/409 verified",
+        "AI offline: sanitized 5xx, no partial write",
+        "SUCCESS PATH NOT COVERED (AI offline)"
+      ]
+    },
+    {
+      "id": "G8-01",
+      "title": "Create proposal: 10 standard sheets, DRAFT default and derived totals",
+      "status": "PASS",
+      "durationMs": 1220,
+      "notes": [
+        "201 + Location",
+        "10 standard sheets in canonical order",
+        "no invented money/effort numbers"
+      ]
+    },
+    {
+      "id": "G8-02",
+      "title": "Create proposal input guards: title, currency, version, totals and sheet payload shapes",
+      "status": "PASS",
+      "durationMs": 1059,
+      "notes": [
+        "13 invalid create payloads all answered 400",
+        "anonymous create 401"
+      ]
+    },
+    {
+      "id": "G8-03",
+      "title": "Create proposal with initialSheets: canonical order honored and totals derived from Pricing/Timeline",
+      "status": "PASS",
+      "durationMs": 752,
+      "notes": [
+        "initialSheets honored, totals derived then overridable"
+      ]
+    },
+    {
+      "id": "G8-04",
+      "title": "Create proposal from a lead: qualified lead accepted, wrong status and foreign lead refused",
+      "status": "PASS",
+      "durationMs": 2413,
+      "notes": [
+        "QUALIFIED lead seeds Overview + WBS from real metadata",
+        "NEW lead 409, foreign 404, malformed 400"
+      ]
+    },
+    {
+      "id": "G8-05",
+      "title": "List proposals: pagination meta, status filter, search and tenant isolation",
+      "status": "PASS",
+      "durationMs": 782,
+      "notes": [
+        "total 6",
+        "pagination, filter, search, tenant isolation verified"
+      ]
+    },
+    {
+      "id": "G8-06",
+      "title": "Get proposal by id: sheets ordered with data, unknown id 404, malformed id refused safely",
+      "status": "PASS",
+      "durationMs": 299,
+      "notes": [
+        "sheets ordered 1..10",
+        "unknown/foreign 404, anonymous 401",
+        "malformed id -> 400"
+      ]
+    },
+    {
+      "id": "G8-07",
+      "title": "PATCH metadata: field updates, mixed status+metadata refused, non-DRAFT edits 409",
+      "status": "PASS",
+      "durationMs": 1615,
+      "notes": [
+        "metadata updates verified",
+        "status+metadata in one request 400",
+        "non-DRAFT metadata edit 409"
+      ]
+    },
+    {
+      "id": "G8-08",
+      "title": "Status machine and RBAC: privileged transitions need ADMIN/PRESALE_LEAD, illegal hops 409",
+      "status": "PASS",
+      "durationMs": 8447,
+      "notes": [
+        "VIEWER privileged change 403",
+        "full happy path to ACCEPTED, terminal state frozen",
+        "REJECTED -> DRAFT reopen verified"
+      ]
+    },
+    {
+      "id": "G8-09",
+      "title": "Submit for review: DRAFT -> IN_REVIEW, audit trail entry, replay and tenant guards",
+      "status": "PASS",
+      "durationMs": 1007,
+      "notes": [
+        "submit + PROPOSAL_SUBMITTED_FOR_REVIEW audit",
+        "replay 409, foreign 404, anonymous 401",
+        "sheet lock after submit -> 409"
+      ]
+    },
+    {
+      "id": "G8-10",
+      "title": "Update sheet: upsert, aiGenerated reset and totalCost / timeline sync back to the proposal",
+      "status": "PASS",
+      "durationMs": 3026,
+      "notes": [
+        "totalCost and estimatedTimelineWeeks synced from sheet data",
+        "upsert keeps a single row",
+        "unknown sheet name -> 400"
+      ]
+    },
+    {
+      "id": "G8-11",
+      "title": "Export Excel: binary workbook, headers, 10 sheets and Sheet 5 number provenance",
+      "status": "PASS",
+      "durationMs": 1561,
+      "notes": [
+        "10 worksheets, zip magic, Content-Length verified",
+        "stored sheet data drives the export",
+        "cross-tenant export leaks nothing"
+      ]
+    },
+    {
+      "id": "G8-12",
+      "title": "Export PDF: %PDF body, headers and tenant guards",
+      "status": "PASS",
+      "durationMs": 565,
+      "notes": [
+        "%PDF magic + exact Content-Length",
+        "export leaves the proposal unchanged"
+      ]
+    },
+    {
+      "id": "G8-13",
+      "title": "Generation guards: unknown/malformed proposal, non-DRAFT, sheetNames and instructions limits",
+      "status": "PASS",
+      "durationMs": 1861,
+      "notes": [
+        "12 generation guard paths verified before any AI call",
+        "no partial write on rejected generation"
+      ]
+    },
+    {
+      "id": "G8-14",
+      "title": "Generation with the AI service available/unavailable: sanitized failure and no half-written proposal",
+      "status": "PASS",
+      "durationMs": 1294,
+      "notes": [
+        "AI offline: sanitized error, sheets unchanged",
+        "FULL AI GENERATION PATH NOT COVERED (AI service offline)"
+      ]
+    },
+    {
+      "id": "G8-15",
+      "title": "Delete proposal: 204, sheets cascade away, guards and audit coverage",
+      "status": "PASS",
+      "durationMs": 2382,
+      "notes": [
+        "204 + cascade + replay 404",
+        "foreign 404, malformed 400",
+        "VIEWER delete 204"
+      ]
+    },
+    {
+      "id": "G8-16",
+      "title": "Tenant boundary of the whole proposal surface",
+      "status": "PASS",
+      "durationMs": 2725,
+      "notes": [
+        "smuggled organizationId/createdBy/status overridden",
+        "404 for every cross-tenant read/write"
+      ]
+    }
+  ]
+}

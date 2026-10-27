@@ -2,6 +2,7 @@ import { NextFunction, Request, Response } from 'express';
 import { UnauthorizedError, ValidationError } from '../../domain/errors/AppError.js';
 import { AuthenticatedScope } from '../../application/dtos/AuthenticatedScope.js';
 import { ListAuditLogsUseCase } from '../../application/use-cases/AuditUseCases.js';
+import { parseListAuditLogsQuery } from '../../application/dtos/AuditDTO.js';
 
 export class AuditController {
   constructor(private readonly listUseCase: ListAuditLogsUseCase) {}
@@ -20,7 +21,7 @@ export class AuditController {
 
   list = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const result = await this.listUseCase.execute(this.scope(req), req.query as Record<string, unknown>);
+      const result = await this.listUseCase.execute(this.scope(req), parseListAuditLogsQuery(req.query as Record<string, unknown>));
       res.status(200).json({
         success: true,
         data: result.entries,

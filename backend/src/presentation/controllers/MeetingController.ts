@@ -1,13 +1,14 @@
 import { Request, Response, NextFunction } from 'express';
-import { AppError, ValidationError } from '../../domain/errors/AppError.js';
+import { ForbiddenError, UnauthorizedError, ValidationError } from '../../domain/errors/AppError.js';
 import {
   AnalyzeMeetingUseCase, CreateMeetingUseCase, GetMeetingUseCase,
   ListLeadMeetingsUseCase, SaveMeetingTranscriptUseCase, UpdateMeetingStatusUseCase
 } from '../../application/use-cases/MeetingUseCases.js';
+import { parseCreateMeetingInput } from '../../application/dtos/MeetingDTO.js';
 
 function context(req: Request): { organizationId: string; userId: string } {
-  if (!req.auth?.sub) throw new AppError('Authentication required.', 401);
-  if (!req.auth.organizationId) throw new AppError('An organization is required for this operation.', 403);
+  if (!req.auth?.sub) throw new UnauthorizedError();
+  if (!req.auth.organizationId) throw new ForbiddenError('An organization is required for this operation.');
   return { organizationId: req.auth.organizationId, userId: req.auth.sub };
 }
 function routeParam(req: Request, name: string): string {
@@ -40,10 +41,9 @@ export class MeetingController {
   createForLead = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const { organizationId, userId } = context(req);
-      const input = body(req);
       const meeting = await this.createUseCase.execute({
         leadId: routeParam(req, 'leadId'), organizationId, userId,
-        title: input.title, meetingDate: input.meetingDate, attendees: input.attendees
+        ...parseCreateMeetingInput(body(req))
       });
       res.status(201).location(`/api/v1/meetings/${meeting.id}`).json({ success: true, data: meeting });
     } catch (error) { next(error); }

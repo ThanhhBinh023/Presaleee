@@ -8,6 +8,13 @@ export interface KnowledgeCitation {
   label: string;
   title: string;
   excerpt: string;
+  /**
+   * Reciprocal Rank Fusion relevance from `hybrid_search_chunks`, not a similarity:
+   * `semantic_weight / (rrf_k + semantic_rank) + full_text_weight / (rrf_k + fts_rank)`,
+   * where an absent list contributes 0. Higher is better, defaults put it near 0.016 per
+   * contributing list (rrf_k 60, rank >= 1), so never present it as a percentage.
+   * Null when the database returned no score for the chunk.
+   */
   score: number | null;
 }
 

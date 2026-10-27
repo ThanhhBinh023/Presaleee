@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { AppError, ValidationError } from '../../domain/errors/AppError.js';
+import { ForbiddenError, UnauthorizedError, ValidationError } from '../../domain/errors/AppError.js';
 import { PortalSession } from '../../domain/entities/Portal.js';
 import {
   AskPortalProposalUseCase, CreatePortalCommentUseCase, CreatePortalSessionUseCase,
@@ -8,12 +8,6 @@ import {
   ListPortalMaterialsUseCase, RevokePortalSessionUseCase,
   ListProposalPortalSessionsUseCase, ListProposalPortalMaterialsUseCase
 } from '../../application/use-cases/PortalUseCases.js';
-
-declare global {
-  namespace Express {
-    interface Request { portalSession?: PortalSession; }
-  }
-}
 
 function routeParam(req: Request, name: string): string {
   const value = req.params[name];
@@ -24,7 +18,7 @@ function objectBody(req: Request): Record<string, unknown> {
   return req.body as Record<string, unknown>;
 }
 function portalSession(req: Request): PortalSession {
-  if (!req.portalSession) throw new AppError('A valid client portal session is required.', 401);
+  if (!req.portalSession) throw new UnauthorizedError('A valid client portal session is required.');
   return req.portalSession;
 }
 
@@ -46,8 +40,8 @@ export class PortalController {
 
   createSession = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      if (!req.auth?.sub) throw new AppError('Authentication required.', 401);
-      if (!req.auth.organizationId) throw new AppError('An organization is required.', 403);
+      if (!req.auth?.sub) throw new UnauthorizedError();
+      if (!req.auth.organizationId) throw new ForbiddenError('An organization is required.');
       const body = objectBody(req);
       const session = await this.createSessionUseCase.execute({
         proposalId: typeof body.proposalId === 'string' ? body.proposalId : '',
@@ -60,7 +54,7 @@ export class PortalController {
 
   revokeSession = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      if (!req.auth?.sub || !req.auth.organizationId) throw new AppError('Authenticated user and organization are required.', 403);
+      if (!req.auth?.sub || !req.auth.organizationId) throw new ForbiddenError('Authenticated user and organization are required.');
       await this.revokeSessionUseCase.execute(routeParam(req, 'sessionId'), req.auth.organizationId, req.auth.sub, req.auth.role);
       res.status(204).end();
     } catch (error) { next(error); }
@@ -68,7 +62,7 @@ export class PortalController {
 
   createMaterial = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      if (!req.auth?.sub || !req.auth.organizationId) throw new AppError('Authenticated user and organization are required.', 403);
+      if (!req.auth?.sub || !req.auth.organizationId) throw new ForbiddenError('Authenticated user and organization are required.');
       const body = objectBody(req);
       const material = await this.createMaterialUseCase.execute({
         proposalId: routeParam(req, 'proposalId'), organizationId: req.auth.organizationId,
@@ -81,7 +75,7 @@ export class PortalController {
 
   deleteMaterial = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      if (!req.auth?.organizationId) throw new AppError('Authenticated organization is required.', 403);
+      if (!req.auth?.organizationId) throw new ForbiddenError('Authenticated organization is required.');
       await this.deleteMaterialUseCase.execute({
         proposalId: routeParam(req, 'proposalId'), materialId: routeParam(req, 'materialId'),
         organizationId: req.auth.organizationId, role: req.auth.role

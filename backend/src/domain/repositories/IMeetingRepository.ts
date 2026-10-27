@@ -1,4 +1,4 @@
-import { Meeting, MeetingStatus, MeetingAnalysis } from '../entities/Meeting.js';
+import { Meeting, MeetingAttendee, MeetingStatus, MeetingAnalysis } from '../entities/Meeting.js';
 
 export interface MeetingScope { organizationId: string; }
 
@@ -7,7 +7,7 @@ export interface CreateMeetingInput extends MeetingScope {
   createdBy: string;
   title: string;
   meetingDate: string;
-  attendees: Array<{ name: string; email?: string; role?: string }>;
+  attendees: MeetingAttendee[];
 }
 
 export interface IMeetingRepository {

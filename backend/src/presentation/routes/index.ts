@@ -7,12 +7,15 @@ import { createProposalRouter } from './proposalRoutes.js';
 import { createLeadIntakeRouter } from './leadIntakeRoutes.js';
 import { AuthController } from '../controllers/AuthController.js';
 import { createAuthRouter } from './authRoutes.js';
+import { DashboardController } from '../controllers/DashboardController.js';
+import { createDashboardRouter } from './dashboardRoutes.js';
 
 export function createApiRouter(
   ragController: RAGController,
   proposalController: ProposalController,
   leadIntakeController: LeadIntakeController,
-  authController: AuthController
+  authController: AuthController,
+  dashboardController: DashboardController
 ): Router {
   const router = Router();
 
@@ -20,6 +23,7 @@ export function createApiRouter(
   router.use('/proposals', createProposalRouter(proposalController));
   router.use('/leads', createLeadIntakeRouter(leadIntakeController));
   router.use('/auth', createAuthRouter(authController));
+  router.use('/dashboard', createDashboardRouter(dashboardController));
 
   return router;
 }

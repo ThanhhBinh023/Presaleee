@@ -35,6 +35,12 @@ export class UnauthorizedError extends AppError {
   }
 }
 
+export class ForbiddenError extends AppError {
+  constructor(message: string = 'You do not have access to this resource.') {
+    super(message, 403);
+  }
+}
+
 export class ConflictError extends AppError {
   constructor(message: string) {
     super(message, 409);

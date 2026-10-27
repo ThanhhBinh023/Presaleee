@@ -11,7 +11,7 @@ export class CreateProposalFromLeadUseCase {
     private readonly createProposalUseCase: CreateProposalUseCase
   ) {}
 
-  async execute(leadId: string, organizationId: string, userId: string, titleOverride?: unknown): Promise<ProposalWithSheets> {
+  async execute(leadId: string, organizationId: string, userId: string, titleOverride?: string): Promise<ProposalWithSheets> {
     if (!organizationId || !userId) throw new ValidationError('Lead, user, and organization are required.');
     const targetLeadId = requiredUuid(leadId, 'leadId');
     const lead = await this.leadRepository.findById(targetLeadId, { organizationId });
@@ -19,12 +19,12 @@ export class CreateProposalFromLeadUseCase {
     if (!['QUALIFIED', 'APPROVED', 'PROPOSAL_DRAFTING'].includes(lead.status)) {
       throw new ConflictError('Lead must be qualified or approved before proposal creation.');
     }
-    const title = titleOverride === undefined ? lead.title : titleOverride;
-    if (typeof title !== 'string' || !title.trim() || title.trim().length > 255) {
+    const title = (titleOverride ?? lead.title).trim();
+    if (!title || title.length > 255) {
       throw new ValidationError('Proposal title must be 1–255 characters.');
     }
 
-    const sheets = getDefaultProposalSheets(title.trim(), 'USD');
+    const sheets = getDefaultProposalSheets(title, 'USD');
     const overview = sheets.find(sheet => sheet.sheetName === 'Overview');
     const scopeSheet = sheets.find(sheet => sheet.sheetName === 'Scope of Work');
     const metadata = lead.extractedMetadata;
@@ -42,7 +42,7 @@ export class CreateProposalFromLeadUseCase {
       }))
     });
     return this.createProposalUseCase.execute({
-      title: title.trim(),
+      title,
       organizationId,
       createdBy: userId,
       leadId: lead.id,

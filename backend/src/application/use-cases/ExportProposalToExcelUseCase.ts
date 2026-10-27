@@ -3,6 +3,7 @@ import { IExcelExporterService } from '../../domain/repositories/IExcelExporterS
 import { ProposalWithSheets } from '../../domain/entities/Proposal.js';
 import { NotFoundError } from '../../domain/errors/AppError.js';
 import { requiredUuid } from '../services/RequestValidation.js';
+import { toFilenameSlug } from '../services/ExportFilename.js';
 
 export interface ExportExcelResult {
   buffer: Buffer;
@@ -21,7 +22,7 @@ export class ExportProposalToExcelUseCase {
     if (!proposal) throw new NotFoundError('Proposal not found.');
 
     const buffer = await this.excelExporter.generateProposalWorkbook(proposal);
-    const safeTitle = proposal.title.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/_+/g, '_');
+    const safeTitle = toFilenameSlug(proposal.title);
     const filename = `${safeTitle}_Proposal_${proposal.version || 'v1.0'}.xlsx`;
 
     return {

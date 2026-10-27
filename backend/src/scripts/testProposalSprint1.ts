@@ -3,12 +3,19 @@ import { dbPool } from '../infrastructure/database/connection.js';
 
 async function runSprint1Verification() {
   console.log('🚀 Starting Backend Sprint 1 Verification...');
+  const organizationId = process.env.TEST_ORGANIZATION_ID;
+  const userId = process.env.TEST_USER_ID;
+  if (!organizationId || !userId) {
+    throw new Error('Set TEST_ORGANIZATION_ID and TEST_USER_ID to run this database verification script.');
+  }
 
   try {
     // 1. Test Create Proposal with Default 10 Sheets
     console.log('\n[1/5] Testing CreateProposalUseCase...');
     const createdProposal = await container.createProposalUseCase.execute({
       title: 'E-Commerce Omnichannel Platform Modernization',
+      organizationId,
+      createdBy: userId,
       currency: 'USD',
       version: 'v1.0'
     });
@@ -26,7 +33,7 @@ async function runSprint1Verification() {
 
     // 2. Test Get Proposal by ID
     console.log('\n[2/5] Testing GetProposalByIdUseCase...');
-    const fetched = await container.getProposalByIdUseCase.execute(createdProposal.id);
+    const fetched = await container.getProposalByIdUseCase.execute(createdProposal.id, organizationId);
     console.log(`✅ Fetched proposal: ${fetched.title} (${fetched.sheets.length} sheets loaded)`);
     console.log(`   Sheet Names: ${fetched.sheets.map(s => s.sheetName).join(', ')}`);
 
@@ -44,6 +51,7 @@ async function runSprint1Verification() {
 
     const updatedSheet = await container.updateProposalSheetUseCase.execute({
       proposalId: createdProposal.id,
+      organizationId,
       sheetName: 'Pricing & Quotation',
       sheetData: updatedData,
       aiGenerated: true
@@ -51,17 +59,17 @@ async function runSprint1Verification() {
     console.log(`✅ Sheet updated: ${updatedSheet.sheetName}`);
 
     // Verify parent proposal totalCost updated
-    const fetchedAfterUpdate = await container.getProposalByIdUseCase.execute(createdProposal.id);
+    const fetchedAfterUpdate = await container.getProposalByIdUseCase.execute(createdProposal.id, organizationId);
     console.log(`   Parent proposal updated total cost: $${fetchedAfterUpdate.totalCost?.toLocaleString()}`);
 
     // 4. Test List Proposals
     console.log('\n[4/5] Testing ListProposalsUseCase...');
-    const listResult = await container.listProposalsUseCase.execute({ limit: 5 });
+    const listResult = await container.listProposalsUseCase.execute({ organizationId, limit: 5 });
     console.log(`✅ Proposals listed: ${listResult.proposals.length} items (Total in DB: ${listResult.total})`);
 
     // 5. Test Export to Excel (.xlsx)
     console.log('\n[5/5] Testing ExportProposalToExcelUseCase...');
-    const exportResult = await container.exportProposalToExcelUseCase.execute(createdProposal.id);
+    const exportResult = await container.exportProposalToExcelUseCase.execute(createdProposal.id, organizationId);
     console.log(`✅ Excel Workbook generated successfully!`);
     console.log(`   Filename: ${exportResult.filename}`);
     console.log(`   Buffer size: ${(exportResult.buffer.length / 1024).toFixed(2)} KB`);
@@ -72,7 +80,7 @@ async function runSprint1Verification() {
 
     // Clean up
     console.log('\n🧹 Cleaning up test proposal...');
-    await container.deleteProposalUseCase.execute(createdProposal.id);
+    await container.deleteProposalUseCase.execute(createdProposal.id, organizationId);
     console.log('✅ Test proposal deleted.');
 
     console.log('\n🎉 ALL SPRINT 1 BACKEND CHECKS PASSED 100%!');

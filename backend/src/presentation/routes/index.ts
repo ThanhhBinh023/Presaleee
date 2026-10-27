@@ -9,6 +9,7 @@ import { AuthController } from '../controllers/AuthController.js';
 import { createAuthRouter } from './authRoutes.js';
 import { DashboardController } from '../controllers/DashboardController.js';
 import { createDashboardRouter } from './dashboardRoutes.js';
+import { requireAuth, requireOrganization } from '../middlewares/requireAuth.js';
 
 export function createApiRouter(
   ragController: RAGController,
@@ -22,6 +23,7 @@ export function createApiRouter(
   router.use('/rag', createRAGRouter(ragController));
   router.use('/proposals', createProposalRouter(proposalController));
   router.use('/leads', createLeadIntakeRouter(leadIntakeController));
+  router.post('/leads/:leadId/proposals', requireAuth, requireOrganization, proposalController.createFromLead);
   router.use('/auth', createAuthRouter(authController));
   router.use('/dashboard', createDashboardRouter(dashboardController));
 

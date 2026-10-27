@@ -9,6 +9,7 @@ export interface HybridSearchParams {
   semanticWeight?: number;
   rrfK?: number;
   domain?: string | null;
+  organizationId?: string | null;
 }
 
 export interface IKnowledgeRepository {

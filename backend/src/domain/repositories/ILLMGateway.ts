@@ -1,5 +1,11 @@
+/** Modes accepted by the AI service `task_mode` contract. Values are part of the wire protocol. */
+export enum LLMTaskMode {
+  LEAD_INTAKE = 1,
+  PROPOSAL_BUILDER = 5
+}
+
 export interface LLMGenerateOptions {
-  taskMode: number;
+  taskMode: LLMTaskMode;
   prompt: string;
   temperature?: number;
   maxTokens?: number;

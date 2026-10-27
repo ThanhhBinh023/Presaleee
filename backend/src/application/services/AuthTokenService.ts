@@ -1,14 +1,9 @@
 import { createHmac, createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { UnauthorizedError } from '../../domain/errors/AppError.js';
-import { AuthUser, PublicAuthUser, toUserRole, UserRole } from '../../domain/entities/AuthUser.js';
+import { AuthRequestClaims, AuthUser, PublicAuthUser, toUserRole } from '../../domain/entities/AuthUser.js';
 import { env } from '../../infrastructure/config/env.js';
 
-export interface AccessTokenClaims {
-  sub: string;
-  email: string;
-  organizationId: string | null;
-  role: UserRole;
-}
+export type AccessTokenClaims = AuthRequestClaims;
 
 const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
 export const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;

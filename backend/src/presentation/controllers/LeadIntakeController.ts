@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { AnalyzeLeadIntakeUseCase } from '../../application/use-cases/AnalyzeLeadIntakeUseCase.js';
+import { AnalyzeLeadIntakeInputDTO } from '../../application/dtos/AnalyzeLeadIntakeDTO.js';
 import {
   CreateLeadUseCase,
   DeleteLeadUseCase,
@@ -29,15 +30,19 @@ export class LeadIntakeController {
     private readonly getLatestQualificationUseCase: GetLatestQualificationUseCase
   ) {}
 
-  private scope(req: Request) {
+  private scope(req: Pick<Request, 'auth'>) {
     if (!req.auth?.sub) throw new UnauthorizedError();
     if (!req.auth.organizationId) throw new ValidationError('Authenticated organization is required.');
     return { organizationId: req.auth.organizationId, userId: req.auth.sub, claims: req.auth };
   }
 
-  analyze = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  analyze = async (
+    req: Request<unknown, unknown, AnalyzeLeadIntakeInputDTO>,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
-      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const body = req.body ?? ({} as AnalyzeLeadIntakeInputDTO);
       const { rawRfpContent, source } = body;
       this.scope(req);
       const result = await this.analyzeUseCase.execute({ rawRfpContent, source });

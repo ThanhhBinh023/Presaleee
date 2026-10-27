@@ -1,5 +1,5 @@
 import { Pool } from 'pg';
-import { AuthSessionContext, AuthUser } from '../../../domain/entities/AuthUser.js';
+import { AuthSessionContext, AuthUser, toUserRole, toUserStatus } from '../../../domain/entities/AuthUser.js';
 import { IAuthRepository } from '../../../domain/repositories/IAuthRepository.js';
 
 interface AuthUserRow {
@@ -20,8 +20,8 @@ function mapUser(row: AuthUserRow): AuthUser {
     email: row.email,
     fullName: row.full_name,
     avatarUrl: row.avatar_url,
-    role: row.role,
-    status: row.status,
+    role: toUserRole(row.role),
+    status: toUserStatus(row.status),
     passwordHash: row.password_hash || undefined
   };
 }

@@ -223,6 +223,28 @@ export class PostgresProposalRepository implements IProposalRepository {
     }
   }
 
+  async submitForReview(id: string, organizationId: string, actorId: string): Promise<Proposal | null> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const result = await client.query(
+        "UPDATE proposals SET status = 'IN_REVIEW', updated_at = NOW() WHERE id = $1 AND organization_id = $2 AND status = 'DRAFT' RETURNING *;",
+        [id, organizationId]
+      );
+      if (!result.rows[0]) { await client.query('ROLLBACK'); return null; }
+      await client.query(
+        `INSERT INTO audit_logs (organization_id, user_id, action, entity_type, entity_id, payload)
+         VALUES ($1, $2, 'PROPOSAL_SUBMITTED_FOR_REVIEW', 'proposal', $3, $4::jsonb);`,
+        [organizationId, actorId, id, JSON.stringify({ from: 'DRAFT', to: 'IN_REVIEW' })]
+      );
+      await client.query('COMMIT');
+      return this.mapProposal(result.rows[0]);
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally { client.release(); }
+  }
+
   async updateSheet(
     proposalId: string,
     organizationId: string,

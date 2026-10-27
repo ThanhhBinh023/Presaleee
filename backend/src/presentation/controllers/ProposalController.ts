@@ -10,6 +10,7 @@ import { DeleteProposalUseCase } from '../../application/use-cases/DeleteProposa
 import { ExportProposalToExcelUseCase } from '../../application/use-cases/ExportProposalToExcelUseCase.js';
 import { GenerateProposalSheetsUseCase } from '../../application/use-cases/GenerateProposalSheetsUseCase.js';
 import { ExportProposalToPdfUseCase } from '../../application/use-cases/ExportProposalToPdfUseCase.js';
+import { SubmitProposalForReviewUseCase } from '../../application/use-cases/SubmitProposalForReviewUseCase.js';
 
 function getParam(param: string | string[] | undefined): string {
   return Array.isArray(param) ? param[0] || '' : param || '';
@@ -51,7 +52,8 @@ export class ProposalController {
     private readonly deleteUseCase: DeleteProposalUseCase,
     private readonly exportExcelUseCase: ExportProposalToExcelUseCase,
     private readonly generateSheetsUseCase: GenerateProposalSheetsUseCase,
-    private readonly exportPdfUseCase: ExportProposalToPdfUseCase
+    private readonly exportPdfUseCase: ExportProposalToPdfUseCase,
+    private readonly submitForReviewUseCase: SubmitProposalForReviewUseCase
   ) {}
 
   create = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
@@ -159,6 +161,28 @@ export class ProposalController {
         sheetNames: [sheetName], instructions: body.instructions
       });
       res.status(200).json({ success: true, data: result });
+    } catch (error) { next(error); }
+  };
+
+  regenerateSection = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { organizationId } = authContext(req);
+      const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body)
+        ? req.body as Record<string, unknown> : {};
+      const sectionName = decodeURIComponent(getParam(req.params.sectionName));
+      const result = await this.generateSheetsUseCase.execute({
+        proposalId: getParam(req.params.id), organizationId,
+        sheetNames: [sectionName], instructions: body.instructions
+      });
+      res.status(200).json({ success: true, data: result });
+    } catch (error) { next(error); }
+  };
+
+  submitForReview = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { organizationId, userId } = authContext(req);
+      const proposal = await this.submitForReviewUseCase.execute(getParam(req.params.id), organizationId, userId);
+      res.status(200).json({ success: true, data: proposal });
     } catch (error) { next(error); }
   };
 

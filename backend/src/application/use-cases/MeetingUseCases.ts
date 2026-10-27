@@ -3,38 +3,7 @@ import { ILeadRepository } from '../../domain/repositories/ILeadRepository.js';
 import { ILLMGateway } from '../../domain/repositories/ILLMGateway.js';
 import { Meeting, MeetingAnalysis, MeetingStatus } from '../../domain/entities/Meeting.js';
 import { ConflictError, NotFoundError, ValidationError } from '../../domain/errors/AppError.js';
-
-export interface CreateMeetingDTO {
-  leadId: string;
-  organizationId: string;
-  userId: string;
-  title: unknown;
-  meetingDate?: unknown;
-  attendees?: unknown;
-}
-
-function normalizeAttendees(value: unknown): Array<{ name: string; email?: string; role?: string }> {
-  if (value === undefined) return [];
-  if (!Array.isArray(value) || value.length > 100) throw new ValidationError('attendees must be a list of at most 100 people.');
-  return value.map((item, index) => {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) throw new ValidationError(`attendees[${index}] must be an object.`);
-    const attendee = item as Record<string, unknown>;
-    if (typeof attendee.name !== 'string' || !attendee.name.trim() || attendee.name.length > 200) {
-      throw new ValidationError(`attendees[${index}].name is required and must be at most 200 characters.`);
-    }
-    if (attendee.email !== undefined && (typeof attendee.email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(attendee.email))) {
-      throw new ValidationError(`attendees[${index}].email must be a valid email address.`);
-    }
-    if (attendee.role !== undefined && (typeof attendee.role !== 'string' || attendee.role.length > 100)) {
-      throw new ValidationError(`attendees[${index}].role must be text up to 100 characters.`);
-    }
-    return {
-      name: attendee.name.trim(),
-      ...(typeof attendee.email === 'string' ? { email: attendee.email.trim() } : {}),
-      ...(typeof attendee.role === 'string' ? { role: attendee.role.trim() } : {})
-    };
-  });
-}
+import { CreateMeetingDTO } from '../dtos/MeetingDTO.js';
 
 export class CreateMeetingUseCase {
   constructor(private readonly meetingRepository: IMeetingRepository, private readonly leadRepository: ILeadRepository) {}
@@ -43,14 +12,9 @@ export class CreateMeetingUseCase {
     if (!input.organizationId || !input.userId) throw new ValidationError('Authenticated user and organization are required.');
     const lead = await this.leadRepository.findById(input.leadId, { organizationId: input.organizationId });
     if (!lead) throw new NotFoundError('Lead not found.');
-    if (typeof input.title !== 'string' || !input.title.trim() || input.title.trim().length > 255) {
-      throw new ValidationError('Meeting title is required and must not exceed 255 characters.');
-    }
-    const meetingDate = input.meetingDate === undefined ? new Date() : new Date(String(input.meetingDate));
-    if (Number.isNaN(meetingDate.getTime())) throw new ValidationError('meetingDate must be a valid date.');
     const meeting = await this.meetingRepository.create({
       leadId: lead.id, organizationId: input.organizationId, createdBy: input.userId,
-      title: input.title.trim(), meetingDate: meetingDate.toISOString(), attendees: normalizeAttendees(input.attendees)
+      title: input.title, meetingDate: input.meetingDate ?? new Date().toISOString(), attendees: input.attendees
     });
     if (!meeting) throw new NotFoundError('Lead not found.');
     return meeting;

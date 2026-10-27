@@ -1,6 +1,7 @@
 import { IProposalRepository, CreateProposalParams } from '../../domain/repositories/IProposalRepository.js';
 import { ProposalWithSheets } from '../../domain/entities/Proposal.js';
 import { ValidationError } from '../../domain/errors/AppError.js';
+import { optionalUuid } from '../services/RequestValidation.js';
 import { getDefaultProposalSheets } from '../services/DefaultProposalSheets.js';
 import { STANDARD_PROPOSAL_SHEETS } from '../../domain/entities/Proposal.js';
 
@@ -30,6 +31,7 @@ export class CreateProposalUseCase {
     }
     if (dto.title.trim().length > 255) throw new ValidationError('Proposal title must not exceed 255 characters.');
     if (!dto.organizationId || !dto.createdBy) throw new ValidationError('Authenticated user and organization are required.');
+    const leadId = optionalUuid(dto.leadId ?? undefined, 'leadId') ?? null;
 
     const currency = dto.currency || 'USD';
     if (!/^[A-Z]{3}$/.test(currency)) throw new ValidationError('currency must be a three-letter uppercase ISO code.');
@@ -79,7 +81,7 @@ export class CreateProposalUseCase {
     const params: CreateProposalParams = {
       title: dto.title.trim(),
       organizationId: dto.organizationId,
-      leadId: dto.leadId || null,
+      leadId,
       createdBy: dto.createdBy,
       version: dto.version || 'v1.0',
       status: 'DRAFT',

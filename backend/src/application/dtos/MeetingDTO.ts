@@ -27,7 +27,8 @@ function normalizeAttendees(value: unknown): MeetingAttendee[] {
     if (typeof attendee.name !== 'string' || !attendee.name.trim() || attendee.name.length > 200) {
       throw new ValidationError(`attendees[${index}].name is required and must be at most 200 characters.`);
     }
-    if (attendee.email !== undefined && (typeof attendee.email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(attendee.email))) {
+    const email = typeof attendee.email === 'string' ? attendee.email.trim() : undefined;
+    if (attendee.email !== undefined && (email === undefined || email === '' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
       throw new ValidationError(`attendees[${index}].email must be a valid email address.`);
     }
     if (attendee.role !== undefined && (typeof attendee.role !== 'string' || attendee.role.length > 100)) {
@@ -35,7 +36,7 @@ function normalizeAttendees(value: unknown): MeetingAttendee[] {
     }
     return {
       name: attendee.name.trim(),
-      ...(typeof attendee.email === 'string' ? { email: attendee.email.trim() } : {}),
+      ...(email ? { email } : {}),
       ...(typeof attendee.role === 'string' ? { role: attendee.role.trim() } : {})
     };
   });

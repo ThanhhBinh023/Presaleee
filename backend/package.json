@@ -12,7 +12,8 @@
     "test:e2e:directory": "node api_test/g3_g4_directory.e2e.mjs",
     "test:e2e:pricing-leads": "node api_test/g5_g6_pricing_and_leads.e2e.mjs",
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "test:e2e:meetings-proposals": "node api_test/g7_g8_meetings_and_proposals.e2e.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.29.0",

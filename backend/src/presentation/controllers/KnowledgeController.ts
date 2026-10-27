@@ -1,11 +1,11 @@
 import { Request, Response, NextFunction } from 'express';
-import { AppError, ValidationError } from '../../domain/errors/AppError.js';
+import { ForbiddenError, ValidationError } from '../../domain/errors/AppError.js';
 import { IngestDocumentUseCase } from '../../application/use-cases/IngestDocumentUseCase.js';
 import { ListKnowledgeDocumentsUseCase, GetKnowledgeDocumentUseCase, DeleteKnowledgeDocumentUseCase } from '../../application/use-cases/KnowledgeVaultUseCases.js';
 import { AskKnowledgeUseCase } from '../../application/use-cases/AskKnowledgeUseCase.js';
 
 function organizationId(req: Request): string {
-  if (!req.auth?.organizationId) throw new AppError('An organization is required for this operation.', 403);
+  if (!req.auth?.organizationId) throw new ForbiddenError('An organization is required for this operation.');
   return req.auth.organizationId;
 }
 

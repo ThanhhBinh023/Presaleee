@@ -1,19 +1,19 @@
-import { ValidationError } from '../../domain/errors/AppError.js';
+import { UnauthorizedError, ValidationError } from '../../domain/errors/AppError.js';
 import { IDashboardRepository } from '../../domain/repositories/IDashboardRepository.js';
 
-function parseLimit(value: unknown, defaultValue: number, max: number, field = 'limit'): number {
+function parseLimit(value: string | number | undefined, defaultValue: number, max: number, field = 'limit'): number {
   if (value === undefined || value === '') return defaultValue;
   const parsed = typeof value === 'string' ? Number(value) : value;
-  if (!Number.isInteger(parsed) || (parsed as number) < 1 || (parsed as number) > max) {
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > max) {
     throw new ValidationError(`${field} must be an integer from 1 to ${max}.`);
   }
-  return parsed as number;
+  return parsed;
 }
 
 export class GetDashboardOverviewUseCase {
   constructor(private readonly dashboardRepository: IDashboardRepository) {}
-  async execute(organizationId: string, requestedLeadLimit?: unknown) {
-    if (!organizationId) throw new ValidationError('Authenticated organization is required.');
+  async execute(organizationId: string, requestedLeadLimit?: string | number) {
+    if (!organizationId) throw new UnauthorizedError('Authenticated organization is required.');
     const leadLimit = parseLimit(requestedLeadLimit, 8, 50, 'leadLimit');
     return this.dashboardRepository.getOverview({ organizationId }, leadLimit);
   }
@@ -21,8 +21,8 @@ export class GetDashboardOverviewUseCase {
 
 export class ListDashboardLeadsUseCase {
   constructor(private readonly dashboardRepository: IDashboardRepository) {}
-  async execute(organizationId: string, requestedLimit?: unknown) {
-    if (!organizationId) throw new ValidationError('Authenticated organization is required.');
+  async execute(organizationId: string, requestedLimit?: string | number) {
+    if (!organizationId) throw new UnauthorizedError('Authenticated organization is required.');
     const limit = parseLimit(requestedLimit, 20, 100);
     return this.dashboardRepository.listLeads({ organizationId }, limit);
   }
@@ -30,8 +30,8 @@ export class ListDashboardLeadsUseCase {
 
 export class ListDashboardActivityUseCase {
   constructor(private readonly dashboardRepository: IDashboardRepository) {}
-  async execute(organizationId: string, requestedLimit?: unknown) {
-    if (!organizationId) throw new ValidationError('Authenticated organization is required.');
+  async execute(organizationId: string, requestedLimit?: string | number) {
+    if (!organizationId) throw new UnauthorizedError('Authenticated organization is required.');
     const limit = parseLimit(requestedLimit, 20, 100);
     return this.dashboardRepository.listActivity({ organizationId }, limit);
   }

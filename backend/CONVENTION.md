@@ -34,6 +34,8 @@ backend/src/
 │   ├── routes/                  # Định nghĩa Express Router (/api/v1/rag)
 │   └── middlewares/             # Middleware xác thực, validate, bắt lỗi tập trung (errorHandler)
 │
+├── types/                       # Khai báo TypeScript tập trung (express.d.ts mở rộng Express.Request)
+│
 ├── container.ts                 # IoC / Dependency Injection Container liên kết toàn bộ hệ thống
 └── index.ts                     # Entry point khởi tạo vòng đời Express Server
 ```

@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { AppError, UnauthorizedError, ValidationError } from '../../domain/errors/AppError.js';
+import { ForbiddenError, UnauthorizedError, ValidationError } from '../../domain/errors/AppError.js';
 import { CreateProposalUseCase } from '../../application/use-cases/CreateProposalUseCase.js';
 import { CreateProposalFromLeadUseCase } from '../../application/use-cases/CreateProposalFromLeadUseCase.js';
 import { GetProposalByIdUseCase } from '../../application/use-cases/GetProposalByIdUseCase.js';
@@ -18,13 +18,27 @@ function getParam(param: string | string[] | undefined): string {
 
 function authContext(req: Request): { organizationId: string; userId: string } {
   if (!req.auth?.sub) throw new UnauthorizedError();
-  if (!req.auth.organizationId) throw new AppError('An organization is required for this operation.', 403);
+  if (!req.auth.organizationId) throw new ForbiddenError('An organization is required for this operation.');
   return { organizationId: req.auth.organizationId, userId: req.auth.sub };
 }
 
 function bodyObject(req: Request): Record<string, unknown> {
   if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) throw new ValidationError('Request body must be a JSON object.');
   return req.body as Record<string, unknown>;
+}
+
+function optionalString(value: unknown, field: string): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'string') throw new ValidationError(`${field} must be a string.`);
+  return value;
+}
+
+/** RFC 5987/6266: legacy clients read the ASCII name, modern clients read the UTF-8 filename*. */
+function contentDisposition(filename: string): string {
+  const dot = filename.lastIndexOf('.');
+  const extension = dot >= 0 ? filename.slice(dot) : '';
+  const ascii = filename.replace(/[^\x20-\x7E]/g, '').replace(/["\\]/g, '') || `proposal${extension}`;
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
 }
 
 export class ProposalController {
@@ -65,7 +79,7 @@ export class ProposalController {
     try {
       const context = authContext(req);
       const body = req.body && typeof req.body === 'object' ? req.body as Record<string, unknown> : {};
-      const proposal = await this.createFromLeadUseCase.execute(getParam(req.params.leadId), context.organizationId, context.userId, body.title);
+      const proposal = await this.createFromLeadUseCase.execute(getParam(req.params.leadId), context.organizationId, context.userId, optionalString(body.title, 'title'));
       res.status(201).location(`/api/v1/proposals/${proposal.id}`).json({ success: true, data: proposal });
     } catch (error) { next(error); }
   };
@@ -185,7 +199,7 @@ export class ProposalController {
       const { organizationId } = authContext(req);
       const result = await this.exportExcelUseCase.execute(getParam(req.params.id), organizationId);
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(result.filename)}"`);
+      res.setHeader('Content-Disposition', contentDisposition(result.filename));
       res.setHeader('Content-Length', result.buffer.length);
       res.status(200).end(result.buffer);
     } catch (error) { next(error); }
@@ -196,7 +210,7 @@ export class ProposalController {
       const { organizationId } = authContext(req);
       const result = await this.exportPdfUseCase.execute(getParam(req.params.id), organizationId);
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(result.filename)}"`);
+      res.setHeader('Content-Disposition', contentDisposition(result.filename));
       res.setHeader('Content-Length', result.buffer.length);
       res.status(200).end(result.buffer);
     } catch (error) { next(error); }

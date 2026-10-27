@@ -1,6 +1,8 @@
+import { LeadSource } from '../../domain/entities/Lead.js';
+
 export interface AnalyzeLeadIntakeInputDTO {
   rawRfpContent: string;
-  source?: 'INBOUND_EMAIL' | 'WEBSITE' | 'REFERRAL' | 'MEETING' | 'MANUAL';
+  source?: LeadSource;
 }
 
 export interface LeadIntakeExtractedMetadata {
@@ -17,24 +19,25 @@ export interface LeadIntakeExtractedMetadata {
 }
 
 /**
- * Frontend-ready, unsaved Lead draft. Persistence-owned fields intentionally
- * remain null until a separate save/confirm endpoint is implemented.
+ * Frontend-ready, unsaved Lead draft. Persistence-owned fields are optional and
+ * nullable so the same shape can carry a saved Lead once the save/confirm
+ * endpoint is implemented.
  */
 export interface LeadIntakeDraftDTO {
-  id: null;
-  organizationId: null;
-  clientId: null;
-  createdBy: null;
-  assignedTo: null;
+  id?: string | null;
+  organizationId?: string | null;
+  clientId?: string | null;
+  createdBy?: string | null;
+  assignedTo?: string | null;
   title: string | null;
-  source: AnalyzeLeadIntakeInputDTO['source'];
-  status: null;
+  source: LeadSource;
+  status?: string | null;
   rawRfpContent: string;
   extractedMetadata: LeadIntakeExtractedMetadata;
-  bantScore: null;
-  bantDetails: null;
-  createdAt: null;
-  updatedAt: null;
+  bantScore?: number | null;
+  bantDetails?: Record<string, unknown> | null;
+  createdAt?: Date | string | null;
+  updatedAt?: Date | string | null;
 }
 
 export interface AnalyzeLeadIntakeOutputDTO {

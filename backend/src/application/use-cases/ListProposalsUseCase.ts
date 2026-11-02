@@ -3,6 +3,7 @@ import { Proposal } from '../../domain/entities/Proposal.js';
 
 export interface ListProposalsDTO {
   organizationId?: string;
+  leadId?: string;
   status?: string;
   search?: string;
   page?: number;
@@ -25,6 +26,7 @@ export class ListProposalsUseCase {
 
     const filter: ProposalFilterParams = {
       organizationId: dto.organizationId,
+      leadId: dto.leadId,
       status: dto.status,
       search: dto.search,
       limit,

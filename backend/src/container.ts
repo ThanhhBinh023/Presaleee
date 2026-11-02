@@ -17,6 +17,7 @@ import { UpdateProposalUseCase } from './application/use-cases/UpdateProposalUse
 import { UpdateProposalSheetUseCase } from './application/use-cases/UpdateProposalSheetUseCase.js';
 import { DeleteProposalUseCase } from './application/use-cases/DeleteProposalUseCase.js';
 import { ExportProposalToExcelUseCase } from './application/use-cases/ExportProposalToExcelUseCase.js';
+import { GenerateProposalFromLeadUseCase } from './application/use-cases/GenerateProposalFromLeadUseCase.js';
 
 import { AnalyzeLeadIntakeUseCase } from './application/use-cases/AnalyzeLeadIntakeUseCase.js';
 
@@ -52,6 +53,7 @@ export interface ServiceContainer {
   updateProposalSheetUseCase: UpdateProposalSheetUseCase;
   deleteProposalUseCase: DeleteProposalUseCase;
   exportProposalToExcelUseCase: ExportProposalToExcelUseCase;
+  generateProposalFromLeadUseCase: GenerateProposalFromLeadUseCase;
 
   // Lead Intake Use Cases
   analyzeLeadIntakeUseCase: AnalyzeLeadIntakeUseCase;
@@ -92,6 +94,12 @@ export function createContainer(): ServiceContainer {
   const updateProposalSheetUseCase = new UpdateProposalSheetUseCase(proposalRepository);
   const deleteProposalUseCase = new DeleteProposalUseCase(proposalRepository);
   const exportProposalToExcelUseCase = new ExportProposalToExcelUseCase(proposalRepository, excelExporterService);
+  const generateProposalFromLeadUseCase = new GenerateProposalFromLeadUseCase(
+    proposalRepository,
+    searchHybridRAGUseCase,
+    llmGateway,
+    dbPool
+  );
 
   const createMeetingUseCase = new CreateMeetingUseCase(meetingRepository);
   const inspectMeetingUseCase = new InspectMeetingUseCase(meetingRepository, llmGateway, dbPool);
@@ -113,7 +121,9 @@ export function createContainer(): ServiceContainer {
     updateProposalUseCase,
     updateProposalSheetUseCase,
     deleteProposalUseCase,
-    exportProposalToExcelUseCase
+    exportProposalToExcelUseCase,
+    generateProposalFromLeadUseCase,
+    proposalRepository
   );
 
   const leadIntakeController = new LeadIntakeController(analyzeLeadIntakeUseCase, dbPool, llmGateway);
@@ -146,6 +156,7 @@ export function createContainer(): ServiceContainer {
     updateProposalSheetUseCase,
     deleteProposalUseCase,
     exportProposalToExcelUseCase,
+    generateProposalFromLeadUseCase,
 
     analyzeLeadIntakeUseCase,
 

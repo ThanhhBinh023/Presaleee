@@ -58,7 +58,10 @@ export const DiscoveryMeetingsTab: React.FC = () => {
         setLoading(true);
         const leadList = await fetchLeads();
         setLeads(leadList);
-        if (leadList.length > 0) {
+        const activeLeadId = localStorage.getItem('presaleee_active_lead_id');
+        if (activeLeadId && leadList.some(l => l.id === activeLeadId)) {
+          setSelectedLeadId(activeLeadId);
+        } else if (leadList.length > 0) {
           setSelectedLeadId(leadList[0].id);
         }
       } catch (err) {

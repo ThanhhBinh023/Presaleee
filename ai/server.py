@@ -103,7 +103,7 @@ def generate_with_gemini(system_prompt: str, prompt: str, temperature: float = 0
         raise HTTPException(status_code=500, detail="GEMINI_API_KEY is not configured on AI Service.")
     
     combined_prompt = f"{system_prompt}\n\n{prompt}"
-    candidate_models = ["gemini-3.5-flash", "gemini-3.8-flash", "gemini-flash-latest", "gemini-3.5-flash-lite"]
+    candidate_models = ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-3.8-flash", "gemini-flash-latest"]
     
     last_err = None
     for model_name in candidate_models:

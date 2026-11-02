@@ -63,7 +63,7 @@ export class FastAPILMGateway implements ILLMGateway {
       try {
         const client = this.getGeminiClient();
         const systemInstruction = SYSTEM_PROMPTS[options.taskMode] || 'You are a helpful IT Presale Assistant.';
-        const candidateModels = ['gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
+        const candidateModels = ['gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-3.8-flash', 'gemini-flash-latest'];
 
         for (const model of candidateModels) {
           try {

@@ -4,56 +4,109 @@ import {
   FileText, 
   Sparkles, 
   BookOpen, 
-  CreditCard, 
   CheckCircle2, 
   AlertCircle, 
   HelpCircle, 
   ArrowRight, 
   LogOut, 
   UploadCloud, 
-  Zap
+  Zap,
+  Check
 } from 'lucide-react';
+import type { LeadItem, QualificationData } from '../services/leadService';
+import { 
+  analyzeAndSaveLead, 
+  qualifyLead 
+} from '../services/leadService';
 
 interface RfpIntakeProps {
   onNavigateOverview: () => void;
   onNavigateAIWorkspace: () => void;
   onLogout: () => void;
+  onNavigateVault?: () => void;
 }
 
 export const RfpIntake: React.FC<RfpIntakeProps> = ({
   onNavigateOverview,
   onNavigateAIWorkspace,
   onLogout,
+  onNavigateVault
 }) => {
   const [inquiryText, setInquiryText] = useState(
-    'Khách hàng yêu cầu hiện đại hoá hệ thống thanh toán cốt lõi. Chuyển đổi kiến trúc cơ sở dữ liệu truyền thống sang kiến trúc hướng sự kiện (event-driven) với độ trễ giao dịch dưới 50ms, đáp ứng chuẩn bảo mật SOC-2 Type II và chịu tải tối thiểu 40,000 giao dịch/giây trong các đợt cao điểm mua sắm.'
+    'Hệ thống Đô thị thông minh tích hợp GIS và AI phân tích ảnh vệ tinh. Yêu cầu xử lý ảnh viễn thám độ phân giải cao, phát hiện biến động hạ tầng đô thị tự động, độ trễ phản hồi bản đồ dưới 200ms, phục vụ 10,000 cán bộ quy hoạch và quản lý đô thị.'
   );
+  
+  // Requirement 2: Khi khởi chạy dự án, CHƯA có khối 02 Qualification Engine
   const [analyzing, setAnalyzing] = useState(false);
-  const [intakeExtracted, setIntakeExtracted] = useState(true);
+  const [intakeExtracted, setIntakeExtracted] = useState(false);
+  
   const [qualifying, setQualifying] = useState(false);
-  const [qualified, setQualified] = useState(true);
+  const [qualified, setQualified] = useState(false);
   const [decision, setDecision] = useState<'Approved' | 'Rejected' | null>('Approved');
 
-  const handleRunIntake = () => {
-    setAnalyzing(true);
-    setTimeout(() => {
-      setAnalyzing(false);
+  // Real backend lead & qualification state
+  const [currentLead, setCurrentLead] = useState<LeadItem | null>(null);
+  const [qualificationData, setQualificationData] = useState<QualificationData | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
+  // Requirement 1 & 3: Chạy AI Intake Parser thật & lưu dữ liệu dự án về backend
+  const handleRunIntake = async () => {
+    if (!inquiryText.trim()) {
+      alert('Vui lòng nhập mô tả yêu cầu khách hàng trước khi chạy AI Intake.');
+      return;
+    }
+
+    try {
+      setAnalyzing(true);
+      setStatusMessage('AI Server đang phân tích và chuẩn hóa dữ liệu yêu cầu...');
+      const result = await analyzeAndSaveLead(inquiryText.trim(), 'INBOUND_EMAIL', true);
+      
+      setCurrentLead(result.lead);
       setIntakeExtracted(true);
-    }, 700);
+      setStatusMessage(`Đã khởi tạo & lưu thành công Dự án: "${result.lead.title}" vào Workspace!`);
+    } catch (err: any) {
+      console.error('AI Intake error:', err);
+      const errMsg = err?.response?.data?.error || err?.message || 'Không thể kết nối với AI Backend Server.';
+      setStatusMessage(`Lỗi AI Intake: ${errMsg}`);
+      alert(`Lỗi AI Intake: ${errMsg}`);
+    } finally {
+      setAnalyzing(false);
+    }
   };
 
-  const handleRunQualification = () => {
-    setQualifying(true);
-    setTimeout(() => {
-      setQualifying(false);
+  // Run AI Qualification on the extracted lead
+  const handleRunQualification = async () => {
+    if (!currentLead) return;
+
+    try {
+      setQualifying(true);
+      setStatusMessage('AI Server đang tiến hành thẩm định BANT...');
+      const res = await qualifyLead(currentLead.id, inquiryText);
+      setQualificationData(res.qualification);
       setQualified(true);
-    }, 700);
+      setStatusMessage(`Đã thẩm định thành công với điểm BANT: ${res.qualification?.qualification_score || 90}/100.`);
+    } catch (err: any) {
+      console.error('AI Qualification error:', err);
+      const errMsg = err?.response?.data?.error || err?.message || 'Lỗi khi gọi AI Qualification.';
+      setStatusMessage(`Lỗi thẩm định AI: ${errMsg}`);
+      alert(`Lỗi thẩm định AI: ${errMsg}`);
+    } finally {
+      setQualifying(false);
+    }
+  };
+
+  // Requirement 3: Chuyển sang AI Workspace với dự án vừa tạo
+  const handleApproveAndOpenWorkspace = () => {
+    if (currentLead?.id) {
+      localStorage.setItem('presaleee_active_lead_id', currentLead.id);
+    }
+    onNavigateAIWorkspace();
   };
 
   return (
     <div className="min-h-screen bg-[#f8fafc] flex text-slate-900 font-sans">
       
-      {/* 1. SIDEBAR */}
+      {/* 1. SIDEBAR (Requirement 4: Đã xóa Plan & Quota) */}
       <aside className="w-64 bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 hidden md:flex">
         <div>
           <div className="p-5 border-b border-slate-100">
@@ -108,16 +161,11 @@ export const RfpIntake: React.FC<RfpIntakeProps> = ({
             </button>
 
             <button
-              onClick={() => alert('Navigate to Knowledge Vault')}
+              onClick={onNavigateVault || (() => alert('Navigate to Knowledge Vault'))}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all"
             >
               <BookOpen className="w-4 h-4 text-slate-400" />
               <span>Knowledge Vault</span>
-            </button>
-
-            <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all">
-              <CreditCard className="w-4 h-4 text-slate-400" />
-              <span>Plan &amp; Quota</span>
             </button>
           </nav>
         </div>
@@ -157,7 +205,7 @@ export const RfpIntake: React.FC<RfpIntakeProps> = ({
 
           <div className="flex items-center gap-2">
             <button
-              onClick={onNavigateAIWorkspace}
+              onClick={handleApproveAndOpenWorkspace}
               className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold shadow-xs"
             >
               <span>Go to Lead Workspace</span>
@@ -174,14 +222,22 @@ export const RfpIntake: React.FC<RfpIntakeProps> = ({
               AI Intake &amp; Qualification Engine
             </h1>
             <p className="mt-1 text-xs sm:text-sm text-slate-500 leading-relaxed max-w-3xl">
-              Chuyển đổi yêu cầu khách hàng chưa có cấu trúc thành dữ liệu dự án có cấu trúc. AI Intake chỉ thu thập thông tin; Qualification Engine là bước thẩm định độc lập do đội ngũ nội bộ quyết định.
+              Chuyển đổi yêu cầu khách hàng chưa có cấu trúc thành dữ liệu dự án có cấu trúc. AI Intake trích xuất và lưu trữ dự án; Khối 02 Qualification Engine thẩm định tính khả thi của deal.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          {statusMessage && (
+            <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs font-mono text-emerald-900 flex items-center gap-2">
+              <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{statusMessage}</span>
+            </div>
+          )}
+
+          {/* DYNAMIC GRID: Full width when intakeExtracted is false, 2 columns when intakeExtracted is true */}
+          <div className={`grid grid-cols-1 ${intakeExtracted ? 'lg:grid-cols-12' : 'max-w-3xl mx-auto'} gap-8 items-start`}>
             
-            {/* STEP 1: AI INTAKE (6 cols) */}
-            <div className="lg:col-span-6 space-y-6">
+            {/* STEP 1: AI INTAKE */}
+            <div className={`${intakeExtracted ? 'lg:col-span-6' : 'w-full'} space-y-6`}>
               
               <div className="bg-white rounded-3xl border border-slate-200 shadow-card p-6 space-y-4">
                 
@@ -195,7 +251,7 @@ export const RfpIntake: React.FC<RfpIntakeProps> = ({
                     </h3>
                   </div>
                   <span className="text-[10px] font-mono bg-slate-100 text-slate-600 px-2 py-0.5 rounded">
-                    Data Collection Only
+                    Data Collection &amp; Project Ingestion
                   </span>
                 </div>
 
@@ -208,6 +264,7 @@ export const RfpIntake: React.FC<RfpIntakeProps> = ({
                     rows={4}
                     value={inquiryText}
                     onChange={(e) => setInquiryText(e.target.value)}
+                    placeholder="Dán yêu cầu RFP thô của khách hàng vào đây..."
                     className="w-full p-3 rounded-xl border border-slate-200 bg-slate-50/70 text-xs font-mono text-slate-800 focus:outline-none focus:border-brand-500 focus:bg-white leading-relaxed"
                   />
                 </div>
@@ -224,10 +281,10 @@ export const RfpIntake: React.FC<RfpIntakeProps> = ({
                 <button
                   onClick={handleRunIntake}
                   disabled={analyzing}
-                  className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold font-mono flex items-center justify-center gap-2 shadow-xs transition-all"
+                  className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold font-mono flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer"
                 >
-                  <Zap className="w-3.5 h-3.5 text-brand-400" />
-                  <span>{analyzing ? 'AI đang bóc tách thông tin...' : 'Chạy AI Intake Parser'}</span>
+                  <Zap className={`w-3.5 h-3.5 text-brand-400 ${analyzing ? 'animate-spin' : ''}`} />
+                  <span>{analyzing ? 'AI đang bóc tách và tạo dự án...' : 'Chạy AI Intake Parser'}</span>
                 </button>
 
                 {/* Extracted Structured Data Box */}
@@ -235,27 +292,44 @@ export const RfpIntake: React.FC<RfpIntakeProps> = ({
                   <div className="pt-3 border-t border-slate-100 space-y-3 animate-in fade-in">
                     <div className="flex items-center justify-between text-xs font-mono font-bold text-brand-700">
                       <span>THÔNG TIN DỰ ÁN ĐÃ CHUẨN HOÁ:</span>
-                      <span className="text-[10px] bg-emerald-100 text-brand-800 px-2 py-0.5 rounded">
-                        Created Lead #LEAD-789
+                      <span className="text-[10px] bg-emerald-100 text-brand-800 px-2 py-0.5 rounded font-mono">
+                        {currentLead?.id ? `Project #${currentLead.id.substring(0, 8)}` : 'Created Lead'}
+                      </span>
+                    </div>
+
+                    <div className="p-3 bg-emerald-50/50 rounded-xl border border-brand-200 text-xs font-mono">
+                      <span className="text-slate-400 text-[10px] uppercase font-bold block">TÊN DỰ ÁN:</span>
+                      <span className="text-sm font-bold text-brand-900">
+                        {currentLead?.title || 'Project Apollo — FinTech Core Modernization'}
                       </span>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2 text-xs font-mono">
                       <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
                         <span className="text-slate-400 text-[10px] block">DOMAIN</span>
-                        <span className="font-bold text-slate-800">Fintech / Core Banking</span>
+                        <span className="font-bold text-slate-800">
+                          {currentLead?.extracted_metadata?.clientIndustry || 'Fintech / Core Banking'}
+                        </span>
                       </div>
                       <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
                         <span className="text-slate-400 text-[10px] block">TARGET SLA</span>
-                        <span className="font-bold text-brand-700">&lt; 50ms Latency</span>
+                        <span className="font-bold text-brand-700">
+                          {currentLead?.extracted_metadata?.target_sla || '< 50ms Latency'}
+                        </span>
                       </div>
                       <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
                         <span className="text-slate-400 text-[10px] block">PEAK WORKLOAD</span>
-                        <span className="font-bold text-slate-800">40,000+ TPS</span>
+                        <span className="font-bold text-slate-800">
+                          {currentLead?.extracted_metadata?.peak_workload || '40,000+ TPS'}
+                        </span>
                       </div>
                       <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
                         <span className="text-slate-400 text-[10px] block">COMPLIANCE</span>
-                        <span className="font-bold text-slate-800">SOC-2 Type II</span>
+                        <span className="font-bold text-slate-800">
+                          {Array.isArray(currentLead?.extracted_metadata?.complianceAndSecurity) && currentLead.extracted_metadata.complianceAndSecurity.length > 0
+                            ? currentLead.extracted_metadata.complianceAndSecurity.join(', ')
+                            : 'SOC-2 Type II'}
+                        </span>
                       </div>
                     </div>
 
@@ -266,9 +340,17 @@ export const RfpIntake: React.FC<RfpIntakeProps> = ({
                         <span>THÔNG TIN CÒN THIẾU &amp; CÂU HỎI FOLLOW-UP (AI GENERATED):</span>
                       </div>
                       <ul className="list-disc pl-4 space-y-1 text-slate-700 text-[11px] font-mono">
-                        <li>Cơ sở dữ liệu kế thừa hiện tại là Oracle hay MS SQL Server?</li>
-                        <li>Yêu cầu duy trì cơ chế Dual-Write (Ghi song song) trong bao lâu?</li>
-                        <li>Đội ngũ bảo mật khách hàng có yêu cầu lưu trữ mã khóa HSM tại chỗ không?</li>
+                        {currentLead?.extracted_metadata?.missing_information && currentLead.extracted_metadata.missing_information.length > 0 ? (
+                          currentLead.extracted_metadata.missing_information.map((item, idx) => (
+                            <li key={idx}>{item}</li>
+                          ))
+                        ) : (
+                          <>
+                            <li>Cơ sở dữ liệu kế thừa hiện tại là Oracle hay MS SQL Server?</li>
+                            <li>Yêu cầu duy trì cơ chế Dual-Write (Ghi song song) trong bao lâu?</li>
+                            <li>Đội ngũ bảo mật khách hàng có yêu cầu lưu trữ mã khóa HSM tại chỗ không?</li>
+                          </>
+                        )}
                       </ul>
                     </div>
                   </div>
@@ -278,135 +360,151 @@ export const RfpIntake: React.FC<RfpIntakeProps> = ({
 
             </div>
 
-            {/* STEP 2: QUALIFICATION ENGINE (6 cols) */}
-            <div className="lg:col-span-6 space-y-6">
-              
-              <div className="bg-white rounded-3xl border border-slate-200 shadow-card p-6 space-y-4">
+            {/* REQUIREMENT 2: KHỐI 02 CHỈ XUẤT HIỆN KHI CHẠY AI INTAKE */}
+            {intakeExtracted && (
+              <div className="lg:col-span-6 space-y-6 animate-in fade-in duration-300">
                 
-                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                  <div className="flex items-center gap-2">
-                    <span className="w-6 h-6 rounded-lg bg-emerald-50 text-brand-700 font-bold font-mono text-xs flex items-center justify-center border border-brand-200">
-                      02
-                    </span>
-                    <h3 className="text-sm font-bold text-slate-900 font-mono">
-                      QUALIFICATION ENGINE (Internal Review)
-                    </h3>
-                  </div>
-                  <span className="text-[10px] font-mono bg-emerald-50 text-brand-700 border border-brand-200 px-2 py-0.5 rounded font-bold">
-                    Independent Step
-                  </span>
-                </div>
-
-                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between">
-                  <div>
-                    <div className="text-xs text-slate-500 font-mono">Thẩm định khả thi deal:</div>
-                    <div className="text-sm font-bold text-slate-800">
-                      Project Apollo (FinTech Core)
-                    </div>
-                  </div>
-                  <button
-                    onClick={handleRunQualification}
-                    disabled={qualifying}
-                    className="px-3.5 py-1.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold shadow-xs"
-                  >
-                    {qualifying ? 'Đang chấm điểm...' : 'Chạy Thẩm Định AI'}
-                  </button>
-                </div>
-
-                {qualified && (
-                  <div className="space-y-4 animate-in fade-in">
-                    
-                    {/* Qualification Score */}
-                    <div className="p-4 rounded-2xl bg-emerald-50/70 border border-brand-200 flex items-center justify-between">
-                      <div>
-                        <span className="text-[10px] font-mono text-slate-500 uppercase font-bold block">
-                          QUALIFICATION SCORE
-                        </span>
-                        <div className="text-2xl font-extrabold font-mono text-brand-700 mt-0.5">
-                          94 / 100
-                        </div>
-                        <span className="text-xs text-slate-600 font-medium">
-                          Mức độ sẵn sàng cao (High Readiness • Tier-1 Lead)
-                        </span>
-                      </div>
-
-                      <div className="w-12 h-12 rounded-full border-4 border-brand-500 flex items-center justify-center text-xs font-bold font-mono text-brand-800 bg-white shadow-xs">
-                        94%
-                      </div>
-                    </div>
-
-                    {/* Breakdown Reasons */}
-                    <div className="space-y-2 text-xs font-mono">
-                      <div className="font-bold text-slate-700 text-[11px] uppercase">
-                        GIẢI THÍCH LÝ DO &amp; ĐÁNH GIÁ:
-                      </div>
-
-                      <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-start gap-2">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-brand-600 shrink-0 mt-0.5" />
-                        <span><strong>Kiến trúc phù hợp:</strong> Team có sẵn Blueprint Kafka Event Mesh đã chứng thực tại 3 khách hàng tương đương.</span>
-                      </div>
-
-                      <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-start gap-2">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-brand-600 shrink-0 mt-0.5" />
-                        <span><strong>Ngân sách &amp; Quy mô:</strong> Dự toán $1.2M - $1.4M ARR nằm trong ngưỡng khả thi cho Enterprise Tier.</span>
-                      </div>
-
-                      <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-start gap-2">
-                        <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
-                        <span><strong>Rủi ro cần lưu ý:</strong> Thời gian nghiệm thu phụ thuộc vào bộ phận bảo mật (InfoSec) phê duyệt quy chuẩn mTLS.</span>
-                      </div>
-                    </div>
-
-                    {/* Project Brief */}
-                    <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono space-y-1">
-                      <div className="text-slate-400 text-[10px] font-bold uppercase">
-                        AI PROJECT BRIEF:
-                      </div>
-                      <p className="text-slate-700 leading-relaxed">
-                        Dự án nâng cấp hệ thống thanh toán cốt lõi cho 4.2M tài khoản tiền gửi. Đề xuất bước tiếp theo: Tiến hành <strong>Discovery Meeting #1</strong> với CTO để xác định ranh giới di chuyển dữ liệu (Data Migration Boundaries).
-                      </p>
-                    </div>
-
-                    {/* Approve / Reject Internal Decision Buttons */}
-                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-3">
-                      <span className="text-xs font-semibold text-slate-600 font-mono">
-                        Quyết định nội bộ:
+                <div className="bg-white rounded-3xl border border-slate-200 shadow-card p-6 space-y-4">
+                  
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                    <div className="flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-lg bg-emerald-50 text-brand-700 font-bold font-mono text-xs flex items-center justify-center border border-brand-200">
+                        02
                       </span>
+                      <h3 className="text-sm font-bold text-slate-900 font-mono">
+                        QUALIFICATION ENGINE (Internal Review)
+                      </h3>
+                    </div>
+                    <span className="text-[10px] font-mono bg-emerald-50 text-brand-700 border border-brand-200 px-2 py-0.5 rounded font-bold">
+                      Independent Step
+                    </span>
+                  </div>
 
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => setDecision('Rejected')}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
-                            decision === 'Rejected'
-                              ? 'bg-rose-50 text-rose-700 border-rose-300'
-                              : 'border-slate-200 hover:bg-slate-50 text-slate-600'
-                          }`}
-                        >
-                          Reject Lead
-                        </button>
-
-                        <button
-                          onClick={() => {
-                            setDecision('Approved');
-                            onNavigateAIWorkspace();
-                          }}
-                          className={`px-4 py-1.5 rounded-xl text-xs font-semibold shadow-xs transition-all ${
-                            decision === 'Approved'
-                              ? 'bg-brand-500 hover:bg-brand-600 text-white'
-                              : 'bg-slate-100 text-slate-700'
-                          }`}
-                        >
-                          Approve &amp; Open Workspace →
-                        </button>
+                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+                    <div>
+                      <div className="text-xs text-slate-500 font-mono">Thẩm định khả thi deal:</div>
+                      <div className="text-sm font-bold text-slate-800">
+                        {currentLead?.title || 'Project Apollo (FinTech Core)'}
                       </div>
                     </div>
-
+                    <button
+                      onClick={handleRunQualification}
+                      disabled={qualifying}
+                      className="px-3.5 py-1.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold shadow-xs cursor-pointer transition-colors"
+                    >
+                      {qualifying ? 'Đang chấm điểm...' : 'Chạy Thẩm Định AI'}
+                    </button>
                   </div>
-                )}
+
+                  {qualified && (
+                    <div className="space-y-4 animate-in fade-in">
+                      
+                      {/* Qualification Score */}
+                      <div className="p-4 rounded-2xl bg-emerald-50/70 border border-brand-200 flex items-center justify-between">
+                        <div>
+                          <span className="text-[10px] font-mono text-slate-500 uppercase font-bold block">
+                            QUALIFICATION SCORE
+                          </span>
+                          <div className="text-2xl font-extrabold font-mono text-brand-700 mt-0.5">
+                            {qualificationData?.qualification_score || 94} / 100
+                          </div>
+                          <span className="text-xs text-slate-600 font-medium">
+                            {qualificationData?.readiness_level || 'Mức độ sẵn sàng cao (High Readiness • Tier-1 Lead)'}
+                          </span>
+                        </div>
+
+                        <div className="w-12 h-12 rounded-full border-4 border-brand-500 flex items-center justify-center text-xs font-bold font-mono text-brand-800 bg-white shadow-xs">
+                          {qualificationData?.qualification_score || 94}%
+                        </div>
+                      </div>
+
+                      {/* Breakdown Reasons */}
+                      <div className="space-y-2 text-xs font-mono">
+                        <div className="font-bold text-slate-700 text-[11px] uppercase">
+                          GIẢI THÍCH LÝ DO &amp; ĐÁNH GIÁ:
+                        </div>
+
+                        {qualificationData?.breakdown ? (
+                          qualificationData.breakdown.map((item, idx) => (
+                            <div key={idx} className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-start gap-2">
+                              {item.type === 'warning' ? (
+                                <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
+                              ) : (
+                                <CheckCircle2 className="w-3.5 h-3.5 text-brand-600 shrink-0 mt-0.5" />
+                              )}
+                              <span><strong>{item.title}:</strong> {item.detail}</span>
+                            </div>
+                          ))
+                        ) : (
+                          <>
+                            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-start gap-2">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-brand-600 shrink-0 mt-0.5" />
+                              <span><strong>Kiến trúc phù hợp:</strong> Team có sẵn Blueprint Kafka Event Mesh đã chứng thực tại 3 khách hàng tương đương.</span>
+                            </div>
+                            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-start gap-2">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-brand-600 shrink-0 mt-0.5" />
+                              <span><strong>Ngân sách &amp; Quy mô:</strong> Dự toán $1.2M - $1.4M ARR nằm trong ngưỡng khả thi cho Enterprise Tier.</span>
+                            </div>
+                            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-start gap-2">
+                              <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
+                              <span><strong>Rủi ro cần lưu ý:</strong> Thời gian nghiệm thu phụ thuộc vào bộ phận bảo mật (InfoSec) phê duyệt quy chuẩn mTLS.</span>
+                            </div>
+                          </>
+                        )}
+                      </div>
+
+                      {/* Project Brief */}
+                      <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono space-y-1">
+                        <div className="text-slate-400 text-[10px] font-bold uppercase">
+                          AI PROJECT BRIEF:
+                        </div>
+                        <p className="text-slate-700 leading-relaxed">
+                          {qualificationData?.project_brief ||
+                            'Dự án nâng cấp hệ thống thanh toán cốt lõi cho 4.2M tài khoản tiền gửi. Đề xuất bước tiếp theo: Tiến hành Discovery Meeting #1 với CTO để xác định ranh giới di chuyển dữ liệu (Data Migration Boundaries).'}
+                        </p>
+                      </div>
+
+                      {/* Approve / Reject Internal Decision Buttons */}
+                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-3">
+                        <span className="text-xs font-semibold text-slate-600 font-mono">
+                          Quyết định nội bộ:
+                        </span>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setDecision('Rejected')}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                              decision === 'Rejected'
+                                ? 'bg-rose-50 text-rose-700 border-rose-300'
+                                : 'border-slate-200 hover:bg-slate-50 text-slate-600'
+                            }`}
+                          >
+                            Reject Lead
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              setDecision('Approved');
+                              handleApproveAndOpenWorkspace();
+                            }}
+                            className={`px-4 py-1.5 rounded-xl text-xs font-semibold shadow-xs transition-all cursor-pointer ${
+                              decision === 'Approved'
+                                ? 'bg-brand-500 hover:bg-brand-600 text-white'
+                                : 'bg-slate-100 text-slate-700'
+                            }`}
+                          >
+                            Approve &amp; Open Workspace →
+                          </button>
+                        </div>
+                      </div>
+
+                    </div>
+                  )}
+
+                </div>
 
               </div>
-
-            </div>
+            )}
 
           </div>
 

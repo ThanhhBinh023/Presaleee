@@ -19,8 +19,7 @@ export function errorHandler(
   console.error('Unhandled Server Error:', err);
   res.status(500).json({
     success: false,
-    error: 'Internal server error occurred.',
+    error: err.message || 'Internal server error occurred.',
     statusCode: 500
   });
 }
-

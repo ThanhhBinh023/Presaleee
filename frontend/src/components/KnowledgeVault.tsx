@@ -3,9 +3,8 @@ import {
   LayoutGrid, 
   FileText, 
   Sparkles, 
-  BookOpen, 
-  CreditCard, 
-  Search, 
+  BookOpen,
+Search, 
   Plus, 
   Send, 
   Bot, 
@@ -199,10 +198,7 @@ export const KnowledgeVault: React.FC<KnowledgeVaultProps> = ({
               </span>
             </button>
 
-            <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all">
-              <CreditCard className="w-4 h-4 text-slate-400" />
-              <span>Plan &amp; Quota</span>
-            </button>
+            
           </nav>
         </div>
 

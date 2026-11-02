@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import type { LeadItem } from '../services/leadService';
+import { fetchLeads } from '../services/leadService';
 import { 
   LayoutGrid, 
   FileText, 
@@ -29,6 +31,7 @@ import {
   HelpCircle
 } from 'lucide-react';
 import { ClientPortalModal } from './ClientPortalModal';
+import { DiscoveryMeetingsTab } from './DiscoveryMeetingsTab';
 
 interface AIWorkspaceProps {
   onNavigateOverview: () => void;
@@ -43,6 +46,30 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
   onNavigateRfps,
   onNavigateVault
 }) => {
+  // Multi-project support (Requirement 3)
+  const [projects, setProjects] = useState<LeadItem[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
+
+  useEffect(() => {
+    async function loadProjects() {
+      try {
+        const list = await fetchLeads();
+        setProjects(list);
+        const savedLeadId = localStorage.getItem('presaleee_active_lead_id');
+        if (savedLeadId && list.some(p => p.id === savedLeadId)) {
+          setSelectedProjectId(savedLeadId);
+        } else if (list.length > 0) {
+          setSelectedProjectId(list[0].id);
+        }
+      } catch (err) {
+        console.error('Failed to load projects:', err);
+      }
+    }
+    loadProjects();
+  }, []);
+
+  const selectedProject = projects.find(p => p.id === selectedProjectId) || projects[0] || null;
+
   const [activeTab, setActiveTab] = useState<'Rich Text' | 'Markdown' | 'Diff View'>('Rich Text');
   const [activeSubnav, setActiveSubnav] = useState('Proposal Builder v2.4');
   const [suggestionInserted, setSuggestionInserted] = useState(false);
@@ -54,9 +81,6 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
   // Client Portal preview modal
   const [portalModalOpen, setPortalModalOpen] = useState(false);
 
-  // Discovery Meeting state (PDF Page 2: Open -> Locked -> Inspect -> Reopen)
-  const [meetingLifecycle, setMeetingLifecycle] = useState<'Locked' | 'Inspected' | 'Open'>('Inspected');
-  const [selectedMeeting, setSelectedMeeting] = useState(2);
 
   // Email copy state
   const [emailCopied, setEmailCopied] = useState(false);
@@ -142,10 +166,7 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
               <span>Knowledge Vault</span>
             </button>
 
-            <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all">
-              <CreditCard className="w-4 h-4 text-slate-400" />
-              <span>Plan &amp; Quota</span>
-            </button>
+            
           </nav>
         </div>
 
@@ -276,15 +297,15 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
 
               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 text-brand-700 border border-brand-200">
                 <span className="w-1.5 h-1.5 rounded-full bg-brand-500"></span>
-                Qualification Score: <strong>94/100</strong>
+                Qualification Score: <strong>{selectedProject?.extracted_metadata?.qualification?.qualification_score || 88}/100</strong>
               </span>
 
               <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                Est. Value: <strong>$1,200,000 ARR</strong>
+                Est. Value: <strong>{selectedProject?.extracted_metadata?.budgetUsd ? `$${selectedProject.extracted_metadata.budgetUsd.toLocaleString()} USD` : '$150,000 USD'}</strong>
               </span>
 
               <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                Target Timeline: <strong>Q3 2025 Go-Live</strong>
+                Target Timeline: <strong>{selectedProject?.extracted_metadata?.timelineWeeks ? `${selectedProject.extracted_metadata.timelineWeeks} Weeks` : '20 Weeks'}</strong>
               </span>
             </div>
 
@@ -292,10 +313,10 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 pt-1">
               <div>
                 <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-                  Project Apollo — FinTech Core Modernization
+                  {selectedProject?.title || 'Dự án AI Presale Workspace'}
                 </h1>
                 <p className="mt-1 text-xs sm:text-sm text-slate-500 max-w-3xl leading-relaxed">
-                  High-throughput distributed ledger migration, zero-downtime event streaming pipeline, and sovereign compliance envelope for 4.2M retail deposit accounts.
+                  {selectedProject?.raw_rfp_content || selectedProject?.extracted_metadata?.businessGoal || 'Chọn hoặc nhập yêu cầu RFP tại khối AI Intake để phân tích dự án.'}
                 </p>
               </div>
 
@@ -371,11 +392,11 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                       Lead Intake Extract &amp; Qualification Assessment
                     </h2>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      Dữ liệu từ AI Intake và kết quả chạy Qualification Engine cho Project Apollo.
+                      Dữ liệu từ AI Intake và kết quả chạy Qualification Engine cho {selectedProject?.title || 'dự án'}.
                     </p>
                   </div>
                   <span className="px-3 py-1 rounded-full text-xs font-mono font-bold bg-emerald-50 text-brand-700 border border-brand-200">
-                    Lead Status: Approved
+                    Lead Status: {selectedProject?.status || 'Approved'}
                   </span>
                 </div>
 
@@ -385,18 +406,34 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                     <h3 className="text-sm font-bold text-slate-900 font-mono">
                       Raw Client Intake Extract
                     </h3>
-                    <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 font-mono text-xs text-slate-700 leading-relaxed italic">
-                      "We need to migrate our legacy payment ledger to an event-driven architecture running on Kubernetes with sub-50ms transaction finality and SOC2 compliance."
+                    <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 font-mono text-xs text-slate-700 leading-relaxed italic max-h-48 overflow-y-auto whitespace-pre-wrap">
+                      "{selectedProject?.raw_rfp_content || 'We need to migrate our legacy payment ledger to an event-driven architecture running on Kubernetes with sub-50ms transaction finality and SOC2 compliance.'}"
                     </div>
 
                     <div className="grid grid-cols-2 gap-3 text-xs font-mono">
                       <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                        <span className="text-slate-400 text-[10px] block">CLIENT TIER</span>
-                        <span className="font-bold text-slate-800">Enterprise Core</span>
+                        <span className="text-slate-400 text-[10px] block">CLIENT TIER / DOMAIN</span>
+                        <span className="font-bold text-slate-800">
+                          {selectedProject?.extracted_metadata?.clientIndustry || 'Enterprise Core'}
+                        </span>
                       </div>
                       <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
                         <span className="text-slate-400 text-[10px] block">EST. VALUE</span>
-                        <span className="font-bold text-brand-700">$1.2M ARR</span>
+                        <span className="font-bold text-brand-700">
+                          ${(selectedProject?.extracted_metadata?.budgetUsd || 1200000).toLocaleString()} ARR
+                        </span>
+                      </div>
+                      <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                        <span className="text-slate-400 text-[10px] block">TARGET SLA</span>
+                        <span className="font-bold text-slate-800">
+                          {selectedProject?.extracted_metadata?.target_sla || '< 50ms Latency'}
+                        </span>
+                      </div>
+                      <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                        <span className="text-slate-400 text-[10px] block">PEAK WORKLOAD</span>
+                        <span className="font-bold text-brand-700">
+                          {selectedProject?.extracted_metadata?.peak_workload || '40,000+ TPS'}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -408,17 +445,22 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                     </h3>
                     <div className="p-4 rounded-2xl bg-emerald-50/70 border border-brand-200 space-y-2.5">
                       <div className="flex justify-between items-center text-xs font-mono">
-                        <span className="font-bold text-brand-900">Score: 94 / 100</span>
-                        <span className="text-brand-700">Readiness: High</span>
+                        <span className="font-bold text-brand-900">
+                          Score: {selectedProject?.extracted_metadata?.qualification?.qualification_score || 94} / 100
+                        </span>
+                        <span className="text-brand-700">
+                          {selectedProject?.extracted_metadata?.qualification?.readiness_level || 'Readiness: High'}
+                        </span>
                       </div>
                       <p className="text-xs text-slate-700 leading-relaxed">
-                        Đội ngũ đã phê duyệt tiếp nhận (Approve). Rủi ro chính là thống nhất lộ trình kiểm thử Dual-Write trong 6 tháng đầu.
+                        {selectedProject?.extracted_metadata?.qualification?.project_brief ||
+                          'Đội ngũ đã phê duyệt tiếp nhận (Approve). Rủi ro chính là thống nhất lộ trình kiểm thử Dual-Write trong 6 tháng đầu.'}
                       </p>
                     </div>
 
                     <button
                       onClick={() => setActiveSubnav('Discovery Meetings')}
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs"
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs cursor-pointer"
                     >
                       <span>Proceed to Discovery Meetings</span>
                       <ArrowRight className="w-3.5 h-3.5" />
@@ -431,147 +473,9 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
 
           {/* TAB 2: DISCOVERY MEETINGS (PDF Page 2) */}
           {activeSubnav === 'Discovery Meetings' && (
-            <div className="space-y-6">
-              <div className="bg-white rounded-3xl border border-slate-200 shadow-card p-6 space-y-6">
-                
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
-                  <div>
-                    <h2 className="text-xl font-bold text-slate-900">
-                      Discovery Meeting Management
-                    </h2>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Lifecycle: Open → Locked → Inspect → Reopen. AI sử dụng toàn bộ lịch sử để các buổi tiếp theo đi sâu hơn.
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold shadow-xs">
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>New Discovery Meeting</span>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                  
-                  {/* Left: Meeting list */}
-                  <div className="lg:col-span-4 space-y-3">
-                    <div className="text-[11px] font-mono font-bold text-slate-400 uppercase">
-                      LỊCH SỬ CÁC BUỔI DISCOVERY:
-                    </div>
-
-                    {[
-                      { id: 1, title: 'Meeting #1: Initial Business Scope', date: 'Sept 14', status: 'Locked' },
-                      { id: 2, title: 'Meeting #2: Cloud Architecture & Compliance', date: 'Sept 19', status: 'Inspected' },
-                      { id: 3, title: 'Meeting #3: Migration Risk & Dual-Write', date: 'Sept 24', status: 'Inspected' },
-                    ].map((m) => (
-                      <div
-                        key={m.id}
-                        onClick={() => setSelectedMeeting(m.id)}
-                        className={`p-3.5 rounded-2xl border cursor-pointer transition-all ${
-                          selectedMeeting === m.id
-                            ? 'bg-emerald-50/70 border-brand-300 shadow-xs'
-                            : 'bg-slate-50/70 border-slate-200 hover:bg-slate-50'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between text-xs font-bold text-slate-900 font-mono mb-1">
-                          <span>{m.title}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-[11px] font-mono text-slate-500">
-                          <span>{m.date}</span>
-                          <span className="px-2 py-0.2 rounded bg-white border border-slate-200 text-brand-700 font-semibold">
-                            {m.status}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Right: Selected Meeting Deep Dive & AI Inspect */}
-                  <div className="lg:col-span-8 p-5 rounded-2xl bg-slate-50/80 border border-slate-200 space-y-5">
-                    
-                    <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-                      <div>
-                        <h3 className="text-sm font-bold text-slate-900 font-mono">
-                          Meeting #{selectedMeeting} // Transcript &amp; Audio Inspect
-                        </h3>
-                        <span className="text-[11px] font-mono text-slate-500">
-                          Recorded 48m 12s • CTO &amp; Lead Systems Architect
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <span className="px-2.5 py-1 rounded-full text-xs font-mono font-bold bg-emerald-100 text-brand-800">
-                          Lifecycle: {meetingLifecycle}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Audio Transcript Snippet */}
-                    <div className="p-4 rounded-xl bg-white border border-slate-200 space-y-2">
-                      <div className="text-[11px] font-mono font-bold text-brand-700">
-                        CTO [Prospect]:
-                      </div>
-                      <p className="text-xs sm:text-sm font-mono text-slate-700 italic">
-                        "Our primary hurdle is zero-downtime database replication during peak retail traffic. Existing database must stay live during phase 1 dual-write validation."
-                      </p>
-                    </div>
-
-                    {/* AI Inspected Output: Suggested Follow-up Questions & Discussion Topics */}
-                    <div className="space-y-3">
-                      <div className="text-xs font-bold text-brand-700 font-mono flex items-center gap-1.5">
-                        <Sparkles className="w-4 h-4 text-brand-600" />
-                        <span>AI INSPECT: SUGGESTED FOLLOW-UP QUESTIONS (DỰA TRÊN LỊCH SỬ DISCOVERY)</span>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-mono">
-                        <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
-                          <span className="font-bold text-slate-800 block">Q1. CDC Replication Strategy:</span>
-                          <span className="text-slate-600">
-                            Cần xác định băng thông dedicated VPC peering cho cụm Debezium CDC để tránh nghẽn mạch giờ cao điểm.
-                          </span>
-                        </div>
-
-                        <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
-                          <span className="font-bold text-slate-800 block">Q2. InfoSec Tenancy Mandate:</span>
-                          <span className="text-slate-600">
-                            Hỏi thêm Security VP về yêu cầu phân vùng tenancy cô lập hoàn toàn hay chấp nhận logic namespace isolation.
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Meeting Lifecycle Controls */}
-                    <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-xs">
-                      <span className="text-slate-500 font-mono">Lifecycle Actions:</span>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => setMeetingLifecycle('Open')}
-                          className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 font-mono text-slate-700"
-                        >
-                          Reopen Meeting
-                        </button>
-                        <button
-                          onClick={() => {
-                            setMeetingLifecycle('Inspected');
-                            alert('AI re-inspected discovery context and updated discussion topics');
-                          }}
-                          className="px-3 py-1.5 rounded-lg bg-brand-500 hover:bg-brand-600 text-white font-mono font-semibold"
-                        >
-                          Re-run AI Inspect
-                        </button>
-                      </div>
-                    </div>
-
-                  </div>
-
-                </div>
-
-              </div>
-            </div>
+            <DiscoveryMeetingsTab />
           )}
 
-          {/* TAB 3: TECHNICAL SESSIONS (PDF Page 3) */}
           {activeSubnav === 'Technical Sessions' && (
             <div className="space-y-6">
               <div className="bg-white rounded-3xl border border-slate-200 shadow-card p-6 space-y-6">

@@ -1,6 +1,7 @@
 import { dbPool } from './infrastructure/database/connection.js';
 import { PostgresKnowledgeRepository } from './infrastructure/database/repositories/PostgresKnowledgeRepository.js';
 import { PostgresProposalRepository } from './infrastructure/database/repositories/PostgresProposalRepository.js';
+import { PostgresMeetingRepository } from './infrastructure/database/repositories/PostgresMeetingRepository.js';
 import { GeminiEmbeddingGateway } from './infrastructure/ai/GeminiEmbeddingGateway.js';
 import { FastAPILMGateway } from './infrastructure/ai/FastAPILMGateway.js';
 import { ExcelProposalExporterService } from './infrastructure/services/ExcelProposalExporterService.js';
@@ -17,14 +18,23 @@ import { UpdateProposalSheetUseCase } from './application/use-cases/UpdatePropos
 import { DeleteProposalUseCase } from './application/use-cases/DeleteProposalUseCase.js';
 import { ExportProposalToExcelUseCase } from './application/use-cases/ExportProposalToExcelUseCase.js';
 
+import { AnalyzeLeadIntakeUseCase } from './application/use-cases/AnalyzeLeadIntakeUseCase.js';
+
+import { CreateMeetingUseCase } from './application/use-cases/CreateMeetingUseCase.js';
+import { InspectMeetingUseCase } from './application/use-cases/InspectMeetingUseCase.js';
+import { UpdateMeetingLifecycleUseCase } from './application/use-cases/UpdateMeetingLifecycleUseCase.js';
+import { ListMeetingsByLeadUseCase } from './application/use-cases/ListMeetingsByLeadUseCase.js';
+import { GetMeetingByIdUseCase } from './application/use-cases/GetMeetingByIdUseCase.js';
+
 import { RAGController } from './presentation/controllers/RAGController.js';
 import { ProposalController } from './presentation/controllers/ProposalController.js';
 import { LeadIntakeController } from './presentation/controllers/LeadIntakeController.js';
-import { AnalyzeLeadIntakeUseCase } from './application/use-cases/AnalyzeLeadIntakeUseCase.js';
+import { MeetingController } from './presentation/controllers/MeetingController.js';
 
 export interface ServiceContainer {
   knowledgeRepository: PostgresKnowledgeRepository;
   proposalRepository: PostgresProposalRepository;
+  meetingRepository: PostgresMeetingRepository;
   embeddingGateway: GeminiEmbeddingGateway;
   llmGateway: FastAPILMGateway;
   excelExporterService: ExcelProposalExporterService;
@@ -43,16 +53,28 @@ export interface ServiceContainer {
   deleteProposalUseCase: DeleteProposalUseCase;
   exportProposalToExcelUseCase: ExportProposalToExcelUseCase;
 
+  // Lead Intake Use Cases
+  analyzeLeadIntakeUseCase: AnalyzeLeadIntakeUseCase;
+
+  // Meeting Use Cases
+  createMeetingUseCase: CreateMeetingUseCase;
+  inspectMeetingUseCase: InspectMeetingUseCase;
+  updateMeetingLifecycleUseCase: UpdateMeetingLifecycleUseCase;
+  listMeetingsByLeadUseCase: ListMeetingsByLeadUseCase;
+  getMeetingByIdUseCase: GetMeetingByIdUseCase;
+
   // Presentation Controllers
   ragController: RAGController;
   proposalController: ProposalController;
   leadIntakeController: LeadIntakeController;
+  meetingController: MeetingController;
 }
 
 export function createContainer(): ServiceContainer {
   // 1. Infrastructure layer
   const knowledgeRepository = new PostgresKnowledgeRepository(dbPool);
   const proposalRepository = new PostgresProposalRepository(dbPool);
+  const meetingRepository = new PostgresMeetingRepository(dbPool);
   const embeddingGateway = new GeminiEmbeddingGateway();
   const llmGateway = new FastAPILMGateway();
   const excelExporterService = new ExcelProposalExporterService();
@@ -71,6 +93,12 @@ export function createContainer(): ServiceContainer {
   const deleteProposalUseCase = new DeleteProposalUseCase(proposalRepository);
   const exportProposalToExcelUseCase = new ExportProposalToExcelUseCase(proposalRepository, excelExporterService);
 
+  const createMeetingUseCase = new CreateMeetingUseCase(meetingRepository);
+  const inspectMeetingUseCase = new InspectMeetingUseCase(meetingRepository, llmGateway, dbPool);
+  const updateMeetingLifecycleUseCase = new UpdateMeetingLifecycleUseCase(meetingRepository);
+  const listMeetingsByLeadUseCase = new ListMeetingsByLeadUseCase(meetingRepository);
+  const getMeetingByIdUseCase = new GetMeetingByIdUseCase(meetingRepository);
+
   // 3. Presentation layer (Controllers)
   const ragController = new RAGController(
     searchHybridRAGUseCase,
@@ -87,11 +115,22 @@ export function createContainer(): ServiceContainer {
     deleteProposalUseCase,
     exportProposalToExcelUseCase
   );
-  const leadIntakeController = new LeadIntakeController(analyzeLeadIntakeUseCase);
+
+  const leadIntakeController = new LeadIntakeController(analyzeLeadIntakeUseCase, dbPool, llmGateway);
+
+  const meetingController = new MeetingController(
+    createMeetingUseCase,
+    inspectMeetingUseCase,
+    updateMeetingLifecycleUseCase,
+    listMeetingsByLeadUseCase,
+    getMeetingByIdUseCase,
+    meetingRepository
+  );
 
   return {
     knowledgeRepository,
     proposalRepository,
+    meetingRepository,
     embeddingGateway,
     llmGateway,
     excelExporterService,
@@ -108,9 +147,18 @@ export function createContainer(): ServiceContainer {
     deleteProposalUseCase,
     exportProposalToExcelUseCase,
 
+    analyzeLeadIntakeUseCase,
+
+    createMeetingUseCase,
+    inspectMeetingUseCase,
+    updateMeetingLifecycleUseCase,
+    listMeetingsByLeadUseCase,
+    getMeetingByIdUseCase,
+
     ragController,
     proposalController,
-    leadIntakeController
+    leadIntakeController,
+    meetingController
   };
 }
 

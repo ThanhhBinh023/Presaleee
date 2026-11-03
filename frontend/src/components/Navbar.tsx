@@ -3,10 +3,13 @@ import { ArrowRight, Menu, X } from 'lucide-react';
 
 interface NavbarProps {
   onSignInClick?: () => void;
+  onOpenWorkspace?: () => void;
+  userName?: string | null;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ onSignInClick }) => {
+export const Navbar: React.FC<NavbarProps> = ({ onSignInClick, onOpenWorkspace, userName }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const initials = (userName || 'SA').split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
 
   return (
     <header className="sticky top-0 z-50 backdrop-blur-md bg-white/85 border-b border-slate-200/70 transition-all">
@@ -50,14 +53,19 @@ export const Navbar: React.FC<NavbarProps> = ({ onSignInClick }) => {
 
         {/* Right CTA Actions */}
         <div className="hidden sm:flex items-center gap-4">
-          <button
+                    <button
             onClick={() => {
-              if (onSignInClick) onSignInClick();
-              else window.location.hash = '#signin';
+              if (userName) {
+                if (onOpenWorkspace) onOpenWorkspace();
+              } else if (onSignInClick) {
+                onSignInClick();
+              } else {
+                window.location.hash = '#signin';
+              }
             }}
             className="text-sm font-semibold text-slate-700 hover:text-slate-900 transition-colors px-2 py-1"
           >
-            Sign in
+            {userName ? 'Dashboard' : 'Sign in'}
           </button>
           <a
             href="#contact"
@@ -68,18 +76,26 @@ export const Navbar: React.FC<NavbarProps> = ({ onSignInClick }) => {
           </a>
 
           {/* User Avatar preview */}
-          <div className="w-8 h-8 rounded-full border border-slate-300 overflow-hidden bg-slate-100 flex items-center justify-center text-xs font-medium text-slate-600">
-            <img
-              src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=96&h=96&auto=format&fit=crop&crop=faces"
-              alt="User Avatar"
-              className="w-full h-full object-cover"
-              onError={(e) => {
-                // fallback if network is restricted
-                e.currentTarget.style.display = 'none';
-              }}
-            />
-            <span className="text-slate-700 font-semibold">SA</span>
-          </div>
+                    {userName ? (
+            <div
+              title={userName}
+              className="w-8 h-8 rounded-full bg-brand-500 text-white text-xs font-semibold flex items-center justify-center shrink-0"
+            >
+              {initials}
+            </div>
+          ) : (
+            <div className="w-8 h-8 rounded-full border border-slate-300 overflow-hidden bg-slate-100 flex items-center justify-center text-xs font-medium text-slate-600">
+              <img
+                src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=96&h=96&auto=format&fit=crop&crop=faces"
+                alt="User Avatar"
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                }}
+              />
+              <span className="text-slate-700 font-semibold">SA</span>
+            </div>
+          )}
         </div>
 
         {/* Mobile menu trigger button */}
@@ -126,15 +142,16 @@ export const Navbar: React.FC<NavbarProps> = ({ onSignInClick }) => {
             Pricing
           </a>
           <div className="pt-4 border-t border-slate-100 flex flex-col gap-2">
-            <button
+                        <button
               onClick={() => {
                 setMobileMenuOpen(false);
-                if (onSignInClick) onSignInClick();
+                if (userName && onOpenWorkspace) onOpenWorkspace();
+                else if (onSignInClick) onSignInClick();
                 else window.location.hash = '#signin';
               }}
               className="w-full text-center py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 rounded-lg"
             >
-              Sign in
+              {userName ? 'Dashboard' : 'Sign in'}
             </button>
             <a
               href="#contact"

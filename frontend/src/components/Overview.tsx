@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useAuth } from '../hooks/useAuth';
 import { 
   LayoutGrid, 
   FileText, 
@@ -43,6 +44,8 @@ export const Overview: React.FC<OverviewProps> = ({
   const [recommendationDismissed, setRecommendationDismissed] = useState(false);
   const [synthesized, setSynthesized] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const { user } = useAuth();
+  const initials = (user?.fullName || 'SE').split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
 
   // 6 Pipeline stages
   const pipelineStages = [
@@ -263,13 +266,13 @@ export const Overview: React.FC<OverviewProps> = ({
         {/* User Profile & Logout at Bottom of Sidebar */}
         <div className="p-3 border-t border-slate-100">
           <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-200">
-            <div className="flex items-center gap-2.5 overflow-hidden">
-              <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-700 font-bold flex items-center justify-center text-xs shrink-0">
-                SE
+                        <div className="flex items-center gap-2.5 overflow-hidden">
+              <div className="w-8 h-8 rounded-full bg-brand-500 text-white font-bold flex items-center justify-center text-xs shrink-0">
+                {initials}
               </div>
               <div className="truncate">
-                <div className="text-xs font-bold text-slate-800 truncate">SE Team Lead</div>
-                <div className="text-[11px] font-mono text-slate-400 truncate">sales-eng@org</div>
+                <div className="text-xs font-bold text-slate-800 truncate">{user?.fullName || 'No session'}</div>
+                <div className="text-[11px] font-mono text-slate-400 truncate">{user?.email || 'refresh to sign in'}</div>
               </div>
             </div>
 
@@ -296,7 +299,7 @@ export const Overview: React.FC<OverviewProps> = ({
             <span className="text-slate-400">Workspace</span>
             <ChevronRight className="w-3.5 h-3.5 text-slate-300" />
             <span className="font-bold text-brand-700 bg-emerald-50 px-2 py-0.5 rounded border border-brand-200">
-              Presaleee Workspace
+              {user?.role.replace(/_/g, ' ') || 'Workspace'}
             </span>
           </div>
 

@@ -3,10 +3,9 @@ import { ExternalServiceError, ValidationError } from '../../domain/errors/AppEr
 import {
   AnalyzeLeadIntakeInputDTO,
   AnalyzeLeadIntakeOutputDTO,
-  LEAD_SOURCES,
-  LeadIntakeExtractedMetadata,
-  LeadSource
+  LeadIntakeExtractedMetadata
 } from '../dtos/AnalyzeLeadIntakeDTO.js';
+import { parseLeadSource } from '../dtos/LeadDTO.js';
 
 const MAX_RFP_CHARACTERS = 50_000;
 
@@ -126,10 +125,7 @@ export class AnalyzeLeadIntakeUseCase {
       throw new ValidationError(`RFP content must not exceed ${MAX_RFP_CHARACTERS} characters.`);
     }
 
-    const source: LeadSource = input.source || 'MANUAL';
-    if (!LEAD_SOURCES.includes(source)) {
-      throw new ValidationError(`Source must be one of ${LEAD_SOURCES.join(', ')}.`);
-    }
+    const source = parseLeadSource(input.source || 'MANUAL');
 
     const prompt = [
       'Extract project and client requirements from the source text below.',

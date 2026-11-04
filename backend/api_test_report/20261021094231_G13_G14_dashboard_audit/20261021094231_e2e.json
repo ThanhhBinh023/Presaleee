@@ -1,0 +1,254 @@
+{
+  "runId": "20261021094231",
+  "suite": "G13 Dashboard + G14 Audit Logs",
+  "baseUrl": "http://127.0.0.1:5099",
+  "startedAt": "2026-10-21T09:42:31.147Z",
+  "finishedAt": "2026-10-21T09:43:06.064Z",
+  "durationMs": 34917,
+  "totals": {
+    "cases": 24,
+    "PASS": 23,
+    "FAIL": 1
+  },
+  "trackedTestData": {
+    "userIds": [
+      "ae795a85-497b-48f6-9bbb-90c04b3443c3",
+      "81873ec6-48f4-4a03-a830-f8663c4c93a7",
+      "cad09dc5-7cbf-4438-a8d9-1035f48d198f",
+      "e01c4986-f6e0-426d-8e54-3126f0e7e2b7",
+      "48d45ebd-daf9-4cb8-8b60-aedabfb7e5cd"
+    ],
+    "organizationIds": [
+      "8e8bc70a-4f5b-4f9c-93a7-3ab7e0207952",
+      "e98a895b-94c6-49fa-ba84-f0e5f5f6d03b",
+      "e55851bf-97a4-4f33-80de-d2ddc7fce50f"
+    ]
+  },
+  "observations": [],
+  "results": [
+    {
+      "id": "G13/G14-00",
+      "title": "Bootstrap: three tenants, roles, an eleven-lead pipeline with costed proposals",
+      "status": "PASS",
+      "durationMs": 22477,
+      "notes": [
+        "org A 8e8bc70a-4f5b-4f9c-93a7-3ab7e0207952, org B e98a895b-94c6-49fa-ba84-f0e5f5f6d03b, org C e55851bf-97a4-4f33-80de-d2ddc7fce50f",
+        "pipeline: NEW=2, IN_REVIEW=2, QUALIFYING=1, QUALIFIED=3, PROPOSAL_DRAFTING=1, REJECTED=1, WON=1",
+        "proposals priced: USD:12500/DRAFT, VND:250000000/DRAFT, USD:5000/IN_REVIEW, EUR:3000/APPROVED, USD:999999/REJECTED, USD:null/DRAFT",
+        "fixture window 2026-10-21T09:42:31.147Z → 2026-10-21T09:42:53.569Z"
+      ]
+    },
+    {
+      "id": "G13-01",
+      "title": "GET /dashboard/overview KPIs match the fixture pipeline exactly",
+      "status": "PASS",
+      "durationMs": 556,
+      "notes": [
+        "kpis total 11 / active 9 / qualified 4 / proposals 4",
+        "estimatedValueByCurrency [{\"currency\":\"EUR\",\"amount\":3000},{\"currency\":\"USD\",\"amount\":17500},{\"currency\":\"VND\",\"amount\":250000000}] (the REJECTED proposal and the null-cost proposal are excluded)"
+      ]
+    },
+    {
+      "id": "G13-02",
+      "title": "Pipeline stages: all nine statuses in order, per-stage lead counts and currency values",
+      "status": "PASS",
+      "durationMs": 791,
+      "notes": [
+        "stages: NEW=2, IN_REVIEW=2, QUALIFYING=1, QUALIFIED=3, PROPOSAL_DRAFTING=1, APPROVED=0, REJECTED=1, WON=1, LOST=0",
+        "SQL GROUP BY status confirms {\"IN_REVIEW\":2,\"NEW\":2,\"PROPOSAL_DRAFTING\":1,\"QUALIFIED\":3,\"QUALIFYING\":1,\"REJECTED\":1,\"WON\":1}"
+      ]
+    },
+    {
+      "id": "G13-03",
+      "title": "Overview activeLeads panel: leadLimit caps the panel, ordering, joined client name, no RFP text",
+      "status": "PASS",
+      "durationMs": 155,
+      "notes": [
+        "panel capped at 8 of 9 active leads, 1 joined to a client"
+      ]
+    },
+    {
+      "id": "G13-04",
+      "title": "Overview leadLimit contract: 1 and 50 accepted, out-of-range, non-integer and empty value handled",
+      "status": "PASS",
+      "durationMs": 256,
+      "notes": [
+        "every other invalid leadLimit is a 400; only the empty value means \"not provided\", matching the shared pagination() helper"
+      ]
+    },
+    {
+      "id": "G13-05",
+      "title": "GET /dashboard/leads contract: default limit 20, ordering, projected columns",
+      "status": "PASS",
+      "durationMs": 156,
+      "notes": [
+        "meta.total reports the returned row count (9), not the tenant-wide total — a widget cannot tell that more rows exist behind the limit"
+      ]
+    },
+    {
+      "id": "G13-06",
+      "title": "Dashboard limit guards: 100 accepted, 0 / 101 / 200 / negative / non-integer rejected",
+      "status": "PASS",
+      "durationMs": 248,
+      "notes": [
+        "a non-integer limit is rejected before the query runs, so no SQL sees NaN"
+      ]
+    },
+    {
+      "id": "G13-07",
+      "title": "GET /dashboard/activity contract: synthesized feed, four event types, ids and ordering",
+      "status": "PASS",
+      "durationMs": 236,
+      "notes": [
+        "feed 20 rows, types [\"LEAD_CREATED\",\"LEAD_UPDATED\",\"PROPOSAL_CREATED\",\"PROPOSAL_UPDATED\"]"
+      ]
+    },
+    {
+      "id": "G13-08",
+      "title": "Activity source is entity timestamps, not audit_logs: the feed collapses all history into two rows per entity",
+      "status": "PASS",
+      "durationMs": 619,
+      "notes": [
+        "L4: 4 audit events, feed gained its only :updated row on this edit (the fixture chain finished inside one second of creation)",
+        "the feed equals the SQL over leads/proposals created_at and updated_at row for row (25 ids) while audit_logs holds 45 events for the same tenant, so the two feeds cannot reconcile",
+        "actions with no entity timestamp delta (sheet writes, portal sessions, pricing apply, deletes) never appear on the dashboard activity feed"
+      ]
+    },
+    {
+      "id": "G13-09",
+      "title": "Empty tenant: a fresh organization gets zeroed KPIs, nine empty stages and empty panels",
+      "status": "PASS",
+      "durationMs": 231,
+      "notes": [
+        "no NULL/NaN/undefined reaches the client for an organization with no data"
+      ]
+    },
+    {
+      "id": "G13-10",
+      "title": "Tenant isolation and scope override: a query organizationId can never move the dashboard into another tenant",
+      "status": "PASS",
+      "durationMs": 228,
+      "notes": [
+        "org B sees 1 lead / 1 activity rows; ?organizationId is ignored in both directions"
+      ]
+    },
+    {
+      "id": "G13-11",
+      "title": "Dashboard access: anonymous 401, every authenticated role can read (no role guard on the dashboard)",
+      "status": "PASS",
+      "durationMs": 315,
+      "notes": [
+        "dashboardRoutes.ts applies requireAuth + requireOrganization only: a VIEWER reads the full revenue pipeline. Acceptable for a read-only aggregate, but it is the same guard gap already recorded for the vault."
+      ]
+    },
+    {
+      "id": "G14-01",
+      "title": "GET /audit-logs contract: envelope, meta, newest-first order, actor name resolved",
+      "status": "PASS",
+      "durationMs": 221,
+      "notes": [
+        "total 45 rows, first \"LEAD_UPDATED\" lead actor \"E2E E2E G13 Org A 20261021094231\""
+      ]
+    },
+    {
+      "id": "G14-02",
+      "title": "Audit RBAC: ADMIN and PRESALE_LEAD read, every other role gets 403 naming the allowed roles",
+      "status": "PASS",
+      "durationMs": 315,
+      "notes": [
+        "the role is taken from the access token, so a body or query field cannot widen it"
+      ]
+    },
+    {
+      "id": "G14-03",
+      "title": "Filters: action, entityType, entityId, actorId and combinations match the fixture write counts",
+      "status": "FAIL",
+      "durationMs": 155,
+      "reason": "Error: action=LEAD_CREATED expected 12 rows, got 11"
+    },
+    {
+      "id": "G14-04",
+      "title": "resultStatus: SUCCESS returns everything, FAILED always returns zero because nothing writes a FAILED audit",
+      "status": "PASS",
+      "durationMs": 925,
+      "notes": [
+        "AUDIT_RESULT_STATUSES defines SUCCESS and FAILED, and no code path ever records FAILED: a security dashboard filtered on FAILED is permanently empty, including credential-stuffing attempts"
+      ]
+    },
+    {
+      "id": "G14-05",
+      "title": "Time window filters: from/to accept ISO-8601, normalize it, and reject anything unparsable",
+      "status": "PASS",
+      "durationMs": 1380,
+      "notes": [
+        "from > to is accepted and simply matches nothing; there is no cross-field validation",
+        "isoTimestamp() only asks Date.parse, so \"2020\" and \"0\" pass the ISO-8601 claim and are silently normalized to Jan 2020 / Jan 2000 rather than rejected"
+      ]
+    },
+    {
+      "id": "G14-06",
+      "title": "Pagination: default 50, limit up to 200, page offsets, disjoint pages, real total",
+      "status": "PASS",
+      "durationMs": 704,
+      "notes": [
+        "meta.total 45 equals the SQL count for organization A, pages are OFFSET based and disjoint"
+      ]
+    },
+    {
+      "id": "G14-07",
+      "title": "Query guards: malformed UUIDs, repeated keys, oversized filters and unknown parameters",
+      "status": "PASS",
+      "durationMs": 180,
+      "notes": [
+        "sort order is fixed server-side: no sort parameter can reorder or widen the response"
+      ]
+    },
+    {
+      "id": "G14-08",
+      "title": "Payload integrity: no credentials serialized, ip_address stored but never returned",
+      "status": "PASS",
+      "durationMs": 223,
+      "notes": [
+        "stored columns confirmed in PostgreSQL (ip_address present, payload keys [\"title\",\"source\",\"clientId\"]) while the API row carries none"
+      ]
+    },
+    {
+      "id": "G14-09",
+      "title": "Audit completeness: status transitions are recorded, but proposal create / sheet write / delete are silent",
+      "status": "PASS",
+      "durationMs": 2834,
+      "notes": [
+        "actions covered: user, client, rate card, lead (create/update/status/qualify/delete), proposal status changes, pricing apply, portal sessions",
+        "actions NOT covered: proposal create / metadata edit / sheet write / delete, meeting and discovery writes, knowledge and RAG usage — the ledger cannot answer \"who wrote this section\""
+      ]
+    },
+    {
+      "id": "G14-10",
+      "title": "Immutability: no write route exists for audit logs, and reading never mutates the ledger",
+      "status": "PASS",
+      "durationMs": 797,
+      "notes": [
+        "audit_logs has 0 user trigger(s); immutability is enforced by the absence of write routes, not by the database"
+      ]
+    },
+    {
+      "id": "G14-11",
+      "title": "Cross-tenant audit isolation: organization B cannot read or filter organization A history",
+      "status": "PASS",
+      "durationMs": 686,
+      "notes": [
+        "org B sees exactly its own 2 rows (registration + tenant lead), org A history unreachable"
+      ]
+    },
+    {
+      "id": "G13/G14-99",
+      "title": "Teardown: fixture counts reconciled with SQL, audit trail left intact for the cleanup script",
+      "status": "PASS",
+      "durationMs": 224,
+      "notes": [
+        "SQL ledger: leads 11, proposals 6, audit rows A=47 B=2 C=1",
+        "audit rows are intentionally kept: cleanup SQL removes them with the test organizations"
+      ]
+    }
+  ]
+}

@@ -16,7 +16,8 @@ backend/src/
 ├── application/                 # [Application Business Rules] - Luồng nghiệp vụ cụ thể (Use Cases & DTOs)
 │   ├── use-cases/               # Use cases thực thi (SearchHybridRAGUseCase, IngestDocumentUseCase,...)
 │   ├── dtos/                    # Input / Output Data Transfer Objects
-│   └── services/                # Tiện ích nghiệp vụ nội bộ (TextSplitterService)
+│   ├── services/                # Tiện ích nghiệp vụ nội bộ (TextSplitterService)
+│   └── prompts/                 # Cấu hình prompt/schema tách khỏi use case (LeadQualificationPrompt)
 │
 ├── infrastructure/              # [Frameworks & Drivers] - Triển khai thực tế công nghệ & dịch vụ bên ngoài
 │   ├── config/                  # Quản lý biến môi trường strongly-typed (env.ts)
@@ -32,6 +33,8 @@ backend/src/
 │   ├── controllers/             # Điều hướng request/response (RAGController)
 │   ├── routes/                  # Định nghĩa Express Router (/api/v1/rag)
 │   └── middlewares/             # Middleware xác thực, validate, bắt lỗi tập trung (errorHandler)
+│
+├── types/                       # Khai báo TypeScript tập trung (express.d.ts mở rộng Express.Request)
 │
 ├── container.ts                 # IoC / Dependency Injection Container liên kết toàn bộ hệ thống
 └── index.ts                     # Entry point khởi tạo vòng đời Express Server

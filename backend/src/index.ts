@@ -3,6 +3,7 @@ import cors from 'cors';
 import { env } from './infrastructure/config/env.js';
 import { container } from './container.js';
 import { createApiRouter } from './presentation/routes/index.js';
+import { createDocsRouter } from './presentation/routes/docsRoutes.js';
 import { errorHandler } from './presentation/middlewares/errorHandler.js';
 
 if (!env.databaseUrl) {
@@ -30,6 +31,12 @@ app.get('/health', (_req: Request, res: Response) => {
   });
 });
 
+// Swagger UI and the generated spec. Kept out of production so the API surface
+// is not published by the service itself.
+if (env.nodeEnv !== 'production') {
+  app.use('/docs', createDocsRouter());
+}
+
 // Presentation API routes
 app.use('/api/v1', createApiRouter(
   container.ragController,
@@ -55,6 +62,9 @@ const server = app.listen(env.port, () => {
   console.log(`🚀 Presaleee Backend is running on port ${env.port}`);
   console.log(`📡 RAG Endpoints available at: http://localhost:${env.port}/api/v1/rag`);
   console.log(`📋 Proposal Endpoints available at: http://localhost:${env.port}/api/v1/proposals`);
+  if (env.nodeEnv !== 'production') {
+    console.log(`📖 API documentation at: http://localhost:${env.port}/docs`);
+  }
 });
 
 export { app, server };

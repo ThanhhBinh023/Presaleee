@@ -13,6 +13,7 @@ interface AuthContextValue {
   login: (input: LoginInput) => Promise<AuthUser>;
   register: (input: RegisterInput) => Promise<AuthUser>;
   logout: () => Promise<void>;
+  syncUser: (user: AuthUser) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -73,9 +74,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   }, []);
 
+  const syncUser = useCallback((next: AuthUser) => {
+    setUser(next);
+  }, []);
+
   const value = useMemo(
-    () => ({ status, user, login, register, logout }),
-    [status, user, login, register, logout]
+    () => ({ status, user, login, register, logout, syncUser }),
+    [status, user, login, register, logout, syncUser]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

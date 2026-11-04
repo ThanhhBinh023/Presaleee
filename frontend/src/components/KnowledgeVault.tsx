@@ -8,9 +8,10 @@ import {
   Search, 
   Plus, 
   Send, 
-  Bot, 
-  LogOut
+  Bot
 } from 'lucide-react';
+import { WorkspacePill } from './workspace/WorkspacePill';
+import { UserCard } from './workspace/UserCard';
 
 interface KnowledgeVaultProps {
   onNavigateOverview: () => void;
@@ -153,17 +154,7 @@ export const KnowledgeVault: React.FC<KnowledgeVaultProps> = ({
               </span>
             </div>
 
-            <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-brand-500 animate-pulse"></span>
-                <span className="text-xs font-mono font-bold text-slate-700">
-                  DEMO WORKSPACE
-                </span>
-              </div>
-              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-brand-100 text-brand-800">
-                PRO
-              </span>
-            </div>
+            <WorkspacePill />
           </div>
 
           <nav className="p-3 space-y-1">
@@ -207,24 +198,7 @@ export const KnowledgeVault: React.FC<KnowledgeVaultProps> = ({
         </div>
 
         <div className="p-3 border-t border-slate-100">
-          <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-200">
-            <div className="flex items-center gap-2.5 overflow-hidden">
-              <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-700 font-bold flex items-center justify-center text-xs shrink-0">
-                SE
-              </div>
-              <div className="truncate">
-                <div className="text-xs font-bold text-slate-800 truncate">SE Team Lead</div>
-                <div className="text-[11px] font-mono text-slate-400 truncate">sales-eng@org</div>
-              </div>
-            </div>
-
-            <button
-              onClick={onLogout}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
-          </div>
+          <UserCard onLogout={onLogout} />
         </div>
       </aside>
 

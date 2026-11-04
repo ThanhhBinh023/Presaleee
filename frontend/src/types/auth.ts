@@ -20,11 +20,19 @@ export interface Organization {
   createdAt: string;
 }
 
+export interface ListMeta {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
 export interface ApiEnvelope<T> {
   success: boolean;
   data?: T;
   error?: string;
   statusCode?: number;
+  meta?: ListMeta;
 }
 
 export interface RegisterData {

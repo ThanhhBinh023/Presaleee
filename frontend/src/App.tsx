@@ -14,10 +14,12 @@ import { Overview } from './components/Overview';
 import { AIWorkspace } from './components/AIWorkspace';
 import { RfpIntake } from './components/RfpIntake';
 import { KnowledgeVault } from './components/KnowledgeVault';
+import { MembersDirectory } from './components/MembersDirectory';
+import { Profile } from './components/Profile';
 import { RequireAuth } from './components/common/RequireAuth';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 
-type Page = 'home' | 'signin' | 'reset-password' | 'overview' | 'ai-workspace' | 'rfps' | 'vault';
+type Page = 'home' | 'signin' | 'reset-password' | 'overview' | 'ai-workspace' | 'rfps' | 'vault' | 'members' | 'profile';
 
 function pageFromHash(hash: string): Page {
   const route = hash.split('?')[0];
@@ -27,6 +29,8 @@ function pageFromHash(hash: string): Page {
   if (route === '#ai-workspace') return 'ai-workspace';
   if (route === '#rfps') return 'rfps';
   if (route === '#vault') return 'vault';
+  if (route === '#members') return 'members';
+  if (route === '#profile') return 'profile';
   return 'home';
 }
 
@@ -43,7 +47,7 @@ const AppShell: React.FC = () => {
   const goTo = (page: Page) => {
     window.location.hash = page === 'home' ? '' : `#${page}`;
     setCurrentPage(page);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (page !== currentPage) window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const navigateToHome = () => goTo('home');
@@ -52,6 +56,7 @@ const AppShell: React.FC = () => {
   const navigateToAIWorkspace = () => goTo('ai-workspace');
   const navigateToRfps = () => goTo('rfps');
   const navigateToVault = () => goTo('vault');
+  const navigateToMembers = () => goTo('members');
 
   const handleLogout = async () => {
     try {
@@ -84,6 +89,7 @@ const AppShell: React.FC = () => {
           onNavigateAIWorkspace={navigateToAIWorkspace}
           onNavigateRfps={navigateToRfps}
           onNavigateVault={navigateToVault}
+          onNavigateMembers={navigateToMembers}
         />
       </RequireAuth>
     );
@@ -101,7 +107,7 @@ const AppShell: React.FC = () => {
     );
   }
 
-  if (currentPage === 'vault') {
+    if (currentPage === 'vault') {
     return (
       <RequireAuth>
         <KnowledgeVault
@@ -109,6 +115,22 @@ const AppShell: React.FC = () => {
           onNavigateAIWorkspace={navigateToAIWorkspace}
           onLogout={handleLogout}
         />
+      </RequireAuth>
+    );
+  }
+
+  if (currentPage === 'members') {
+    return (
+      <RequireAuth>
+        <MembersDirectory onBackToOverview={navigateToOverview} />
+      </RequireAuth>
+    );
+  }
+
+  if (currentPage === 'profile') {
+    return (
+      <RequireAuth>
+        <Profile />
       </RequireAuth>
     );
   }

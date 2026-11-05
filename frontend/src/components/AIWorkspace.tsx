@@ -14,7 +14,6 @@ import {
   Clock, 
   ShieldCheck, 
   Zap, 
-  LogOut, 
   Paperclip, 
   Check, 
   Layers, 
@@ -29,6 +28,11 @@ import {
   HelpCircle
 } from 'lucide-react';
 import { ClientPortalModal } from './ClientPortalModal';
+import { WorkspacePill } from './workspace/WorkspacePill';
+import { UserCard } from './workspace/UserCard';
+import { useMemberDirectory } from '../hooks/useMemberDirectory';
+import { navigateTo } from '../navigation';
+import { initialsOf } from '../utils/format';
 
 interface AIWorkspaceProps {
   onNavigateOverview: () => void;
@@ -50,6 +54,15 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
   const [saved, setSaved] = useState(false);
   const [attached1, setAttached1] = useState(false);
   const [attached2, setAttached2] = useState(false);
+
+  const {
+    members: workspaceMembers,
+    meta: workspaceMeta,
+    isLoading: isLoadingMembers,
+    error: membersError
+  } = useMemberDirectory({ limit: 5 });
+  const visibleMembers = workspaceMembers.slice(0, 4);
+  const hiddenMemberCount = Math.max(0, (workspaceMeta?.total ?? workspaceMembers.length) - visibleMembers.length);
 
   // Client Portal preview modal
   const [portalModalOpen, setPortalModalOpen] = useState(false);
@@ -88,16 +101,7 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
               </span>
             </div>
 
-            {/* DEMO WORKSPACE Pill */}
-            <button className="w-full flex items-center justify-between px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 hover:bg-slate-100/70 transition-colors">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-brand-500 animate-pulse"></span>
-                <span className="text-xs font-mono font-bold text-slate-700">
-                  DEMO WORKSPACE PRO
-                </span>
-              </div>
-              <span className="text-slate-400 text-xs">⇕</span>
-            </button>
+            <WorkspacePill />
           </div>
 
           {/* Navigation Links */}
@@ -156,25 +160,7 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
             <span>Settings</span>
           </button>
 
-          <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-200">
-            <div className="flex items-center gap-2.5 overflow-hidden">
-              <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-700 font-bold flex items-center justify-center text-xs shrink-0">
-                AV
-              </div>
-              <div className="truncate">
-                <div className="text-xs font-bold text-slate-800 truncate">Alex Vance</div>
-                <div className="text-[11px] font-mono text-slate-400 truncate">Lead Architect</div>
-              </div>
-            </div>
-
-            <button
-              onClick={onLogout}
-              title="Sign out"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
-          </div>
+          <UserCard onLogout={onLogout} subtitle="role" />
         </div>
 
       </aside>
@@ -245,12 +231,30 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
               </div>
 
               <div className="flex items-center gap-3">
-                {/* Avatar Stack */}
-                <div className="flex items-center -space-x-1.5">
-                  <div className="w-6 h-6 rounded-full bg-slate-300 border-2 border-white text-[10px] flex items-center justify-center font-bold text-slate-700">ES</div>
-                  <div className="w-6 h-6 rounded-full bg-slate-400 border-2 border-white text-[10px] flex items-center justify-center font-bold text-white">MV</div>
-                  <div className="w-6 h-6 rounded-full bg-brand-100 border-2 border-white text-[10px] flex items-center justify-center font-bold text-brand-800">+3</div>
-                </div>
+                {/* Avatar Stack — thành viên thật của tổ chức */}
+                <button
+                  onClick={() => navigateTo('members')}
+                  title="Member list"
+                  className="flex items-center -space-x-1.5"
+                >
+                  {visibleMembers.map((member, index) => (
+                    <span
+                      key={member.id}
+                      className={`w-6 h-6 rounded-full border-2 border-white text-[10px] flex items-center justify-center font-bold ${
+                        index % 2 === 0 ? 'bg-slate-300 text-slate-700' : 'bg-slate-400 text-white'
+                      }`}
+                    >
+                      {initialsOf(member.fullName)}
+                    </span>
+                  ))}
+                  {hiddenMemberCount > 0 && (
+                    <span className="w-6 h-6 rounded-full bg-brand-100 border-2 border-white text-[10px] flex items-center justify-center font-bold text-brand-800">
+                      +{hiddenMemberCount}
+                    </span>
+                  )}
+                  {isLoadingMembers && <span className="text-[10px] font-mono text-slate-400 pr-1.5">loading…</span>}
+                  {!isLoadingMembers && membersError && <span className="text-[10px] font-mono text-rose-500 pr-1.5">error</span>}
+                </button>
 
                 <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-mono font-medium text-slate-700 hover:bg-slate-50 transition-colors">
                   <History className="w-3.5 h-3.5 text-slate-400" />

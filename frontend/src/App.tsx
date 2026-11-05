@@ -16,10 +16,23 @@ import { RfpIntake } from './components/RfpIntake';
 import { KnowledgeVault } from './components/KnowledgeVault';
 import { MembersDirectory } from './components/MembersDirectory';
 import { Profile } from './components/Profile';
+import { ClientsDirectory } from './components/ClientsDirectory';
+import { AuditLog } from './components/AuditLog';
 import { RequireAuth } from './components/common/RequireAuth';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 
-type Page = 'home' | 'signin' | 'reset-password' | 'overview' | 'ai-workspace' | 'rfps' | 'vault' | 'members' | 'profile';
+type Page =
+  | 'home'
+  | 'signin'
+  | 'reset-password'
+  | 'overview'
+  | 'ai-workspace'
+  | 'rfps'
+  | 'vault'
+  | 'members'
+  | 'profile'
+  | 'clients'
+  | 'audit';
 
 function pageFromHash(hash: string): Page {
   const route = hash.split('?')[0];
@@ -31,6 +44,8 @@ function pageFromHash(hash: string): Page {
   if (route === '#vault') return 'vault';
   if (route === '#members') return 'members';
   if (route === '#profile') return 'profile';
+  if (route === '#clients') return 'clients';
+  if (route === '#audit') return 'audit';
   return 'home';
 }
 
@@ -57,6 +72,8 @@ const AppShell: React.FC = () => {
   const navigateToRfps = () => goTo('rfps');
   const navigateToVault = () => goTo('vault');
   const navigateToMembers = () => goTo('members');
+  const navigateToClients = () => goTo('clients');
+  const navigateToAudit = () => goTo('audit');
 
   const handleLogout = async () => {
     try {
@@ -90,6 +107,8 @@ const AppShell: React.FC = () => {
           onNavigateRfps={navigateToRfps}
           onNavigateVault={navigateToVault}
           onNavigateMembers={navigateToMembers}
+          onNavigateClients={navigateToClients}
+          onNavigateAudit={navigateToAudit}
         />
       </RequireAuth>
     );
@@ -115,6 +134,22 @@ const AppShell: React.FC = () => {
           onNavigateAIWorkspace={navigateToAIWorkspace}
           onLogout={handleLogout}
         />
+      </RequireAuth>
+    );
+  }
+
+  if (currentPage === 'clients') {
+    return (
+      <RequireAuth>
+        <ClientsDirectory onBackToOverview={navigateToOverview} />
+      </RequireAuth>
+    );
+  }
+
+  if (currentPage === 'audit') {
+    return (
+      <RequireAuth>
+        <AuditLog onBackToOverview={navigateToOverview} />
       </RequireAuth>
     );
   }

@@ -35,6 +35,8 @@ interface OverviewProps {
   onNavigateRfps?: () => void;
   onNavigateVault?: () => void;
   onNavigateMembers?: () => void;
+  onNavigateClients?: () => void;
+  onNavigateAudit?: () => void;
 }
 
 export const Overview: React.FC<OverviewProps> = ({ 
@@ -42,7 +44,9 @@ export const Overview: React.FC<OverviewProps> = ({
   onNavigateAIWorkspace,
   onNavigateRfps,
   onNavigateVault,
-  onNavigateMembers
+  onNavigateMembers,
+  onNavigateClients,
+  onNavigateAudit
 }) => {
   const [activeNav, setActiveNav] = useState('Overview');
   const [recommendationDismissed, setRecommendationDismissed] = useState(false);
@@ -216,6 +220,8 @@ export const Overview: React.FC<OverviewProps> = ({
               { name: 'RFPs & Specs', icon: FileText },
               { name: 'AI Workspace', icon: Sparkles, badge: 'New' },
               { name: 'Knowledge Vault', icon: BookOpen },
+              { name: 'Clients', icon: Building2 },
+              { name: 'Audit trail', icon: ShieldCheck },
               { name: 'Members', icon: Users },
               { name: 'Plan & Quota', icon: CreditCard },
             ].map((item) => {
@@ -231,6 +237,10 @@ export const Overview: React.FC<OverviewProps> = ({
                       onNavigateRfps();
                     } else if (item.name === 'Knowledge Vault' && onNavigateVault) {
                       onNavigateVault();;
+                    } else if (item.name === 'Clients' && onNavigateClients) {
+                      onNavigateClients();
+                    } else if (item.name === 'Audit trail' && onNavigateAudit) {
+                      onNavigateAudit();
                     } else if (item.name === 'Members' && onNavigateMembers) {
                       onNavigateMembers();
                     } else {

@@ -562,7 +562,11 @@ export const ClientsDirectory: React.FC<ClientsDirectoryProps> = ({ onBackToOver
                         </thead>
                         <tbody>
                           {leads.leads.map((lead) => (
-                            <tr key={lead.id} className="border-t border-slate-100">
+                            <tr
+                              key={lead.id}
+                              className="cursor-pointer border-t border-slate-100 hover:bg-emerald-50/40"
+                              onClick={() => navigateTo('leads', { id: lead.id })}
+                            >
                               <td className="px-3 py-2">
                                 <div className="text-xs font-bold text-slate-800">{lead.title}</div>
                                 <div className="truncate text-[10px] text-slate-400">{lead.id}</div>

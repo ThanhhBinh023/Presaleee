@@ -11,19 +11,10 @@ export const CLIENT_INDUSTRIES = [
   'Other'
 ] as const;
 
-export const LEAD_STATUSES = [
-  'NEW',
-  'IN_REVIEW',
-  'QUALIFYING',
-  'QUALIFIED',
-  'PROPOSAL_DRAFTING',
-  'APPROVED',
-  'REJECTED',
-  'WON',
-  'LOST'
-] as const;
+import type { LeadStatus } from './lead';
 
-export type LeadStatus = (typeof LEAD_STATUSES)[number];
+export { LEAD_STATUSES } from './lead';
+export type { LeadStatus };
 
 /** A client row as returned by /api/v1/clients. industry stays string for legacy free-form rows. */
 export interface ClientRecord {

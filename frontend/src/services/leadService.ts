@@ -51,7 +51,8 @@ export interface AnalyzeLeadResult {
 
 export async function fetchLeads(): Promise<LeadItem[]> {
   try {
-    const res = await fetch('/api/v1/leads');
+    const res = await fetch('/api/v1/leads', {
+    credentials: 'include' });
     if (!res.ok) return [];
     const data = await res.json();
     return data.data || [];
@@ -66,6 +67,7 @@ export async function analyzeAndSaveLead(
   persist = true
 ): Promise<AnalyzeLeadResult> {
   const res = await fetch('/api/v1/leads/intake/analyze', {
+    credentials: 'include',
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ rawRfpContent, source, persist })
@@ -80,6 +82,7 @@ export async function analyzeAndSaveLead(
 
 export async function qualifyLead(leadId: string, inquiryText?: string): Promise<{ qualification: QualificationData; lead: LeadItem }> {
   const res = await fetch(`/api/v1/leads/${leadId}/qualify`, {
+    credentials: 'include',
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ leadId, inquiryText })
@@ -94,7 +97,8 @@ export async function qualifyLead(leadId: string, inquiryText?: string): Promise
 
 export async function getLeadById(leadId: string): Promise<LeadItem | null> {
   try {
-    const res = await fetch(`/api/v1/leads/${leadId}`);
+    const res = await fetch(`/api/v1/leads/${leadId}`, {
+    credentials: 'include' });
     if (!res.ok) return null;
     const data = await res.json();
     return data.data || null;

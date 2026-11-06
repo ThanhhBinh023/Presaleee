@@ -5,9 +5,16 @@ import { container } from './container.js';
 import { createApiRouter } from './presentation/routes/index.js';
 import { errorHandler } from './presentation/middlewares/errorHandler.js';
 
+if (!env.databaseUrl) {
+  throw new Error('DATABASE_URL is required to start the backend.');
+}
+if (!env.jwtAccessSecret || Buffer.byteLength(env.jwtAccessSecret, 'utf8') < 32) {
+  throw new Error('JWT_ACCESS_SECRET must be configured with at least 32 bytes.');
+}
+
 const app = express();
 
-app.use(cors());
+app.use(cors({ origin: env.frontendUrl, credentials: true }));
 app.use(express.json());
 
 // System healthcheck endpoint
@@ -27,7 +34,9 @@ app.use(
     container.ragController,
     container.proposalController,
     container.leadIntakeController,
-    container.meetingController
+    container.meetingController,
+    container.authController,
+    container.userController
   )
 );
 
@@ -36,6 +45,7 @@ app.use(errorHandler);
 
 const server = app.listen(env.port, () => {
   console.log(`🚀 Presaleee Backend is running on port ${env.port}`);
+  console.log(`🔐 Auth Endpoints available at: http://localhost:${env.port}/api/v1/auth`);
   console.log(`📡 RAG Endpoints available at: http://localhost:${env.port}/api/v1/rag`);
   console.log(`📋 Proposal Endpoints available at: http://localhost:${env.port}/api/v1/proposals`);
   console.log(`🤝 Discovery Meeting Endpoints at: http://localhost:${env.port}/api/v1/meetings`);

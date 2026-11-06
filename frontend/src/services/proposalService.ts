@@ -36,7 +36,8 @@ export interface UIDesignBrief {
 
 export async function fetchProposalByLead(leadId: string): Promise<ProposalItem | null> {
   try {
-    const res = await fetch(`/api/v1/proposals/lead/${leadId}`);
+    const res = await fetch(`/api/v1/proposals/lead/${leadId}`, {
+    credentials: 'include' });
     if (!res.ok) return null;
     const json = await res.json();
     return json.data || null;
@@ -51,6 +52,7 @@ export async function generateProposalFromLead(
   customInstructions?: string
 ): Promise<ProposalItem> {
   const res = await fetch('/api/v1/proposals/generate-from-lead', {
+    credentials: 'include',
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ leadId, customInstructions })
@@ -70,6 +72,7 @@ export async function updateProposalSheet(
 ): Promise<ProposalSheetItem> {
   const encodedName = encodeURIComponent(sheetName);
   const res = await fetch(`/api/v1/proposals/${proposalId}/sheets/${encodedName}`, {
+    credentials: 'include',
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sheetData, aiGenerated: false })
@@ -87,6 +90,7 @@ export async function updateProposalLifecycle(
   status: 'DRAFT' | 'IN_REVIEW' | 'APPROVED' | 'REJECTED'
 ): Promise<ProposalItem> {
   const res = await fetch(`/api/v1/proposals/${proposalId}/lifecycle`, {
+    credentials: 'include',
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ status })
@@ -101,6 +105,7 @@ export async function updateProposalLifecycle(
 
 export async function generateProposalUIDesignBrief(proposalId: string): Promise<UIDesignBrief> {
   const res = await fetch(`/api/v1/proposals/${proposalId}/ui-brief`, {
+    credentials: 'include',
     method: 'POST',
     headers: { 'Content-Type': 'application/json' }
   });

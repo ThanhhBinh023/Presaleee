@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Navbar } from './components/Navbar';
 import { Hero } from './components/Hero';
 import { TrustCapabilities } from './components/TrustCapabilities';
@@ -9,164 +9,162 @@ import { PillarFour } from './components/PillarFour';
 import { CtaBanner } from './components/CtaBanner';
 import { Footer } from './components/Footer';
 import { SignIn } from './components/SignIn';
+import { ResetPassword } from './components/ResetPassword';
 import { Overview } from './components/Overview';
 import { AIWorkspace } from './components/AIWorkspace';
 import { RfpIntake } from './components/RfpIntake';
 import { KnowledgeVault } from './components/KnowledgeVault';
+import { RequireAuth } from './components/common/RequireAuth';
+import { AuthProvider, useAuth } from './hooks/useAuth';
+import { ToastProvider } from './components/common/Toast';
 
-export const App: React.FC = () => {
-  const [currentPage, setCurrentPage] = useState<'home' | 'signin' | 'overview' | 'ai-workspace' | 'rfps' | 'vault'>('home');
+type Page =
+  | 'home'
+  | 'signin'
+  | 'reset-password'
+  | 'overview'
+  | 'ai-workspace'
+  | 'rfps'
+  | 'vault';
+
+function pageFromHash(hash: string): Page {
+  const route = hash.split('?')[0];
+  if (route === '#signin') return 'signin';
+  if (route === '#reset-password') return 'reset-password';
+  if (route === '#overview') return 'overview';
+  if (route === '#ai-workspace') return 'ai-workspace';
+  if (route === '#rfps') return 'rfps';
+  if (route === '#vault') return 'vault';
+  return 'home';
+}
+
+const AppShell: React.FC = () => {
+  const [currentPage, setCurrentPage] = useState<Page>(() => pageFromHash(window.location.hash));
+  const { status, user, logout } = useAuth();
 
   useEffect(() => {
-    const handleHash = () => {
-      const hash = window.location.hash;
-      if (hash === '#ai-workspace') {
-        setCurrentPage('ai-workspace');
-      } else if (hash === '#overview') {
-        setCurrentPage('overview');
-      } else if (hash === '#rfps') {
-        setCurrentPage('rfps');
-      } else if (hash === '#vault') {
-        setCurrentPage('vault');
-      } else if (hash === '#signin') {
-        setCurrentPage('signin');
-      } else {
-        setCurrentPage('home');
-      }
-    };
-
-    handleHash();
+    const handleHash = () => setCurrentPage(pageFromHash(window.location.hash));
     window.addEventListener('hashchange', handleHash);
     return () => window.removeEventListener('hashchange', handleHash);
   }, []);
 
-  const navigateToSignIn = () => {
-    window.location.hash = '#signin';
-    setCurrentPage('signin');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+  const goTo = (page: Page) => {
+    window.location.hash = page === 'home' ? '' : `#${page}`;
+    setCurrentPage(page);
+    if (page !== currentPage) window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const navigateToOverview = () => {
-    window.location.hash = '#overview';
-    setCurrentPage('overview');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+  const navigateToHome = () => goTo('home');
+  const navigateToSignIn = () => goTo('signin');
+  const navigateToOverview = () => goTo('overview');
+  const navigateToAIWorkspace = () => goTo('ai-workspace');
+  const navigateToRfps = () => goTo('rfps');
+  const navigateToVault = () => goTo('vault');
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } finally {
+      navigateToHome();
+    }
   };
 
-  const navigateToAIWorkspace = () => {
-    window.location.hash = '#ai-workspace';
-    setCurrentPage('ai-workspace');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const navigateToRfps = () => {
-    window.location.hash = '#rfps';
-    setCurrentPage('rfps');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const navigateToVault = () => {
-    window.location.hash = '#vault';
-    setCurrentPage('vault');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const navigateToHome = () => {
-    window.location.hash = '';
-    setCurrentPage('home');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+  const signedInName = status === 'authenticated' && user ? user.fullName : null;
 
   if (currentPage === 'ai-workspace') {
     return (
-      <AIWorkspace 
-        onNavigateOverview={navigateToOverview}
-        onNavigateRfps={navigateToRfps}
-        onNavigateVault={navigateToVault}
-        onLogout={navigateToHome} 
-      />
+      <RequireAuth>
+        <AIWorkspace
+          onNavigateOverview={navigateToOverview}
+          onNavigateRfps={navigateToRfps}
+          onNavigateVault={navigateToVault}
+          onLogout={handleLogout}
+        />
+      </RequireAuth>
     );
   }
 
   if (currentPage === 'overview') {
     return (
-      <Overview 
-        onLogout={navigateToHome} 
-        onNavigateAIWorkspace={navigateToAIWorkspace}
-        onNavigateRfps={navigateToRfps}
-        onNavigateVault={navigateToVault}
-      />
+      <RequireAuth>
+        <Overview
+          onLogout={handleLogout}
+          onNavigateAIWorkspace={navigateToAIWorkspace}
+          onNavigateRfps={navigateToRfps}
+          onNavigateVault={navigateToVault}
+        />
+      </RequireAuth>
     );
   }
 
   if (currentPage === 'rfps') {
     return (
-      <RfpIntake
-        onNavigateOverview={navigateToOverview}
-        onNavigateAIWorkspace={navigateToAIWorkspace}
-        onLogout={navigateToHome}
-      />
+      <RequireAuth>
+        <RfpIntake
+          onNavigateOverview={navigateToOverview}
+          onNavigateAIWorkspace={navigateToAIWorkspace}
+          onLogout={handleLogout}
+          onNavigateVault={navigateToVault}
+        />
+      </RequireAuth>
     );
   }
 
   if (currentPage === 'vault') {
     return (
-      <KnowledgeVault
-        onNavigateOverview={navigateToOverview}
-        onNavigateAIWorkspace={navigateToAIWorkspace}
-        onLogout={navigateToHome}
-      />
+      <RequireAuth>
+        <KnowledgeVault
+          onNavigateOverview={navigateToOverview}
+          onNavigateAIWorkspace={navigateToAIWorkspace}
+          onLogout={handleLogout}
+        />
+      </RequireAuth>
     );
   }
 
+  if (currentPage === 'reset-password') {
+    return <ResetPassword onBackToHome={navigateToHome} onDone={navigateToSignIn} />;
+  }
+
   if (currentPage === 'signin') {
-    return (
-      <SignIn 
-        onBackToHome={navigateToHome} 
-        onLoginSuccess={navigateToOverview} 
-      />
-    );
+    return <SignIn onBackToHome={navigateToHome} onLoginSuccess={navigateToOverview} />;
   }
 
   return (
     <div className="min-h-screen flex flex-col bg-[#fafbfa] text-slate-900 selection:bg-brand-500 selection:text-white relative">
-      {/* Top subtle grid background */}
       <div className="absolute inset-0 bg-grid-pattern opacity-40 pointer-events-none -z-10" />
 
-      {/* Header Navigation */}
-      <Navbar onSignInClick={navigateToSignIn} />
+      <Navbar
+        onSignInClick={navigateToSignIn}
+        onOpenWorkspace={navigateToOverview}
+        userName={signedInName}
+      />
 
-      {/* Main Content Sections */}
       <main className="flex-1">
-        {/* Hero Section with Telemetry Stream & Metrics */}
         <Hero />
-
-        {/* Enterprise Trust Capabilities Strip (All 3rd-party brands removed) */}
         <TrustCapabilities />
-
-        {/* Pillar 01: RFP Ingestion & Lead Scoring */}
         <div id="features">
           <PillarOne />
         </div>
-
-        {/* Pillar 02: Discovery Session Audio Synthesis */}
         <div id="ai-capabilities">
           <PillarTwo />
         </div>
-
-        {/* Pillar 03: Proposal & SOW Copilot Studio */}
         <PillarThree />
-
-        {/* Pillar 04: Predictive Win Rate & Next Best Actions */}
         <PillarFour />
-
-        {/* Ready to Accelerate CTA Banner */}
         <CtaBanner />
       </main>
 
-      {/* Footer */}
       <Footer />
     </div>
   );
 };
+
+export const App: React.FC = () => (
+  <AuthProvider>
+    <ToastProvider>
+      <AppShell />
+    </ToastProvider>
+  </AuthProvider>
+);
 
 export default App;

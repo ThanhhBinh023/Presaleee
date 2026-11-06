@@ -10,6 +10,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import type { LeadItem } from '../services/leadService';
+import { useToast } from './common/Toast';
 import type { ProposalItem, UIDesignBrief } from '../services/proposalService';
 import { 
   fetchProposalByLead, 
@@ -26,6 +27,7 @@ interface ProposalStudioTabProps {
 }
 
 export const ProposalStudioTab: React.FC<ProposalStudioTabProps> = ({ leadId, activeProject }) => {
+  const toast = useToast();
   const [proposal, setProposal] = useState<ProposalItem | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [generating, setGenerating] = useState<boolean>(false);
@@ -74,7 +76,7 @@ export const ProposalStudioTab: React.FC<ProposalStudioTabProps> = ({ leadId, ac
   // Handle generating proposal from lead context
   async function handleGenerateProposal() {
     if (!leadId) {
-      alert('Vui lòng chọn hoặc khởi tạo một Dự án (Lead) trước.');
+      toast.warning('Vui lòng chọn hoặc khởi tạo một Dự án (Lead) trước.', 'Chưa chọn Dự án');
       return;
     }
 
@@ -90,10 +92,10 @@ export const ProposalStudioTab: React.FC<ProposalStudioTabProps> = ({ leadId, ac
           setUiBrief(overview.sheetData.uiDesignBrief);
         }
       }
-      alert('Đã tổng hợp thành công Hồ sơ Đề xuất (10 Sheets) bằng AI RAG từ dữ liệu Dự án!');
+      toast.success('Đã tổng hợp thành công Hồ sơ Đề xuất (10 Sheets) bằng AI RAG từ dữ liệu Dự án!', 'AI Proposal Builder');
     } catch (err: any) {
       console.error('Generate proposal error:', err);
-      alert(`Lỗi sinh proposal: ${err.message || 'Không thể tạo đề xuất'}`);
+      toast.error(`Lỗi sinh proposal: ${err.message || 'Không thể tạo đề xuất'}`, 'Lỗi Tạo Đề Xuất');
     } finally {
       setGenerating(false);
     }
@@ -134,9 +136,9 @@ export const ProposalStudioTab: React.FC<ProposalStudioTabProps> = ({ leadId, ac
           sheets: prev.sheets.map(s => s.sheetName === activeSheetName ? updatedSheet : s)
         };
       });
-      alert(`Đã lưu thành công nội dung Sheet '${activeSheetName}'!`);
+      toast.success(`Đã lưu thành công nội dung Sheet '${activeSheetName}'!`, 'Lưu Sheet');
     } catch (err: any) {
-      alert(`Lỗi lưu sheet: ${err.message}`);
+      toast.error(`Lỗi lưu sheet: ${err.message}`, 'Lỗi Lưu Sheet');
     } finally {
       setSaving(false);
     }
@@ -149,9 +151,9 @@ export const ProposalStudioTab: React.FC<ProposalStudioTabProps> = ({ leadId, ac
     try {
       const updated = await updateProposalLifecycle(proposal.id, newStatus);
       setProposal(prev => prev ? { ...prev, status: updated.status } : null);
-      alert(`Trạng thái Proposal đã cập nhật thành: ${newStatus}!`);
+      toast.success(`Trạng thái Proposal đã cập nhật thành: ${newStatus}!`, 'Cập nhật Trạng Thái');
     } catch (err: any) {
-      alert(`Lỗi cập nhật trạng thái: ${err.message}`);
+      toast.error(`Lỗi cập nhật trạng thái: ${err.message}`, 'Lỗi Cập Nhật');
     }
   }
 
@@ -163,9 +165,9 @@ export const ProposalStudioTab: React.FC<ProposalStudioTabProps> = ({ leadId, ac
       setGeneratingBrief(true);
       const brief = await generateProposalUIDesignBrief(proposal.id);
       setUiBrief(brief);
-      alert('Đã khởi tạo thành công AI UI Design Brief cho dự án!');
+      toast.success('Đã khởi tạo thành công AI UI Design Brief cho dự án!', 'UI Design Brief');
     } catch (err: any) {
-      alert(`Lỗi tạo UI Brief: ${err.message}`);
+      toast.error(`Lỗi tạo UI Brief: ${err.message}`, 'Lỗi Tạo Brief');
     } finally {
       setGeneratingBrief(false);
     }

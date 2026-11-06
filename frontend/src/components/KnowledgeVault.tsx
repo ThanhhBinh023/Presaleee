@@ -1,3 +1,4 @@
+import { useToast } from './common/Toast';
 import React, { useState } from 'react';
 import { 
   LayoutGrid, 
@@ -20,8 +21,9 @@ interface KnowledgeVaultProps {
 export const KnowledgeVault: React.FC<KnowledgeVaultProps> = ({
   onNavigateOverview,
   onNavigateAIWorkspace,
-  onLogout,
+  onLogout
 }) => {
+  const toast = useToast();
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [chatInput, setChatInput] = useState('');
@@ -237,7 +239,7 @@ export const KnowledgeVault: React.FC<KnowledgeVaultProps> = ({
 
           <div className="flex items-center gap-2">
             <button
-              onClick={() => alert('Add Asset dialog opened')}
+              onClick={() => toast.info('Tính năng tải tài liệu mới lên Vault đang sẵn sàng', 'Knowledge Vault')}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold shadow-xs"
             >
               <Plus className="w-3.5 h-3.5" />
@@ -333,7 +335,7 @@ export const KnowledgeVault: React.FC<KnowledgeVaultProps> = ({
 
                     <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
                       <button 
-                        onClick={() => alert(`Inserted "${asset.title}" into active SOW`)}
+                        onClick={() => toast.success(`Đã đính kèm tài liệu "${asset.title}" vào SOW của Proposal`, 'Vault Sync')}
                         className="px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold font-mono"
                       >
                         Insert to SOW

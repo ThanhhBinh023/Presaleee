@@ -14,6 +14,7 @@ import {
   Check
 } from 'lucide-react';
 import type { LeadItem, QualificationData } from '../services/leadService';
+import { useToast } from './common/Toast';
 import { 
   analyzeAndSaveLead, 
   qualifyLead 
@@ -32,9 +33,8 @@ export const RfpIntake: React.FC<RfpIntakeProps> = ({
   onLogout,
   onNavigateVault
 }) => {
-  const [inquiryText, setInquiryText] = useState(
-    'Hệ thống Đô thị thông minh tích hợp GIS và AI phân tích ảnh vệ tinh. Yêu cầu xử lý ảnh viễn thám độ phân giải cao, phát hiện biến động hạ tầng đô thị tự động, độ trễ phản hồi bản đồ dưới 200ms, phục vụ 10,000 cán bộ quy hoạch và quản lý đô thị.'
-  );
+  const toast = useToast();
+  const [inquiryText, setInquiryText] = useState('');
   
   // Requirement 2: Khi khởi chạy dự án, CHƯA có khối 02 Qualification Engine
   const [analyzing, setAnalyzing] = useState(false);
@@ -52,7 +52,7 @@ export const RfpIntake: React.FC<RfpIntakeProps> = ({
   // Requirement 1 & 3: Chạy AI Intake Parser thật & lưu dữ liệu dự án về backend
   const handleRunIntake = async () => {
     if (!inquiryText.trim()) {
-      alert('Vui lòng nhập mô tả yêu cầu khách hàng trước khi chạy AI Intake.');
+      toast.warning('Vui lòng nhập mô tả yêu cầu khách hàng trước khi chạy AI Intake.', 'Thiếu thông tin');
       return;
     }
 
@@ -64,11 +64,12 @@ export const RfpIntake: React.FC<RfpIntakeProps> = ({
       setCurrentLead(result.lead);
       setIntakeExtracted(true);
       setStatusMessage(`Đã khởi tạo & lưu thành công Dự án: "${result.lead.title}" vào Workspace!`);
+      toast.success(`Đã khởi tạo & lưu thành công Dự án: "${result.lead.title}"`, 'AI Intake Thành Công');
     } catch (err: any) {
       console.error('AI Intake error:', err);
       const errMsg = err?.response?.data?.error || err?.message || 'Không thể kết nối với AI Backend Server.';
       setStatusMessage(`Lỗi AI Intake: ${errMsg}`);
-      alert(`Lỗi AI Intake: ${errMsg}`);
+      toast.error(`Lỗi AI Intake: ${errMsg}`, 'Không thể chạy AI Intake');
     } finally {
       setAnalyzing(false);
     }
@@ -85,11 +86,12 @@ export const RfpIntake: React.FC<RfpIntakeProps> = ({
       setQualificationData(res.qualification);
       setQualified(true);
       setStatusMessage(`Đã thẩm định thành công với điểm BANT: ${res.qualification?.qualification_score || 90}/100.`);
+      toast.success(`Đã thẩm định thành công với điểm BANT: ${res.qualification?.qualification_score || 90}/100`, 'Thẩm định BANT');
     } catch (err: any) {
       console.error('AI Qualification error:', err);
       const errMsg = err?.response?.data?.error || err?.message || 'Lỗi khi gọi AI Qualification.';
       setStatusMessage(`Lỗi thẩm định AI: ${errMsg}`);
-      alert(`Lỗi thẩm định AI: ${errMsg}`);
+      toast.error(`Lỗi thẩm định AI: ${errMsg}`, 'Lỗi Thẩm Định');
     } finally {
       setQualifying(false);
     }
@@ -161,7 +163,7 @@ export const RfpIntake: React.FC<RfpIntakeProps> = ({
             </button>
 
             <button
-              onClick={onNavigateVault || (() => alert('Navigate to Knowledge Vault'))}
+              onClick={onNavigateVault || (() => toast.info('Chuyển hướng đến Knowledge Vault'))}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all"
             >
               <BookOpen className="w-4 h-4 text-slate-400" />

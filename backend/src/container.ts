@@ -2,6 +2,10 @@ import { dbPool } from './infrastructure/database/connection.js';
 import { PostgresKnowledgeRepository } from './infrastructure/database/repositories/PostgresKnowledgeRepository.js';
 import { PostgresProposalRepository } from './infrastructure/database/repositories/PostgresProposalRepository.js';
 import { PostgresMeetingRepository } from './infrastructure/database/repositories/PostgresMeetingRepository.js';
+import { PostgresAuthRepository } from './infrastructure/database/repositories/PostgresAuthRepository.js';
+import { PostgresUserRepository } from './infrastructure/database/repositories/PostgresUserRepository.js';
+import { PostgresAuditRepository } from './infrastructure/database/repositories/PostgresAuditRepository.js';
+
 import { GeminiEmbeddingGateway } from './infrastructure/ai/GeminiEmbeddingGateway.js';
 import { FastAPILMGateway } from './infrastructure/ai/FastAPILMGateway.js';
 import { ExcelProposalExporterService } from './infrastructure/services/ExcelProposalExporterService.js';
@@ -27,15 +31,39 @@ import { UpdateMeetingLifecycleUseCase } from './application/use-cases/UpdateMee
 import { ListMeetingsByLeadUseCase } from './application/use-cases/ListMeetingsByLeadUseCase.js';
 import { GetMeetingByIdUseCase } from './application/use-cases/GetMeetingByIdUseCase.js';
 
+import {
+  LoginUseCase,
+  RefreshSessionUseCase,
+  LogoutUseCase,
+  GetCurrentUserUseCase,
+  ForgotPasswordUseCase,
+  ResetPasswordUseCase
+} from './application/use-cases/AuthUseCases.js';
+import {
+  RegisterUseCase,
+  ListOrganizationsUseCase,
+  ListMembersUseCase,
+  GetMemberUseCase,
+  AddMemberUseCase,
+  UpdateMemberUseCase,
+  UpdateOwnProfileUseCase
+} from './application/use-cases/UserUseCases.js';
+
 import { RAGController } from './presentation/controllers/RAGController.js';
 import { ProposalController } from './presentation/controllers/ProposalController.js';
 import { LeadIntakeController } from './presentation/controllers/LeadIntakeController.js';
 import { MeetingController } from './presentation/controllers/MeetingController.js';
+import { AuthController } from './presentation/controllers/AuthController.js';
+import { UserController } from './presentation/controllers/UserController.js';
 
 export interface ServiceContainer {
   knowledgeRepository: PostgresKnowledgeRepository;
   proposalRepository: PostgresProposalRepository;
   meetingRepository: PostgresMeetingRepository;
+  authRepository: PostgresAuthRepository;
+  userRepository: PostgresUserRepository;
+  auditRepository: PostgresAuditRepository;
+
   embeddingGateway: GeminiEmbeddingGateway;
   llmGateway: FastAPILMGateway;
   excelExporterService: ExcelProposalExporterService;
@@ -70,6 +98,8 @@ export interface ServiceContainer {
   proposalController: ProposalController;
   leadIntakeController: LeadIntakeController;
   meetingController: MeetingController;
+  authController: AuthController;
+  userController: UserController;
 }
 
 export function createContainer(): ServiceContainer {
@@ -77,6 +107,10 @@ export function createContainer(): ServiceContainer {
   const knowledgeRepository = new PostgresKnowledgeRepository(dbPool);
   const proposalRepository = new PostgresProposalRepository(dbPool);
   const meetingRepository = new PostgresMeetingRepository(dbPool);
+  const authRepository = new PostgresAuthRepository(dbPool);
+  const userRepository = new PostgresUserRepository(dbPool);
+  const auditRepository = new PostgresAuditRepository(dbPool);
+
   const embeddingGateway = new GeminiEmbeddingGateway();
   const llmGateway = new FastAPILMGateway();
   const excelExporterService = new ExcelProposalExporterService();
@@ -106,6 +140,14 @@ export function createContainer(): ServiceContainer {
   const updateMeetingLifecycleUseCase = new UpdateMeetingLifecycleUseCase(meetingRepository);
   const listMeetingsByLeadUseCase = new ListMeetingsByLeadUseCase(meetingRepository);
   const getMeetingByIdUseCase = new GetMeetingByIdUseCase(meetingRepository);
+
+  const loginUseCase = new LoginUseCase(authRepository);
+  const refreshSessionUseCase = new RefreshSessionUseCase(authRepository);
+  const logoutUseCase = new LogoutUseCase(authRepository);
+  const getCurrentUserUseCase = new GetCurrentUserUseCase(authRepository);
+  const forgotPasswordUseCase = new ForgotPasswordUseCase(authRepository);
+  const resetPasswordUseCase = new ResetPasswordUseCase(authRepository);
+  const registerUseCase = new RegisterUseCase(userRepository, authRepository, auditRepository);
 
   // 3. Presentation layer (Controllers)
   const ragController = new RAGController(
@@ -137,18 +179,38 @@ export function createContainer(): ServiceContainer {
     meetingRepository
   );
 
+  const authController = new AuthController(
+    loginUseCase,
+    refreshSessionUseCase,
+    logoutUseCase,
+    getCurrentUserUseCase,
+    forgotPasswordUseCase,
+    resetPasswordUseCase,
+    registerUseCase
+  );
+
+  const userController = new UserController(
+    new ListOrganizationsUseCase(userRepository),
+    new ListMembersUseCase(userRepository),
+    new GetMemberUseCase(userRepository),
+    new AddMemberUseCase(userRepository, authRepository, auditRepository),
+    new UpdateMemberUseCase(userRepository, auditRepository),
+    new UpdateOwnProfileUseCase(authRepository, userRepository, auditRepository)
+  );
+
   return {
     knowledgeRepository,
     proposalRepository,
     meetingRepository,
+    authRepository,
+    userRepository,
+    auditRepository,
     embeddingGateway,
     llmGateway,
     excelExporterService,
-
     searchHybridRAGUseCase,
     ingestDocumentUseCase,
     generateProposalUseCase,
-
     createProposalUseCase,
     getProposalByIdUseCase,
     listProposalsUseCase,
@@ -157,19 +219,18 @@ export function createContainer(): ServiceContainer {
     deleteProposalUseCase,
     exportProposalToExcelUseCase,
     generateProposalFromLeadUseCase,
-
     analyzeLeadIntakeUseCase,
-
     createMeetingUseCase,
     inspectMeetingUseCase,
     updateMeetingLifecycleUseCase,
     listMeetingsByLeadUseCase,
     getMeetingByIdUseCase,
-
     ragController,
     proposalController,
     leadIntakeController,
-    meetingController
+    meetingController,
+    authController,
+    userController
   };
 }
 

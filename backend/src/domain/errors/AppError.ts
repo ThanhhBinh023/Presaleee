@@ -29,3 +29,27 @@ export class ExternalServiceError extends AppError {
   }
 }
 
+export class UnauthorizedError extends AppError {
+  constructor(message: string = 'Authentication required.') {
+    super(message, 401);
+  }
+}
+
+export class ForbiddenError extends AppError {
+  constructor(message: string = 'You do not have access to this resource.') {
+    super(message, 403);
+  }
+}
+
+export class ConflictError extends AppError {
+  constructor(message: string) {
+    super(message, 409);
+  }
+}
+
+export class AuthenticationError extends AppError {
+  constructor(message: string) {
+    super(message, 401);
+  }
+}
+

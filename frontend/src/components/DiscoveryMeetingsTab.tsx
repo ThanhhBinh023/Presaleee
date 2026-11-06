@@ -1,3 +1,4 @@
+import { useToast } from './common/Toast';
 import React, { useState, useEffect } from 'react';
 import { 
   Sparkles, 
@@ -35,6 +36,7 @@ const SAMPLE_ZOOM_TRANSCRIPT = `[00:01] Alex (Solution Architect): Um, hi Marcus
 [01:40] Marcus: That would be David Tran, our Lead SAP Architect. He can provide the OpenAPI specs by next Tuesday. Let's schedule a deep dive with David next week.`;
 
 export const DiscoveryMeetingsTab: React.FC = () => {
+  const toast = useToast();
   const [leads, setLeads] = useState<LeadItem[]>([]);
   const [selectedLeadId, setSelectedLeadId] = useState<string>('');
   const [meetings, setMeetings] = useState<Meeting[]>([]);
@@ -114,7 +116,7 @@ export const DiscoveryMeetingsTab: React.FC = () => {
       const updated = await updateMeetingLifecycle(selectedMeeting.id, newStatus);
       setMeetings(prev => prev.map(m => m.id === updated.id ? updated : m));
     } catch (err: any) {
-      alert(`Lifecycle update failed: ${err.message || 'Unknown error'}`);
+      toast.error(`Lifecycle update failed: ${err.message || 'Unknown error'}`, 'Lỗi chuyển trạng thái');
     } finally {
       setIsTransitioning(false);
     }
@@ -128,7 +130,7 @@ export const DiscoveryMeetingsTab: React.FC = () => {
       const updated = await inspectMeeting(selectedMeeting.id, selectedMeeting.rawTranscript);
       setMeetings(prev => prev.map(m => m.id === updated.id ? updated : m));
     } catch (err: any) {
-      alert(`AI Inspect failed: ${err.message || 'Unknown error'}`);
+      toast.error(`AI Inspect failed: ${err.message || 'Unknown error'}`, 'Lỗi phân tích AI');
     } finally {
       setIsInspecting(false);
     }
@@ -138,7 +140,7 @@ export const DiscoveryMeetingsTab: React.FC = () => {
   async function handleCreateMeeting(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedLeadId) {
-      alert('Please select or create a Lead first.');
+      toast.warning('Vui lòng chọn hoặc khởi tạo một Lead trước.', 'Chưa chọn Lead');
       return;
     }
 
@@ -158,7 +160,7 @@ export const DiscoveryMeetingsTab: React.FC = () => {
       setNewTitle('');
       setNewTranscript('');
     } catch (err: any) {
-      alert(`Create Meeting failed: ${err.message || 'Unknown error'}`);
+      toast.error(`Create Meeting failed: ${err.message || 'Unknown error'}`, 'Lỗi tạo cuộc họp');
     }
   }
 

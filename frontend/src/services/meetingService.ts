@@ -45,7 +45,8 @@ export interface CreateMeetingPayload {
 const API_BASE = '/api/v1/meetings';
 
 export async function fetchMeetingsByLead(leadId: string): Promise<Meeting[]> {
-  const response = await fetch(`${API_BASE}/lead/${leadId}`);
+  const response = await fetch(`${API_BASE}/lead/${leadId}`, {
+    credentials: 'include' });
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData.error || `Failed to fetch meetings: ${response.statusText}`);
@@ -56,6 +57,7 @@ export async function fetchMeetingsByLead(leadId: string): Promise<Meeting[]> {
 
 export async function createMeeting(payload: CreateMeetingPayload): Promise<Meeting> {
   const response = await fetch(API_BASE, {
+    credentials: 'include',
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
@@ -70,6 +72,7 @@ export async function createMeeting(payload: CreateMeetingPayload): Promise<Meet
 
 export async function inspectMeeting(meetingId: string, rawTranscript?: string): Promise<Meeting> {
   const response = await fetch(`${API_BASE}/${meetingId}/inspect`, {
+    credentials: 'include',
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ rawTranscript })
@@ -84,6 +87,7 @@ export async function inspectMeeting(meetingId: string, rawTranscript?: string):
 
 export async function updateMeetingLifecycle(meetingId: string, status: MeetingStatus): Promise<Meeting> {
   const response = await fetch(`${API_BASE}/${meetingId}/lifecycle`, {
+    credentials: 'include',
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ status })
@@ -98,6 +102,7 @@ export async function updateMeetingLifecycle(meetingId: string, status: MeetingS
 
 export async function updateMeeting(meetingId: string, payload: Partial<Meeting>): Promise<Meeting> {
   const response = await fetch(`${API_BASE}/${meetingId}`, {
+    credentials: 'include',
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
@@ -112,6 +117,7 @@ export async function updateMeeting(meetingId: string, payload: Partial<Meeting>
 
 export async function deleteMeeting(meetingId: string): Promise<void> {
   const response = await fetch(`${API_BASE}/${meetingId}`, {
+    credentials: 'include',
     method: 'DELETE'
   });
   if (!response.ok) {

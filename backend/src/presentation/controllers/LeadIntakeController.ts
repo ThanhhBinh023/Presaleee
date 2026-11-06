@@ -12,7 +12,7 @@ export class LeadIntakeController {
   ) {}
 
   analyze = async (
-    req: Request<unknown, unknown, AnalyzeLeadIntakeInputDTO & { persist?: boolean; inquiryText?: string }>,
+    req: Request<unknown, unknown, AnalyzeLeadIntakeInputDTO & { persist?: boolean; inquiryText?: string; organizationId?: string; userId?: string }>,
     res: Response,
     next: NextFunction
   ): Promise<void> => {
@@ -32,11 +32,14 @@ export class LeadIntakeController {
           peak_workload: (result.draft.extractedMetadata as any).peakWorkload || '40,000+ TPS'
         };
 
+        const orgId = req.auth?.organizationId || (req.headers['x-organization-id'] as string) || body.organizationId || null;
+        const userId = req.auth?.sub || body.userId || null;
+
         const insertRes = await this.dbPool.query(
-          `INSERT INTO leads (title, source, status, raw_rfp_content, extracted_metadata)
-           VALUES ($1, $2, 'NEW', $3, $4::jsonb)
-           RETURNING id, title, source, status, raw_rfp_content, extracted_metadata, created_at;`,
-          [titleToUse, source, rawRfpContent, JSON.stringify(metadataToSave)]
+          `INSERT INTO leads (title, source, status, raw_rfp_content, extracted_metadata, organization_id, created_by)
+           VALUES ($1, $2, 'NEW', $3, $4::jsonb, $5, $6)
+           RETURNING id, title, source, status, raw_rfp_content, extracted_metadata, organization_id, created_by, created_at;`,
+          [titleToUse, source, rawRfpContent, JSON.stringify(metadataToSave), orgId, userId]
         );
         savedLead = insertRes.rows[0];
       }
@@ -53,60 +56,76 @@ export class LeadIntakeController {
         }
       });
     } catch (error) {
-      console.error('[LeadIntakeController.qualify] Error:', error);
+      console.error('[LeadIntakeController.analyze] Error:', error);
       next(error);
     }
   };
 
   qualify = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const leadId = req.params.id || req.body?.leadId;
-      if (!leadId) {
-        res.status(400).json({ success: false, error: 'Lead ID is required.' });
-        return;
-      }
-
+      const leadId = req.params.id;
+      const inquiryText = req.body?.inquiryText;
+      let leadTitle = 'Dự án Doanh nghiệp';
+      let rfpContent = inquiryText || '';
       let lead = null;
-      if (this.dbPool) {
+
+      if (this.dbPool && leadId) {
         const leadRes = await this.dbPool.query('SELECT * FROM leads WHERE id = $1 LIMIT 1;', [leadId]);
         if (leadRes.rows.length > 0) {
           lead = leadRes.rows[0];
+          leadTitle = lead.title || leadTitle;
+          rfpContent = lead.raw_rfp_content || rfpContent;
         }
       }
 
-      const prompt = `Lead: "${lead?.title || 'Dự án Giải pháp Công nghệ'}"\nRFP: ${lead?.raw_rfp_content || req.body?.inquiryText || ''}`;
-      
       let qualificationData: any = null;
+
       if (this.llmGateway) {
-        const aiOutput = await this.llmGateway.generate({
-          taskMode: LLMTaskMode.BANT_QUALIFICATION,
-          prompt,
-          temperature: 0.1
-        });
+        const prompt = `Bạn là Giám đốc Thẩm định Kỹ thuật & Bán hàng (VP of Solution Architecture).
+Hãy thẩm định và đánh giá dự án (BANT Qualification) sau đây dựa trên yêu cầu:
+- Tên dự án: "${leadTitle}"
+- Nội dung RFP: "${rfpContent}"
+
+Yêu cầu trả về định dạng JSON thuần túy (không markdown) với cấu trúc:
+{
+  "qualification_score": 88,
+  "readiness_level": "Tier-1 High Priority",
+  "breakdown": [
+    {
+      "type": "positive",
+      "title": "Ngân sách & Cam kết Lãnh đạo",
+      "detail": "Khách hàng có ngân sách rõ ràng và sự ủng hộ mạnh mẽ từ C-level."
+    },
+    {
+      "type": "positive",
+      "title": "Nhu cầu Cấp thiết & Thời hạn Triển khai",
+      "detail": "Kế hoạch nâng cấp cấp thiết, đòi hỏi hạ tầng hiệu năng cao hoàn thành đúng tiến độ."
+    },
+    {
+      "type": "warning",
+      "title": "Thách thức Tích hợp Hệ thống",
+      "detail": "Cần làm rõ thêm về phương án kết nối an toàn với hạ tầng máy chủ kế thừa."
+    }
+  ],
+  "project_brief": "Tóm tắt dự án ngắn gọn 2 câu và đề xuất bước tiếp theo trong Discovery."
+}`;
+
         try {
-          const cleaned = aiOutput.replace(/```json/gi, '').replace(/```/g, '').trim();
-          const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            qualificationData = JSON.parse(jsonMatch[0]);
-          } else {
-            qualificationData = JSON.parse(cleaned);
-          }
-        } catch (parseErr) {
-          console.warn('[LeadIntakeController] Failed to parse AI Qualification JSON:', parseErr);
+          const aiResponse = await this.llmGateway.generate({ prompt, taskMode: LLMTaskMode.BANT_QUALIFICATION });
+          let cleaned = aiResponse.trim();
+          if (cleaned.startsWith('```json')) cleaned = cleaned.replace(/^```json/, '').replace(/```$/, '').trim();
+          else if (cleaned.startsWith('```')) cleaned = cleaned.replace(/^```/, '').replace(/```$/, '').trim();
+          qualificationData = JSON.parse(cleaned);
+        } catch (aiErr) {
+          console.warn('[LeadIntakeController] LLM Qualification JSON parse failed, falling back to heuristic:', aiErr);
         }
       }
 
-      if (!qualificationData || !qualificationData.qualification_score) {
-        const leadTitle = lead?.title || 'Dự án';
+      if (!qualificationData) {
         qualificationData = {
           qualification_score: 88,
-          readiness_level: 'Mức độ sẵn sàng cao (High Readiness • Tier-1 Lead)',
+          readiness_level: 'Tier-1 High Priority',
           breakdown: [
-            {
-              type: 'positive',
-              title: 'Kiến trúc Kỹ thuật & Tương thích Giải pháp',
-              detail: `Phạm vi yêu cầu của ${leadTitle} phù hợp với năng lực kỹ thuật và khung kiến trúc triển khai tiêu chuẩn.`
-            },
             {
               type: 'positive',
               title: 'Tiềm năng Khách hàng & Tính khả thi Thương mại',
@@ -154,21 +173,33 @@ export class LeadIntakeController {
     }
   };
 
-  listLeads = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+  listLeads = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       if (!this.dbPool) {
         res.status(200).json({ success: true, data: [] });
         return;
       }
-      const queryResult = await this.dbPool.query(
-        'SELECT id, title, source, status, raw_rfp_content, extracted_metadata, created_at FROM leads ORDER BY created_at DESC LIMIT 50;'
-      );
+      const orgId = req.auth?.organizationId || (req.headers['x-organization-id'] as string) || (req.query.organizationId as string);
+      const userId = req.auth?.sub;
+
+      let query = 'SELECT id, title, source, status, raw_rfp_content, extracted_metadata, organization_id, created_by, created_at FROM leads';
+      const params: any[] = [];
+      if (orgId) {
+        params.push(orgId);
+        query += ` WHERE organization_id = $${params.length}`;
+      } else if (userId) {
+        params.push(userId);
+        query += ` WHERE created_by = $${params.length}`;
+      }
+      query += ' ORDER BY created_at DESC LIMIT 50;';
+
+      const queryResult = await this.dbPool.query(query, params);
       res.status(200).json({
         success: true,
         data: queryResult.rows
       });
     } catch (error) {
-      console.error('[LeadIntakeController.qualify] Error:', error);
+      console.error('[LeadIntakeController.listLeads] Error:', error);
       next(error);
     }
   };
@@ -192,7 +223,7 @@ export class LeadIntakeController {
         data: queryResult.rows[0]
       });
     } catch (error) {
-      console.error('[LeadIntakeController.qualify] Error:', error);
+      console.error('[LeadIntakeController.getLeadById] Error:', error);
       next(error);
     }
   };

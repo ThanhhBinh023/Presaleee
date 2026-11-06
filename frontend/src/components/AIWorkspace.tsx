@@ -25,6 +25,7 @@ import {
 import { ClientPortalModal } from './ClientPortalModal';
 import { DiscoveryMeetingsTab } from './DiscoveryMeetingsTab';
 import { ProposalStudioTab } from './ProposalStudioTab';
+import { useToast } from './common/Toast';
 
 interface AIWorkspaceProps {
   onNavigateOverview: () => void;
@@ -39,6 +40,7 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
   onNavigateRfps,
   onNavigateVault
 }) => {
+  const toast = useToast();
   // Multi-project support (Requirement 3)
   const [projects, setProjects] = useState<LeadItem[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
@@ -265,7 +267,7 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                 </button>
 
                 <button 
-                  onClick={() => alert('Proposal submitted for Internal Review (Draft -> In Review)')}
+                  onClick={() => toast.info('Proposal submitted for Internal Review (Draft -> In Review)', 'Trình duyệt Proposal')}
                   className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold shadow-sm transition-all"
                 >
                   <Send className="w-3.5 h-3.5" />
@@ -479,7 +481,7 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                   <button
                     onClick={() => {
                       setActiveSubnav('Proposal Builder v2.4');
-                      alert('Technical Summary synced directly to Proposal Builder!');
+                      toast.success('Technical Summary synced directly to Proposal Builder!', 'Đồng bộ Discovery');
                     }}
                     className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold shadow-xs"
                   >

@@ -3,19 +3,32 @@ import { RAGController } from '../controllers/RAGController.js';
 import { ProposalController } from '../controllers/ProposalController.js';
 import { LeadIntakeController } from '../controllers/LeadIntakeController.js';
 import { MeetingController } from '../controllers/MeetingController.js';
+import { AuthController } from '../controllers/AuthController.js';
+import { UserController } from '../controllers/UserController.js';
+
 import { createRAGRouter } from './ragRoutes.js';
 import { createProposalRouter } from './proposalRoutes.js';
 import { createLeadIntakeRouter } from './leadIntakeRoutes.js';
 import { createMeetingRouter } from './meetingRoutes.js';
+import { createAuthRouter } from './authRoutes.js';
+import { createUserRouter } from './userRoutes.js';
 
 export function createApiRouter(
   ragController: RAGController,
   proposalController: ProposalController,
   leadIntakeController: LeadIntakeController,
-  meetingController?: MeetingController
+  meetingController?: MeetingController,
+  authController?: AuthController,
+  userController?: UserController
 ): Router {
   const router = Router();
 
+  if (authController) {
+    router.use('/auth', createAuthRouter(authController));
+  }
+  if (userController) {
+    router.use('/users', createUserRouter(userController));
+  }
   router.use('/rag', createRAGRouter(ragController));
   router.use('/proposals', createProposalRouter(proposalController));
   router.use('/leads', createLeadIntakeRouter(leadIntakeController));

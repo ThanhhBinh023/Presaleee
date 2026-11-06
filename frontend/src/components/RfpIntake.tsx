@@ -29,6 +29,7 @@ interface RfpIntakeProps {
   onNavigateOverview: () => void;
   onNavigateAIWorkspace: () => void;
   onLogout: () => void;
+  onNavigateVault?: () => void;
 }
 
 const emptyMetadata: LeadExtractedMetadata = {

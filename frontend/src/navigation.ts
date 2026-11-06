@@ -9,6 +9,8 @@ export type RouteName =
   | 'leads'
   | 'rfps'
   | 'rate-cards'
+  | 'meetings'
+  | 'proposals'
   | 'ai-workspace'
   | 'vault';
 

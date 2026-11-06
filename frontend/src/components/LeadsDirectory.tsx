@@ -190,9 +190,8 @@ export const LeadsDirectory: React.FC<LeadsDirectoryProps> = ({ onBackToOverview
     setActionError(null);
     try {
       const proposal = await leadService.createProposal(detail.id);
-      setNotice(`Created proposal ${proposal.title} (${proposal.id}).`);
-      const refreshed = await leadService.getLead(detail.id);
-      setDetail(refreshed);
+      setNotice(`Created proposal ${proposal.title}. Opening studio…`);
+      navigateTo('proposals', { id: proposal.id });
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Could not create a proposal from this lead.');
     } finally {
@@ -256,8 +255,11 @@ export const LeadsDirectory: React.FC<LeadsDirectoryProps> = ({ onBackToOverview
             <button onClick={() => navigateTo('rfps')} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-bold text-white hover:bg-brand-700">
               New intake
             </button>
-            <button onClick={() => navigateTo('rate-cards')} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50">
-              Rate cards
+            <button onClick={() => navigateTo('meetings')} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50">
+              Meetings
+            </button>
+            <button onClick={() => navigateTo('proposals')} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50">
+              Proposals
             </button>
           </div>
         </div>
@@ -468,9 +470,15 @@ export const LeadsDirectory: React.FC<LeadsDirectoryProps> = ({ onBackToOverview
                   ) : (
                     <ul className="space-y-1 text-xs">
                       {meetings.map((meeting) => (
-                        <li key={meeting.id} className="flex justify-between gap-2 rounded-lg border border-slate-100 px-2 py-1.5">
-                          <span className="font-semibold">{meeting.title}</span>
-                          <span className="font-mono text-[10px] text-slate-400">{formatDateTime(meeting.meetingDate)} · {meeting.status}</span>
+                        <li key={meeting.id}>
+                          <button
+                            type="button"
+                            onClick={() => navigateTo('meetings', { leadId: detail.id, id: meeting.id })}
+                            className="flex w-full justify-between gap-2 rounded-lg border border-slate-100 px-2 py-1.5 text-left hover:bg-slate-50"
+                          >
+                            <span className="font-semibold">{meeting.title}</span>
+                            <span className="font-mono text-[10px] text-slate-400">{formatDateTime(meeting.meetingDate)} · {meeting.status}</span>
+                          </button>
                         </li>
                       ))}
                     </ul>

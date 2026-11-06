@@ -20,3 +20,12 @@ export const formatDateTime = (iso: string | null | undefined): string => {
   const parsed = new Date(iso);
   return Number.isNaN(parsed.getTime()) ? '—' : dateFormatter.format(parsed);
 };
+
+export const formatMoney = (amount: number | null | undefined, currency = 'USD'): string => {
+  if (amount === null || amount === undefined || Number.isNaN(amount)) return '—';
+  try {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency, maximumFractionDigits: 2 }).format(amount);
+  } catch {
+    return `${amount.toFixed(2)} ${currency}`;
+  }
+};

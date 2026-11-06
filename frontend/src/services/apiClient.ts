@@ -17,11 +17,14 @@ export class ApiError extends Error {
 interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
+  /** Override the default 10s timeout. AI intake and BANT scoring routinely exceed it. */
+  timeoutMs?: number;
 }
 
 async function send<T>(path: string, options: RequestOptions): Promise<ApiEnvelope<T>> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   let response: Response;
   try {
@@ -35,7 +38,7 @@ async function send<T>(path: string, options: RequestOptions): Promise<ApiEnvelo
   } catch {
     clearTimeout(timer);
     if (controller.signal.aborted) {
-      throw new ApiError(0, `Request timed out after ${REQUEST_TIMEOUT_MS / 1000}s. Is the backend running?`);
+      throw new ApiError(0, `Request timed out after ${timeoutMs / 1000}s. Is the backend running?`);
     }
     throw new ApiError(0, `Cannot reach the API at ${API_BASE_URL}. Start it with "npm run dev:backend".`);
   }

@@ -14,6 +14,12 @@ import { Overview } from './components/Overview';
 import { AIWorkspace } from './components/AIWorkspace';
 import { RfpIntake } from './components/RfpIntake';
 import { KnowledgeVault } from './components/KnowledgeVault';
+import { MembersDirectory } from './components/MembersDirectory';
+import { Profile } from './components/Profile';
+import { ClientsDirectory } from './components/ClientsDirectory';
+import { AuditLog } from './components/AuditLog';
+import { LeadsDirectory } from './components/LeadsDirectory';
+import { RateCardsDirectory } from './components/RateCardsDirectory';
 import { RequireAuth } from './components/common/RequireAuth';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { ToastProvider } from './components/common/Toast';
@@ -25,7 +31,13 @@ type Page =
   | 'overview'
   | 'ai-workspace'
   | 'rfps'
-  | 'vault';
+  | 'vault'
+  | 'members'
+  | 'profile'
+  | 'clients'
+  | 'audit'
+  | 'leads'
+  | 'rate-cards';
 
 function pageFromHash(hash: string): Page {
   const route = hash.split('?')[0];
@@ -35,6 +47,12 @@ function pageFromHash(hash: string): Page {
   if (route === '#ai-workspace') return 'ai-workspace';
   if (route === '#rfps') return 'rfps';
   if (route === '#vault') return 'vault';
+  if (route === '#members') return 'members';
+  if (route === '#profile') return 'profile';
+  if (route === '#clients') return 'clients';
+  if (route === '#audit') return 'audit';
+  if (route === '#leads') return 'leads';
+  if (route === '#rate-cards') return 'rate-cards';
   return 'home';
 }
 
@@ -60,6 +78,11 @@ const AppShell: React.FC = () => {
   const navigateToAIWorkspace = () => goTo('ai-workspace');
   const navigateToRfps = () => goTo('rfps');
   const navigateToVault = () => goTo('vault');
+  const navigateToMembers = () => goTo('members');
+  const navigateToClients = () => goTo('clients');
+  const navigateToAudit = () => goTo('audit');
+  const navigateToLeads = () => goTo('leads');
+  const navigateToRateCards = () => goTo('rate-cards');
 
   const handleLogout = async () => {
     try {
@@ -92,6 +115,11 @@ const AppShell: React.FC = () => {
           onNavigateAIWorkspace={navigateToAIWorkspace}
           onNavigateRfps={navigateToRfps}
           onNavigateVault={navigateToVault}
+          onNavigateMembers={navigateToMembers}
+          onNavigateClients={navigateToClients}
+          onNavigateAudit={navigateToAudit}
+          onNavigateLeads={navigateToLeads}
+          onNavigateRateCards={navigateToRateCards}
         />
       </RequireAuth>
     );
@@ -122,8 +150,28 @@ const AppShell: React.FC = () => {
     );
   }
 
-  if (currentPage === 'reset-password') {
-    return <ResetPassword onBackToHome={navigateToHome} onDone={navigateToSignIn} />;
+  if (currentPage === 'leads') {
+    return (
+      <RequireAuth>
+        <LeadsDirectory onBackToOverview={navigateToOverview} />
+      </RequireAuth>
+    );
+  }
+
+  if (currentPage === 'rate-cards') {
+    return (
+      <RequireAuth>
+        <RateCardsDirectory onBackToOverview={navigateToOverview} />
+      </RequireAuth>
+    );
+  }
+
+  if (currentPage === 'clients') {
+    return (
+      <RequireAuth>
+        <ClientsDirectory onBackToOverview={navigateToOverview} />
+      </RequireAuth>
+    );
   }
 
   if (currentPage === 'signin') {

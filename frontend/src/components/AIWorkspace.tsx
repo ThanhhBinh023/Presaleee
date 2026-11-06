@@ -154,7 +154,20 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
               <span>Knowledge Vault</span>
             </button>
 
-            
+            <button
+              onClick={() => navigateTo('leads')}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all"
+            >
+              <FileText className="w-4 h-4 text-slate-400" />
+              <span>Leads</span>
+            </button>
+            <button
+              onClick={() => navigateTo('rate-cards')}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all"
+            >
+              <CreditCard className="w-4 h-4 text-slate-400" />
+              <span>Rate cards</span>
+            </button>
           </nav>
         </div>
 

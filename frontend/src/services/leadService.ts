@@ -1,3 +1,5 @@
+import { apiRequest } from './apiClient';
+
 export interface QualificationBreakdown {
   type: 'positive' | 'warning' | 'neutral';
   title: string;
@@ -51,11 +53,8 @@ export interface AnalyzeLeadResult {
 
 export async function fetchLeads(): Promise<LeadItem[]> {
   try {
-    const res = await fetch('/api/v1/leads', {
-    credentials: 'include' });
-    if (!res.ok) return [];
-    const data = await res.json();
-    return data.data || [];
+    const list = await apiRequest<LeadItem[]>('/api/v1/leads');
+    return Array.isArray(list) ? list : [];
   } catch {
     return [];
   }
@@ -66,43 +65,36 @@ export async function analyzeAndSaveLead(
   source = 'INBOUND_EMAIL', 
   persist = true
 ): Promise<AnalyzeLeadResult> {
-  const res = await fetch('/api/v1/leads/intake/analyze', {
-    credentials: 'include',
+  return await apiRequest<AnalyzeLeadResult>('/api/v1/leads/intake/analyze', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ rawRfpContent, source, persist })
+    body: { rawRfpContent, source, persist }
   });
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.error || 'Failed to analyze and save Lead.');
-  }
-  const data = await res.json();
-  return data.data;
 }
 
 export async function qualifyLead(leadId: string, inquiryText?: string): Promise<{ qualification: QualificationData; lead: LeadItem }> {
-  const res = await fetch(`/api/v1/leads/${leadId}/qualify`, {
-    credentials: 'include',
+  return await apiRequest<{ qualification: QualificationData; lead: LeadItem }>(`/api/v1/leads/${leadId}/qualify`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ leadId, inquiryText })
+    body: { leadId, inquiryText }
   });
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.error || 'Failed to qualify Lead.');
-  }
-  const data = await res.json();
-  return data.data;
 }
 
 export async function getLeadById(leadId: string): Promise<LeadItem | null> {
   try {
-    const res = await fetch(`/api/v1/leads/${leadId}`, {
-    credentials: 'include' });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.data || null;
+    return await apiRequest<LeadItem>(`/api/v1/leads/${leadId}`);
   } catch {
     return null;
   }
+}
+
+export async function updateLead(leadId: string, updates: Partial<LeadItem>): Promise<LeadItem> {
+  return await apiRequest<LeadItem>(`/api/v1/leads/${leadId}`, {
+    method: 'PUT',
+    body: updates
+  });
+}
+
+export async function deleteLead(leadId: string): Promise<void> {
+  await apiRequest<void>(`/api/v1/leads/${leadId}`, {
+    method: 'DELETE'
+  });
 }

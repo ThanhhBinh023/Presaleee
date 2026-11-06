@@ -182,12 +182,21 @@ Yêu cầu trả về định dạng JSON thuần túy (không markdown) với c
       const orgId = req.auth?.organizationId || (req.headers['x-organization-id'] as string) || (req.query.organizationId as string);
       const userId = req.auth?.sub;
 
+      if (!orgId && !userId) {
+        // Multi-tenant security: Unauthenticated or unscoped request must NEVER leak leads across organizations
+        res.status(200).json({
+          success: true,
+          data: []
+        });
+        return;
+      }
+
       let query = 'SELECT id, title, source, status, raw_rfp_content, extracted_metadata, organization_id, created_by, created_at FROM leads';
       const params: any[] = [];
       if (orgId) {
         params.push(orgId);
         query += ` WHERE organization_id = $${params.length}`;
-      } else if (userId) {
+      } else {
         params.push(userId);
         query += ` WHERE created_by = $${params.length}`;
       }
@@ -224,6 +233,73 @@ Yêu cầu trả về định dạng JSON thuần túy (không markdown) với c
       });
     } catch (error) {
       console.error('[LeadIntakeController.getLeadById] Error:', error);
+      next(error);
+    }
+  };
+
+  updateLead = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!this.dbPool) {
+        res.status(404).json({ success: false, error: 'Database not connected.' });
+        return;
+      }
+      const leadId = req.params.id;
+      const { title, source, status, rawRfpContent, extractedMetadata } = req.body;
+
+      const existingRes = await this.dbPool.query('SELECT * FROM leads WHERE id = $1 LIMIT 1;', [leadId]);
+      if (existingRes.rows.length === 0) {
+        res.status(404).json({ success: false, error: 'Lead not found.' });
+        return;
+      }
+
+      const current = existingRes.rows[0];
+      const newTitle = title !== undefined ? title : current.title;
+      const newSource = source !== undefined ? source : current.source;
+      const newStatus = status !== undefined ? status : current.status;
+      const newRaw = rawRfpContent !== undefined ? rawRfpContent : current.raw_rfp_content;
+      const newMeta = extractedMetadata !== undefined 
+        ? (typeof extractedMetadata === 'string' ? extractedMetadata : JSON.stringify(extractedMetadata))
+        : JSON.stringify(current.extracted_metadata || {});
+
+      const updateRes = await this.dbPool.query(
+        `UPDATE leads
+         SET title = $1, source = $2, status = $3, raw_rfp_content = $4, extracted_metadata = $5::jsonb, updated_at = NOW()
+         WHERE id = $6
+         RETURNING *;`,
+        [newTitle, newSource, newStatus, newRaw, newMeta, leadId]
+      );
+
+      res.status(200).json({
+        success: true,
+        data: updateRes.rows[0]
+      });
+    } catch (error) {
+      console.error('[LeadIntakeController.updateLead] Error:', error);
+      next(error);
+    }
+  };
+
+  deleteLead = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!this.dbPool) {
+        res.status(404).json({ success: false, error: 'Database not connected.' });
+        return;
+      }
+      const leadId = req.params.id;
+      await this.dbPool.query('DELETE FROM meetings WHERE lead_id = $1;', [leadId]);
+      await this.dbPool.query('DELETE FROM proposals WHERE lead_id = $1;', [leadId]);
+      const deleteRes = await this.dbPool.query('DELETE FROM leads WHERE id = $1 RETURNING id;', [leadId]);
+      if (deleteRes.rows.length === 0) {
+        res.status(404).json({ success: false, error: 'Lead not found.' });
+        return;
+      }
+      res.status(200).json({
+        success: true,
+        message: 'Lead deleted successfully.',
+        data: { id: leadId }
+      });
+    } catch (error) {
+      console.error('[LeadIntakeController.deleteLead] Error:', error);
       next(error);
     }
   };

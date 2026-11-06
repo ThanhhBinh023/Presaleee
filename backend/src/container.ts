@@ -5,6 +5,7 @@ import { PostgresMeetingRepository } from './infrastructure/database/repositorie
 import { PostgresAuthRepository } from './infrastructure/database/repositories/PostgresAuthRepository.js';
 import { PostgresUserRepository } from './infrastructure/database/repositories/PostgresUserRepository.js';
 import { PostgresAuditRepository } from './infrastructure/database/repositories/PostgresAuditRepository.js';
+import { PostgresDashboardRepository } from './infrastructure/database/repositories/PostgresDashboardRepository.js';
 
 import { GeminiEmbeddingGateway } from './infrastructure/ai/GeminiEmbeddingGateway.js';
 import { FastAPILMGateway } from './infrastructure/ai/FastAPILMGateway.js';
@@ -48,6 +49,11 @@ import {
   UpdateMemberUseCase,
   UpdateOwnProfileUseCase
 } from './application/use-cases/UserUseCases.js';
+import {
+  GetDashboardOverviewUseCase,
+  ListDashboardLeadsUseCase,
+  ListDashboardActivityUseCase
+} from './application/use-cases/DashboardUseCases.js';
 
 import { RAGController } from './presentation/controllers/RAGController.js';
 import { ProposalController } from './presentation/controllers/ProposalController.js';
@@ -55,6 +61,7 @@ import { LeadIntakeController } from './presentation/controllers/LeadIntakeContr
 import { MeetingController } from './presentation/controllers/MeetingController.js';
 import { AuthController } from './presentation/controllers/AuthController.js';
 import { UserController } from './presentation/controllers/UserController.js';
+import { DashboardController } from './presentation/controllers/DashboardController.js';
 
 export interface ServiceContainer {
   knowledgeRepository: PostgresKnowledgeRepository;
@@ -63,6 +70,7 @@ export interface ServiceContainer {
   authRepository: PostgresAuthRepository;
   userRepository: PostgresUserRepository;
   auditRepository: PostgresAuditRepository;
+  dashboardRepository: PostgresDashboardRepository;
 
   embeddingGateway: GeminiEmbeddingGateway;
   llmGateway: FastAPILMGateway;
@@ -100,6 +108,7 @@ export interface ServiceContainer {
   meetingController: MeetingController;
   authController: AuthController;
   userController: UserController;
+  dashboardController: DashboardController;
 }
 
 export function createContainer(): ServiceContainer {
@@ -110,6 +119,7 @@ export function createContainer(): ServiceContainer {
   const authRepository = new PostgresAuthRepository(dbPool);
   const userRepository = new PostgresUserRepository(dbPool);
   const auditRepository = new PostgresAuditRepository(dbPool);
+  const dashboardRepository = new PostgresDashboardRepository(dbPool);
 
   const embeddingGateway = new GeminiEmbeddingGateway();
   const llmGateway = new FastAPILMGateway();
@@ -148,6 +158,10 @@ export function createContainer(): ServiceContainer {
   const forgotPasswordUseCase = new ForgotPasswordUseCase(authRepository);
   const resetPasswordUseCase = new ResetPasswordUseCase(authRepository);
   const registerUseCase = new RegisterUseCase(userRepository, authRepository, auditRepository);
+
+  const getDashboardOverviewUseCase = new GetDashboardOverviewUseCase(dashboardRepository);
+  const listDashboardLeadsUseCase = new ListDashboardLeadsUseCase(dashboardRepository);
+  const listDashboardActivityUseCase = new ListDashboardActivityUseCase(dashboardRepository);
 
   // 3. Presentation layer (Controllers)
   const ragController = new RAGController(
@@ -198,6 +212,12 @@ export function createContainer(): ServiceContainer {
     new UpdateOwnProfileUseCase(authRepository, userRepository, auditRepository)
   );
 
+  const dashboardController = new DashboardController(
+    getDashboardOverviewUseCase,
+    listDashboardLeadsUseCase,
+    listDashboardActivityUseCase
+  );
+
   return {
     knowledgeRepository,
     proposalRepository,
@@ -205,6 +225,7 @@ export function createContainer(): ServiceContainer {
     authRepository,
     userRepository,
     auditRepository,
+    dashboardRepository,
     embeddingGateway,
     llmGateway,
     excelExporterService,
@@ -230,7 +251,8 @@ export function createContainer(): ServiceContainer {
     leadIntakeController,
     meetingController,
     authController,
-    userController
+    userController,
+    dashboardController
   };
 }
 

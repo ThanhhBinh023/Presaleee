@@ -36,7 +36,8 @@ app.use(
     container.leadIntakeController,
     container.meetingController,
     container.authController,
-    container.userController
+    container.userController,
+    container.dashboardController
   )
 );
 
@@ -46,6 +47,7 @@ app.use(errorHandler);
 const server = app.listen(env.port, () => {
   console.log(`🚀 Presaleee Backend is running on port ${env.port}`);
   console.log(`🔐 Auth Endpoints available at: http://localhost:${env.port}/api/v1/auth`);
+  console.log(`📊 Dashboard Endpoints at: http://localhost:${env.port}/api/v1/dashboard`);
   console.log(`📡 RAG Endpoints available at: http://localhost:${env.port}/api/v1/rag`);
   console.log(`📋 Proposal Endpoints available at: http://localhost:${env.port}/api/v1/proposals`);
   console.log(`🤝 Discovery Meeting Endpoints at: http://localhost:${env.port}/api/v1/meetings`);

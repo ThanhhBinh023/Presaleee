@@ -110,7 +110,7 @@ const AppShell: React.FC = () => {
     );
   }
 
-  if (currentPage === 'vault') {
+    if (currentPage === 'vault') {
     return (
       <RequireAuth>
         <KnowledgeVault
@@ -118,6 +118,30 @@ const AppShell: React.FC = () => {
           onNavigateAIWorkspace={navigateToAIWorkspace}
           onLogout={handleLogout}
         />
+      </RequireAuth>
+    );
+  }
+
+  if (currentPage === 'reset-password') {
+    return <ResetPassword onBackToHome={navigateToHome} onDone={navigateToSignIn} />;
+  }
+
+  if (currentPage === 'signin') {
+    return <SignIn onBackToHome={navigateToHome} onLoginSuccess={navigateToOverview} />;
+  }
+
+  if (currentPage === 'members') {
+    return (
+      <RequireAuth>
+        <MembersDirectory onBackToOverview={navigateToOverview} />
+      </RequireAuth>
+    );
+  }
+
+  if (currentPage === 'profile') {
+    return (
+      <RequireAuth>
+        <Profile />
       </RequireAuth>
     );
   }

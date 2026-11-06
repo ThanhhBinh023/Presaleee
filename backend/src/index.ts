@@ -3,6 +3,7 @@ import cors from 'cors';
 import { env } from './infrastructure/config/env.js';
 import { container } from './container.js';
 import { createApiRouter } from './presentation/routes/index.js';
+import { createDocsRouter } from './presentation/routes/docsRoutes.js';
 import { errorHandler } from './presentation/middlewares/errorHandler.js';
 
 if (!env.databaseUrl) {
@@ -27,6 +28,12 @@ app.get('/health', (_req: Request, res: Response) => {
   });
 });
 
+// Swagger UI and the generated spec. Kept out of production so the API surface
+// is not published by the service itself.
+if (env.nodeEnv !== 'production') {
+  app.use('/docs', createDocsRouter());
+}
+
 // Presentation API routes
 app.use(
   '/api/v1',
@@ -39,6 +46,7 @@ app.use(
     container.userController
   )
 );
+
 
 // Centralized error handling middleware
 app.use(errorHandler);

@@ -1,11 +1,8 @@
 /** Modes accepted by the AI service `task_mode` contract. Values are part of the wire protocol. */
 export enum LLMTaskMode {
   LEAD_INTAKE = 1,
-  MEETING_ASSISTANT = 2,
-  GAP_ANALYSIS = 3,
-  BANT_QUALIFICATION = 4,
-  PROPOSAL_BUILDER = 5,
-  TECH_ARCHITECTURE = 6
+  LEAD_QUALIFICATION = 4,
+  PROPOSAL_BUILDER = 5
 }
 
 export interface LLMGenerateOptions {

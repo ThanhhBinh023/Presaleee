@@ -1,4 +1,7 @@
 import React, { useState } from 'react';
+import { useAuth } from '../hooks/useAuth';
+import { WorkspacePill } from './workspace/WorkspacePill';
+import { UserCard } from './workspace/UserCard';
 import { 
   LayoutGrid, 
   FileText, 
@@ -21,8 +24,8 @@ Search,
   Calendar, 
   Zap, 
   ArrowUpRight, 
-  LogOut, 
-  ChevronRight
+  ChevronRight,
+  Users
 } from 'lucide-react';
 
 interface OverviewProps {
@@ -30,18 +33,25 @@ interface OverviewProps {
   onNavigateAIWorkspace?: () => void;
   onNavigateRfps?: () => void;
   onNavigateVault?: () => void;
+  onNavigateMembers?: () => void;
+  onNavigateClients?: () => void;
+  onNavigateAudit?: () => void;
 }
 
 export const Overview: React.FC<OverviewProps> = ({ 
   onLogout, 
   onNavigateAIWorkspace,
   onNavigateRfps,
-  onNavigateVault
+  onNavigateVault,
+  onNavigateMembers,
+  onNavigateClients,
+  onNavigateAudit
 }) => {
   const [activeNav, setActiveNav] = useState('Overview');
   const [recommendationDismissed, setRecommendationDismissed] = useState(false);
   const [synthesized, setSynthesized] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const { user } = useAuth();
 
   // 6 Pipeline stages
   const pipelineStages = [
@@ -199,18 +209,7 @@ export const Overview: React.FC<OverviewProps> = ({
               </span>
             </div>
 
-            {/* DEMO WORKSPACE Pill */}
-            <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-brand-500 animate-pulse"></span>
-                <span className="text-xs font-mono font-bold text-slate-700">
-                  DEMO WORKSPACE
-                </span>
-              </div>
-              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-brand-100 text-brand-800">
-                PRO
-              </span>
-            </div>
+            <WorkspacePill />
           </div>
 
           {/* Navigation Links */}
@@ -232,7 +231,13 @@ export const Overview: React.FC<OverviewProps> = ({
                     } else if (item.name === 'RFPs & Specs' && onNavigateRfps) {
                       onNavigateRfps();
                     } else if (item.name === 'Knowledge Vault' && onNavigateVault) {
-                      onNavigateVault();
+                      onNavigateVault();;
+                    } else if (item.name === 'Clients' && onNavigateClients) {
+                      onNavigateClients();
+                    } else if (item.name === 'Audit trail' && onNavigateAudit) {
+                      onNavigateAudit();
+                    } else if (item.name === 'Members' && onNavigateMembers) {
+                      onNavigateMembers();
                     } else {
                       setActiveNav(item.name);
                     }
@@ -260,25 +265,7 @@ export const Overview: React.FC<OverviewProps> = ({
 
         {/* User Profile & Logout at Bottom of Sidebar */}
         <div className="p-3 border-t border-slate-100">
-          <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-200">
-            <div className="flex items-center gap-2.5 overflow-hidden">
-              <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-700 font-bold flex items-center justify-center text-xs shrink-0">
-                SE
-              </div>
-              <div className="truncate">
-                <div className="text-xs font-bold text-slate-800 truncate">SE Team Lead</div>
-                <div className="text-[11px] font-mono text-slate-400 truncate">sales-eng@org</div>
-              </div>
-            </div>
-
-            <button
-              onClick={onLogout}
-              title="Sign out to Home"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
-          </div>
+          <UserCard onLogout={onLogout} logoutTitle="Sign out to Home" />
         </div>
 
       </aside>
@@ -294,7 +281,7 @@ export const Overview: React.FC<OverviewProps> = ({
             <span className="text-slate-400">Workspace</span>
             <ChevronRight className="w-3.5 h-3.5 text-slate-300" />
             <span className="font-bold text-brand-700 bg-emerald-50 px-2 py-0.5 rounded border border-brand-200">
-              Presaleee Workspace
+              {user?.role.replace(/_/g, ' ') || 'Workspace'}
             </span>
           </div>
 

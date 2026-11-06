@@ -1,0 +1,5705 @@
+openapi: 3.0.3
+info:
+  title: Presaleee Backend API
+  version: 1.0.0
+  description: >-
+    HTTP surface of the Presaleee presale platform, documented from the Express
+    routers in `src/presentation/routes/` (77 registered handlers plus the
+    `GET /health` system probe). Every statement here mirrors the code: request
+    fields, defaults, limits, enums, status codes and role guards.
+
+
+    ## Response envelope
+
+
+    Success: `{ "success": true, "data": <resource>, "meta"?: {...} }`.
+    Failure: `{ "success": false, "error": "<message>", "statusCode": <n> }`
+    (`src/presentation/middlewares/errorHandler.ts:20-44`). An uncaught
+    non-domain error answers `500` with `error: "Internal server error occurred."`
+    and is never leaked verbatim.
+
+
+    ## Error classes to status codes
+
+
+    `ValidationError` 400, `UnauthorizedError` 401, `AppError` 403,
+    `NotFoundError` 404 (also used for another tenant's resource, so a
+    cross-tenant id is indistinguishable from a missing one),
+    `ConflictError` 409, `ExternalServiceError` 502. body-parser adds
+    `400` malformed JSON, `413` payload over 2 MB (`src/index.ts:21`) and
+    `415` unsupported encoding.
+
+
+    ## Authentication
+
+
+    Staff calls present a 15-minute HS256 access token, either as
+    `Authorization: Bearer <jwt>` (wins when both are sent) or as the
+    `presaleee_access` cookie. Claims are `sub`, `email`, `organizationId`
+    (nullable), `role` (defaults `VIEWER`) (`src/presentation/middlewares/requireAuth.ts:22-51`).
+    A refresh token is only ever carried by the `presaleee_refresh` cookie and
+    is never serialized into a body.
+
+
+    Two guards are layered on top of `requireAuth`: `requireOrganization`
+    answers `403 An organization is required for this operation.` when the
+    token has no `organizationId`, and `requireRole(...)` answers
+    `403 This operation requires one of the following roles: <roles>.`
+    (`src/presentation/middlewares/requireRole.ts:14-16`).
+
+
+    The client portal is a separate security scheme: an opaque 43-character
+    base64url token issued by `POST /api/v1/portal/sessions`, presented as
+    `Authorization: Bearer <portalToken>`. Only its SHA-256 hash is stored, and
+    the session row is checked against `proposal_id`, `revoked_at IS NULL`,
+    `expires_at > NOW()` and proposal status in `SENT_TO_CLIENT`/`ACCEPTED`
+    (`src/presentation/routes/portalRoutes.ts:17-31`).
+
+
+    ## CSRF origin check
+
+
+    All six cookie-writing auth routes and `POST /auth/register` compare the
+    `Origin` header against `FRONTEND_URL`: absent origin passes, unparsable
+    origin is `400 Invalid request origin.`, mismatched origin is
+    `403 Request origin is not allowed.` (`src/presentation/controllers/AuthController.ts:56-70`).
+
+
+    ## AI-dependent operations
+
+
+    Six operations call the external Python service
+    `${AI_SERVICE_URL}/api/v1/generate` (default `http://localhost:8000`) and
+    answer `502` when it is unreachable: `POST /leads/intake/analyze`,
+    `POST /leads/{id}/qualifications`, `POST /meetings/{meetingId}/analyze`,
+    `POST /proposals/{id}/generate`, `POST /proposals/{id}/sheets/{sheetName}/generate`,
+    `POST /proposals/{id}/sections/{sectionName}/regenerate`,
+    `POST /portal/proposals/{proposalId}/questions`,
+    `POST /knowledge/ask`, `POST /rag/generate-proposal`.
+    Retrieval and ingest use the Gemini embedding gateway directly
+    (`gemini-embedding-001`, 768 dimensions) and only fail with `502` if that
+    call fails.
+
+
+    ## Conventions used by this document
+
+
+    Collection paths are written without a trailing slash (`/api/v1/proposals`);
+    the routers register them as `router.post('/')` under a mount, so Express
+    accepts both forms. A request body larger than 2 MB is answered `413`, and an
+    unsupported `Content-Encoding` `415` - both apply to every operation that
+    accepts a body and are not repeated per operation. `GET` exports are the only
+    operations whose success body is binary rather than the JSON envelope.
+    Regenerate and re-check this file with `npm run docs:openapi`, which fails if a
+    route is registered in `src/presentation/routes/` but missing here.
+  contact:
+    name: Presaleee backend
+servers:
+  - url: http://localhost:5000
+    description: Development server (`PORT`, `npm run dev`)
+  - url: http://127.0.0.1:5099
+    description: Isolated e2e instance used by the API test suites
+tags:
+  - name: System
+    description: Liveness probe, mounted outside `/api/v1`
+  - name: Auth
+    description: G1/G2 - registration, sessions, cookies, password lifecycle
+  - name: Users
+    description: G3 - staff directory, own profile, organization membership
+  - name: Clients
+    description: G4 - client directory
+  - name: Rate Cards
+    description: G5 - role rates and the deterministic pricing calculator
+  - name: Leads
+    description: G6 - RFP intake, lead pipeline, BANT qualification
+  - name: Meetings
+    description: G7 - discovery meetings, transcripts, AI analysis
+  - name: Proposals
+    description: G8 - proposal CRUD, sheets, AI generation, exports
+  - name: Portal (staff)
+    description: G9 - session and material management
+  - name: Portal (client)
+    description: G10 - token-scoped proposal view, Q&A, comments, materials
+  - name: Knowledge Vault
+    description: G11 - documents, chunks, grounded Q&A
+  - name: RAG
+    description: G12 - hybrid retrieval, ingest, proposal draft
+  - name: Dashboard
+    description: G13 - aggregate pipeline read models
+  - name: Audit Logs
+    description: G14 - immutable activity ledger, ADMIN/PRESALE_LEAD only
+security:
+  - bearerAccess: []
+  - accessCookie: []
+paths:
+  /health:
+    get:
+      operationId: healthProbe
+      tags:
+        - System
+      summary: Service liveness probe
+      description: >-
+        Registered directly on the Express app before the `/api/v1` router, so
+        it is not behind auth and does not use the response envelope
+        (`src/index.ts:24-31`).
+      security: []
+      responses:
+        '200':
+          description: Service is up.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthProbe'
+  /api/v1/auth/register:
+    post:
+      operationId: authRegister
+      tags:
+        - Auth
+      summary: Register a user and create its organization
+      description: >-
+        Self-service sign-up. The caller always becomes `ADMIN` of a brand-new
+        organization, and the response also carries that organization. Only the
+        access cookie is set here; the refresh token is returned in the body so
+        a non-browser client can store it. The identity is taken from the
+        verified user row, never from the request body, and `role`/`status` are
+        not accepted as input.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/OriginHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthRegisterRequest'
+            examples:
+              default:
+                value:
+                  email: presales@example.com
+                  fullName: Minh Nguyen
+                  organizationName: Acme Presales
+                  organizationDomain: acme.example.com
+                  password: a-strong-password-12
+      responses:
+        '201':
+          $ref: '#/components/responses/AuthSessionCreated'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/auth/login:
+    post:
+      operationId: authLogin
+      tags:
+        - Auth
+      summary: Start a session with email and password
+      description: >-
+        Sets both httpOnly cookies (`presaleee_access` for 15 minutes,
+        `presaleee_refresh` for 30 days) and returns only the user object. A
+        wrong password, an unknown email and a non-`ACTIVE` account all answer
+        the same `401 Invalid email or password.` so the response cannot be used
+        to enumerate accounts. There is no rate limiting on this route.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/OriginHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthLoginRequest'
+            examples:
+              default:
+                value:
+                  email: presales@example.com
+                  password: a-strong-password-12
+      responses:
+        '200':
+          $ref: '#/components/responses/AuthUserOnly'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/auth/refresh:
+    post:
+      operationId: authRefresh
+      tags:
+        - Auth
+      summary: Rotate the session from the refresh cookie
+      description: >-
+        Reads `presaleee_refresh` (32-256 characters) - there is no request
+        body and a token passed in the body is ignored. The stored token is
+        hashed and compared, the old session row is revoked and a new pair is
+        issued (rotation), so replaying a used refresh token gives `401`. On any
+        failure both cookies are cleared.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/OriginHeader'
+      responses:
+        '200':
+          $ref: '#/components/responses/AuthUserOnly'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/auth/logout:
+    post:
+      operationId: authLogout
+      tags:
+        - Auth
+      summary: Revoke the refresh session and clear the cookies
+      description: >-
+        Revokes the session behind `presaleee_refresh` and clears both cookies.
+        An absent or unknown refresh token is a silent no-op, so logout is
+        idempotent and always answers `200`. Note the accepted limitation - the
+        15-minute access token stays valid until it expires.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/OriginHeader'
+      responses:
+        '200':
+          description: Signed out.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/MessageResult'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/auth/me:
+    get:
+      operationId: authMe
+      tags:
+        - Auth
+      summary: Read the authenticated identity
+      description: >-
+        Resolves `sub` from the token to a fresh user row, so a deactivated
+        account answers `401 User is not active.` even while its token is still
+        valid.
+      responses:
+        '200':
+          $ref: '#/components/responses/AuthUserOnly'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/v1/auth/forgot-password:
+    post:
+      operationId: authForgotPassword
+      tags:
+        - Auth
+      summary: Request a password reset token
+      description: >-
+        Always answers `200` with the same neutral message, for an unknown or
+        inactive email too. Outside `NODE_ENV=production` the response also
+        carries `resetToken` and `resetUrl` so the flow is testable without mail
+        delivery; in production those two fields are absent.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/OriginHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForgotPasswordRequest'
+      responses:
+        '200':
+          description: Reset requested. Token exposed only outside production.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/PasswordResetRequestResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/auth/reset-password:
+    post:
+      operationId: authResetPassword
+      tags:
+        - Auth
+      summary: Consume a reset token and set a new password
+      description: >-
+        The token must be 32-256 characters and the password must pass the
+        12-128 character policy, which is validated before the token is
+        consumed so a weak password does not burn a valid token. A successful
+        reset invalidates the old password, every live refresh session and both
+        cookies; a used, expired or unknown token answers
+        `409 Password reset token is invalid, expired, or already used.`
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/OriginHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordRequest'
+      responses:
+        '200':
+          description: Password replaced.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/MessageResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/users/me/organizations:
+    get:
+      operationId: usersListOrganizations
+      tags:
+        - Users
+      summary: List the organizations the caller can join
+      description: >-
+        The only users route that tolerates a token without `organizationId`
+        (used right after sign-up). Returns a plain array, not a page, so
+        `meta.total` is the array length rather than a database count.
+      responses:
+        '200':
+          description: Organizations for this identity.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/OrganizationSummary'
+                      meta:
+                        type: object
+                        properties:
+                          total:
+                            type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/v1/users/me:
+    patch:
+      operationId: usersUpdateMe
+      tags:
+        - Users
+      summary: Update own profile or change own password
+      description: >-
+        At least one editable field is required. Supplying `password` also
+        requires `currentPassword`, which is verified against the stored hash
+        (`401 Current password is incorrect.`) and, on success, revokes every
+        refresh session so other devices are signed out. `avatarUrl` accepts
+        `null` or an empty string to clear it. Role and status cannot be changed
+        here.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateOwnProfileRequest'
+            examples:
+              changePassword:
+                value:
+                  currentPassword: old-password-12345
+                  password: new-password-123456
+      responses:
+        '200':
+          description: Profile updated.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: object
+                        required:
+                          - user
+                          - passwordChanged
+                        properties:
+                          user:
+                            $ref: '#/components/schemas/PublicAuthUser'
+                          passwordChanged:
+                            type: boolean
+                            description: True only when a new password was accepted.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/users:
+    get:
+      operationId: usersList
+      tags:
+        - Users
+      summary: List the staff directory of the caller organization
+      description: >-
+        `requireAuth` only - every role can read the directory. Results are
+        scoped to the token's organization unless an `ADMIN` adds
+        `allOrganizations=true`, which is rejected with `403` for any other role
+        because it widens the tenant filter. `search` matches `full_name` or
+        `email` with ILIKE.
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - name: limit
+          in: query
+          required: false
+          description: Rows per page. Note the default here is 50, not 20.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: role
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/UserRole'
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/UserStatus'
+        - $ref: '#/components/parameters/SearchParam'
+        - name: allOrganizations
+          in: query
+          required: false
+          description: Literal `true` to span organizations. ADMIN only.
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          $ref: '#/components/responses/MemberList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      operationId: usersAdd
+      tags:
+        - Users
+      summary: Invite or create a member in the caller organization
+      description: >-
+        Guarded by `requireRole(ADMIN, PRESALE_LEAD)`. The new account is bound
+        to the caller's organization, so `organizationId` is never accepted from
+        the body. An unknown role is a `400`, a taken email a `409`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMemberRequest'
+            examples:
+              default:
+                value:
+                  email: architect@example.com
+                  fullName: Lan Tran
+                  password: a-strong-password-12
+                  role: SOLUTION_ARCHITECT
+      responses:
+        '201':
+          description: >-
+            Member created, with `Location: /api/v1/users/{id}`. No `organizationName`
+            on this row.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/MemberDirectoryEntry'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+  /api/v1/users/{id}:
+    get:
+      operationId: usersGetMember
+      tags:
+        - Users
+      summary: Read one member of the caller organization
+      description: >-
+        Any authenticated role. A row from another tenant answers `404`, not
+        `403`. A path segment that is not a UUID answers `400`.
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      responses:
+        '200':
+          description: The member row.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/MemberDirectoryEntry'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: usersUpdateMember
+      tags:
+        - Users
+      summary: Change a member's name, role or status
+      description: >-
+        Guarded by `requireRole(ADMIN, PRESALE_LEAD)`. Changing your own `role`
+        or `status` through this route is rejected with `400` - use
+        `PATCH /users/me` semantics for that, so an administrator cannot lock
+        themselves out by accident. Demoting or deactivating the last active
+        `ADMIN` answers `409 The organization must keep at least one active ADMIN.`;
+        setting `status=DEACTIVATED` revokes that user's refresh sessions.
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMemberRequest'
+      responses:
+        '200':
+          description: Member updated.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/MemberDirectoryEntry'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/clients:
+    get:
+      operationId: clientsList
+      tags:
+        - Clients
+      summary: List the client directory
+      description: >-
+        Read access for every role in the organization. Ordered
+        `updated_at DESC, created_at DESC`. `search` matches company name,
+        contact person or contact email.
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - $ref: '#/components/parameters/SearchParam'
+        - name: industry
+          in: query
+          required: false
+          description: Exact match against the industry taxonomy. These are display labels, not codes.
+          schema:
+            $ref: '#/components/schemas/ClientIndustry'
+      responses:
+        '200':
+          $ref: '#/components/responses/ClientList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      operationId: clientsCreate
+      tags:
+        - Clients
+      summary: Register a client company
+      description: >-
+        Guarded by `requireRole(ADMIN, PRESALE_LEAD)`. The client is bound to the
+        caller's organization; `organizationId` in the body is ignored. The
+        unique constraint is on the company name per organization, so a
+        duplicate answers `409`. `contactEmail` is stored as free text - it is
+        not format-validated, unlike the portal's client email.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateClientRequest'
+            examples:
+              default:
+                value:
+                  companyName: Fintech Corp
+                  industry: Fintech
+                  contactPerson: Mai Nguyen
+                  contactEmail: mai@fintech.example
+                  contactPhone: +84 900 000 000
+                  country: Vietnam
+      responses:
+        '201':
+          description: Client created; the response also carries a `Location` header pointing at the new resource.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/Client'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/clients/{id}:
+    get:
+      operationId: clientsGet
+      tags:
+        - Clients
+      summary: Read one client
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      responses:
+        '200':
+          description: The client row.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/Client'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: clientsUpdate
+      tags:
+        - Clients
+      summary: Edit a client
+      description: >-
+        Guarded by `requireRole(ADMIN, PRESALE_LEAD)`. Every field is optional
+        but at least one must be present, otherwise `400 At least one editable
+        field is required.`. A nullable field set to `null` is stored as NULL
+        except `companyName` and `country`, which cannot be emptied.
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateClientRequest'
+      responses:
+        '200':
+          description: Client updated.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/Client'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      operationId: clientsDelete
+      tags:
+        - Clients
+      summary: Delete a client that has no leads
+      description: >-
+        Guarded by `requireRole(ADMIN, PRESALE_LEAD)`. Refused while leads still
+        reference the client - `409 Reassign the N lead(s) to another client
+        before deleting.` - because the FK is `ON DELETE RESTRICT` and losing the
+        company link silently would corrupt the pipeline.
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/clients/{id}/leads:
+    get:
+      operationId: clientsListLeads
+      tags:
+        - Clients
+      summary: List the leads attached to a client
+      description: >-
+        Same projection as `GET /leads` - `rawRfpContent` and `bantDetails` are
+        stripped. The client is checked first, so an unknown client gives
+        `404 Client not found.` rather than an empty list.
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+        - $ref: '#/components/parameters/PageParam'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/LeadStatus'
+      responses:
+        '200':
+          $ref: '#/components/responses/LeadList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/rate-cards:
+    get:
+      operationId: rateCardsList
+      tags:
+        - Rate Cards
+      summary: List the organization's rate cards
+      description: >-
+        Ordered `level DESC, role_name ASC`. Inactive cards are hidden unless
+        `includeInactive=true`, because the pricing calculator must not pick a
+        retired rate.
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - name: limit
+          in: query
+          required: false
+          description: Default 50 for this collection.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: level
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/RateCardLevel'
+        - name: roleName
+          in: query
+          required: false
+          description: ILIKE substring match on the role name.
+          schema:
+            type: string
+            maxLength: 100
+        - name: currency
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/CurrencyCode'
+        - name: includeInactive
+          in: query
+          required: false
+          description: Only the literal `true` or `false` is accepted.
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          $ref: '#/components/responses/RateCardList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      operationId: rateCardsCreate
+      tags:
+        - Rate Cards
+      summary: Create a rate card for a role and level
+      description: >-
+        Guarded by `requireRole(ADMIN, PRESALE_LEAD)`. At least one of
+        `hourlyRateUsd`, `dailyRateUsd`, `monthlyRateUsd` must be above zero,
+        otherwise the card could never price anything - that is a `400`. Unique
+        per (roleName, level, currency), so a duplicate answers `409`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRateCardRequest'
+            examples:
+              default:
+                value:
+                  roleName: Backend Developer
+                  level: SENIOR
+                  hourlyRateUsd: 45
+                  dailyRateUsd: 360
+                  monthlyRateUsd: 7560
+                  currency: USD
+                  isActive: true
+      responses:
+        '201':
+          description: Rate card created; the response also carries a `Location` header pointing at the new resource.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/RateCard'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/rate-cards/pricing/calculate:
+    post:
+      operationId: rateCardsCalculatePricing
+      tags:
+        - Rate Cards
+      summary: Price a bill of materials against the rate cards
+      description: >-
+        Pure arithmetic, no LLM: the AI proposes effort, this endpoint turns it
+        into money. Read access only (`requireAuth` + `requireOrganization`), so
+        any role can cost a quotation. Each line resolves its monthly rate as
+        explicit monthly, else daily x 21 billable days, else hourly x 8 x 21,
+        and reports which route was taken in `rateSource`. An override is only
+        honoured when it is positive, which is what keeps a hand-typed value
+        from silently replacing a real rate. Mix two currencies in one call and
+        the whole request is rejected. With `proposalId` (and `apply` left out or
+        true) the total is written to the proposal and the updated proposal is
+        returned; otherwise `proposal` is `null`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PricingCalculateRequest'
+            examples:
+              quoteTwoLines:
+                value:
+                  currency: USD
+                  lines:
+                    - roleName: Backend Developer
+                      level: SENIOR
+                      manMonths: 2.5
+                    - roleName: QA Engineer
+                      manMonths: 1
+                      monthlyRateOverride: 3000
+      responses:
+        '200':
+          description: Calculated pricing, plus the proposal when applied.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: object
+                        required:
+                          - pricing
+                          - proposal
+                        properties:
+                          pricing:
+                            $ref: '#/components/schemas/PricingCalculationResult'
+                          proposal:
+                            type: object
+                            nullable: true
+                            allOf:
+                              - $ref: '#/components/schemas/Proposal'
+        '400':
+          description: >-
+            One of `NO_LINES`, `TOO_MANY_LINES`, `INVALID_EFFORT`, `INVALID_RATE`,
+            `UNKNOWN_ROLE` (with the available roles listed) or `MIXED_CURRENCY`,
+            or `apply=true` without a `proposalId`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: "`proposalId` does not belong to the caller's organization."
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/rate-cards/{id}:
+    get:
+      operationId: rateCardsGet
+      tags:
+        - Rate Cards
+      summary: Read one rate card
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      responses:
+        '200':
+          description: The rate card row.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/RateCard'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: rateCardsUpdate
+      tags:
+        - Rate Cards
+      summary: Edit or deactivate a rate card
+      description: >-
+        Guarded by `requireRole(ADMIN, PRESALE_LEAD)`. The zero-rate guardrail is
+        re-checked against the merged row, so you cannot deactivate every rate at
+        once. When `hourlyRateUsd` or `dailyRateUsd` changes and no monthly rate
+        is set, `monthlyRateUsd` is re-derived (daily x 21, else hourly x 8 x 21)
+        so the card stays internally consistent.
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRateCardRequest'
+      responses:
+        '200':
+          description: Rate card updated.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/RateCard'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      operationId: rateCardsDelete
+      tags:
+        - Rate Cards
+      summary: Delete a rate card
+      description: >-
+        Guarded by `requireRole(ADMIN, PRESALE_LEAD)`. Nothing stops you from
+        deleting the last card for a role - pricing then fails with
+        `UNKNOWN_ROLE` instead of `409` here.
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/leads/intake/analyze:
+    post:
+      operationId: leadsAnalyzeIntake
+      tags:
+        - Leads
+      summary: Turn raw RFP text into an unsaved lead draft
+      description: >-
+        Calls the Python LLM service to extract project metadata and list what
+        the RFP left open. Nothing is written to the database - the response
+        carries `meta.persisted=false` and a draft whose `id`, `organizationId`,
+        `status` and timestamps are all `null`, ready for a human to review
+        before `POST /leads`. `source` defaults to `MANUAL`. A 50,000-character
+        RFP is the maximum, and a service outage is a `502`, not a partial draft.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyzeIntakeRequest'
+            examples:
+              default:
+                value:
+                  rawRfpContent: >-
+                    We need a customer-facing pricing calculator for our
+                    logistics platform by Q4, SAP integration required, budget
+                    around 120000 USD.
+                  source: INBOUND_EMAIL
+      responses:
+        '200':
+          description: Draft produced.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/AnalyzeIntakeResult'
+                      meta:
+                        type: object
+                        properties:
+                          persisted:
+                            type: boolean
+                            example: false
+                          message:
+                            type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '502':
+          $ref: '#/components/responses/ExternalServiceUnavailable'
+  /api/v1/leads:
+    get:
+      operationId: leadsList
+      tags:
+        - Leads
+      summary: List leads in the pipeline
+      description: >-
+        Every role can read. `search` matches title OR the raw RFP content with
+        ILIKE, so it is the only way to find a phrase typed into the intake
+        text. The list projection omits `rawRfpContent` and `bantDetails`.
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/LeadStatus'
+        - name: source
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/LeadSource'
+        - name: assignedTo
+          in: query
+          required: false
+          description: Filter by owning user. Must be a UUID.
+          schema:
+            type: string
+            format: uuid
+        - name: clientId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/SearchParam'
+      responses:
+        '200':
+          $ref: '#/components/responses/LeadList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      operationId: leadsCreate
+      tags:
+        - Leads
+      summary: Persist a lead
+      description: >-
+        `organizationId` and `createdBy` come from the token, not the body. A new
+        lead always starts at `status=NEW`; reaching any other status requires
+        `PATCH /leads/{id}/status`. `clientId` and `assignedTo` are validated as
+        UUIDs only - there is no existence check, so a dangling reference is
+        accepted here and surfaces later as a missing client name.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLeadRequest'
+            examples:
+              default:
+                value:
+                  title: Logistics pricing calculator
+                  rawRfpContent: Customer wants a quoting tool integrated with SAP.
+                  source: WEBSITE
+                  clientId: 3f6b2f6e-9a4a-4c77-9a2f-3f5b6a8c11d0
+      responses:
+        '201':
+          description: >-
+            Lead created with `Location: /api/v1/leads/{id}`. Full row including
+            `rawRfpContent`.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/Lead'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+  /api/v1/leads/{id}:
+    get:
+      operationId: leadsGet
+      tags:
+        - Leads
+      summary: Read one lead including its RFP text
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      responses:
+        '200':
+          description: The lead row.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/Lead'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: leadsUpdate
+      tags:
+        - Leads
+      summary: Edit lead fields, but not its status
+      description: >-
+        At least one field is required. Sending `status` here is refused with
+        `400` and a pointer to `PATCH /leads/{id}/status`, because the status
+        machine and its audit trail must not be bypassed by a generic edit.
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateLeadRequest'
+      responses:
+        '200':
+          description: Lead updated.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/Lead'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: leadsDelete
+      tags:
+        - Leads
+      summary: Delete a lead
+      description: >-
+        There is no role guard and no confirmation. Note the accepted side
+        effect: `proposals.lead_id` is `ON DELETE SET NULL`, so a proposal that
+        was generated from this lead survives and silently loses its pipeline
+        link (and therefore disappears from the dashboard stages).
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/leads/{id}/status:
+    patch:
+      operationId: leadsUpdateStatus
+      tags:
+        - Leads
+      summary: Move a lead along the pipeline
+      description: >-
+        The only legal way to change a lead status. Requests that name the
+        current status are a no-op and return the lead unchanged. `APPROVED`
+        additionally requires a stored BANT score - the update is written with a
+        `bant_score IS NOT NULL` guard, so a race or a missing qualification
+        answers `409 Lead status changed or the required qualification is
+        missing.` rather than approving an unqualified lead. Every transition
+        writes a `LEAD_STATUS_CHANGED` audit row.
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  $ref: '#/components/schemas/LeadStatus'
+      responses:
+        '200':
+          description: Status applied.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/Lead'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Illegal transition, or approval without a qualification.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                success: false
+                error: Lead cannot transition from QUALIFYING to WON.
+                statusCode: 409
+  /api/v1/leads/{id}/qualifications:
+    post:
+      operationId: leadsQualify
+      tags:
+        - Leads
+      summary: Score the lead with BANT and persist the result
+      description: >-
+        No request body is read. The LLM is asked for a BANT breakdown, the
+        answer is validated in code (each criterion 0-25, the total must equal
+        the sum of the four criteria, the recommendation must be one of
+        `QUALIFY`/`REVIEW`/`DISQUALIFY`) and then written to the lead together
+        with `status=QUALIFIED`. Invalid AI output is a `409` - the lead is left
+        untouched - and an unreachable service is a `502`.
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      responses:
+        '200':
+          description: Qualification stored.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/LeadQualification'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '502':
+          $ref: '#/components/responses/ExternalServiceUnavailable'
+  /api/v1/leads/{id}/qualifications/latest:
+    get:
+      operationId: leadsGetLatestQualification
+      tags:
+        - Leads
+      summary: Read the stored BANT result
+      description: >-
+        Returns `lead.bantDetails` as saved. A lead that has never been
+        qualified answers `404 Lead has no qualification result.` rather than an
+        empty object, so the UI cannot render a score of zero.
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      responses:
+        '200':
+          description: The last qualification written for this lead.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/LeadQualification'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/leads/{leadId}/meetings:
+    get:
+      operationId: meetingsListForLead
+      tags:
+        - Meetings
+      summary: List discovery meetings attached to a lead
+      description: >-
+        Ordered `meeting_date DESC, created_at DESC`. `meta.total` is the length
+        of the returned array - this collection is not paginated.
+      parameters:
+        - $ref: '#/components/parameters/LeadIdPath'
+      responses:
+        '200':
+          description: Meetings for the lead.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Meeting'
+                      meta:
+                        type: object
+                        properties:
+                          total:
+                            type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      operationId: meetingsCreateForLead
+      tags:
+        - Meetings
+      summary: Schedule a discovery meeting for a lead
+      description: >-
+        `meetingDate` defaults to the moment of the call and must parse as a
+        date if supplied. Attendee emails are trimmed before validation, so a
+        trailing space is accepted; a malformed address is `400`. New meetings
+        start `OPEN`, which is the only status in which a transcript can be
+        written.
+      parameters:
+        - $ref: '#/components/parameters/LeadIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMeetingRequest'
+            examples:
+              default:
+                value:
+                  title: Discovery call - data migration scope
+                  meetingDate: 2026-10-28T03:00:00.000Z
+                  attendees:
+                    - name: Mai Nguyen
+                      email: mai@client.example
+                      role: Product Owner
+      responses:
+        '201':
+          description: Meeting created; the response also carries a `Location` header pointing at the new resource.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/Meeting'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/leads/{leadId}/proposals:
+    post:
+      operationId: proposalsCreateFromLead
+      tags:
+        - Proposals
+      summary: Create the proposal that belongs to a qualified lead
+      description: >-
+        The only way to link a proposal to a lead - `leadId` is deliberately not
+        accepted from any request body elsewhere. The lead must be
+        `QUALIFIED`, `APPROVED` or `PROPOSAL_DRAFTING`, otherwise `409`. The new
+        proposal starts as `DRAFT`, `v1.0`, `currency=USD`, with all ten
+        standard sheets, and the Overview plus Scope of Work sheets are
+        pre-filled from the lead's extracted metadata.
+      parameters:
+        - $ref: '#/components/parameters/LeadIdPath'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  maxLength: 255
+                  description: Defaults to the lead title when omitted or empty.
+      responses:
+        '201':
+          description: Proposal created; the response also carries a `Location` header pointing at the new resource.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/ProposalWithSheets'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: >-
+            The lead is not in a state that allows proposal creation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                success: false
+                error: Lead must be qualified or approved before proposal creation.
+                statusCode: 409
+  /api/v1/meetings/{meetingId}:
+    get:
+      operationId: meetingsGet
+      tags:
+        - Meetings
+      summary: Read one discovery meeting
+      description: >-
+        The full meeting object, including the raw transcript and the analysis.
+        `analysis` is `{}` until `POST /meetings/{meetingId}/analyze` succeeds,
+        and the structured `decisions`, `actionItems`, `openQuestions` and
+        `gapAnalysis` columns stay empty arrays in the same situation.
+      parameters:
+        - $ref: '#/components/parameters/MeetingIdPath'
+      responses:
+        '200':
+          description: The meeting row.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/Meeting'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/meetings/{meetingId}/transcript:
+    post:
+      operationId: meetingsSaveTranscript
+      tags:
+        - Meetings
+      summary: Store or extend the meeting transcript
+      description: >-
+        `transcript` and `content` are accepted as aliases for the same string
+        (max 500,000 characters). `append=true` concatenates to what is already
+        stored with a blank line between, otherwise the transcript is replaced.
+        Writing a transcript clears the previous analysis, because notes and
+        conclusions would otherwise disagree. Only allowed while the meeting is
+        `OPEN` - a `LOCKED` or `INSPECTED` meeting answers
+        `409 Transcript can only be changed while the meeting is OPEN.`
+      parameters:
+        - $ref: '#/components/parameters/MeetingIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                transcript:
+                  type: string
+                  maxLength: 500000
+                  description: Non-empty. Accepted as either `transcript` or `content`.
+                content:
+                  type: string
+                  maxLength: 500000
+                append:
+                  type: boolean
+                  default: false
+      responses:
+        '200':
+          description: Transcript saved, analysis reset.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/Meeting'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+  /api/v1/meetings/{meetingId}/analyze:
+    post:
+      operationId: meetingsAnalyze
+      tags:
+        - Meetings
+      summary: Summarize the transcript with the AI service
+      description: >-
+        No body. Requires a non-empty transcript (`409 Add a transcript before
+        analyzing the meeting.`). The answer is validated field by field and then
+        written into the meeting - clean notes, decisions, action items, open
+        questions, gap analysis, `analyzedAt` - and the status is forced to
+        `INSPECTED`. It also appends a `discoveryInsights` entry to the parent
+        lead's `extractedMetadata`, so the proposal generator can read the
+        conclusions.
+      parameters:
+        - $ref: '#/components/parameters/MeetingIdPath'
+      responses:
+        '200':
+          description: Meeting analysed and locked in as INSPECTED.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/Meeting'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: No transcript, unusable AI output, or a concurrent update.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '502':
+          $ref: '#/components/responses/ExternalServiceUnavailable'
+  /api/v1/meetings/{meetingId}/status:
+    patch:
+      operationId: meetingsUpdateStatus
+      tags:
+        - Meetings
+      summary: Lock, reopen or mark a meeting inspected
+      description: >-
+        Legal moves are OPEN to LOCKED, LOCKED to OPEN and INSPECTED to OPEN.
+        `INSPECTED` cannot be requested directly - it is set by a successful
+        analysis, which is why an invalid transition answers
+        `409 INSPECTED status is set by successful AI analysis; reopen a meeting
+        by changing it to OPEN.`
+      parameters:
+        - $ref: '#/components/parameters/MeetingIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  $ref: '#/components/schemas/MeetingStatus'
+      responses:
+        '200':
+          description: Status applied.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/Meeting'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/proposals:
+    get:
+      operationId: proposalsList
+      tags:
+        - Proposals
+      summary: List proposals
+      description: >-
+        The list projection has no `sheets` array - fetch one proposal to read
+        its content. `search` matches the title with ILIKE only.
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/ProposalStatus'
+        - $ref: '#/components/parameters/SearchParam'
+      responses:
+        '200':
+          $ref: '#/components/responses/ProposalList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      operationId: proposalsCreate
+      tags:
+        - Proposals
+      summary: Create an empty proposal
+      description: >-
+        Creates the ten standard sheets unless `initialSheets` is supplied.
+        `leadId` is read from neither the body nor the query - use
+        `POST /leads/{leadId}/proposals` to attach a proposal to the pipeline.
+        When `totalCost` or `estimatedTimelineWeeks` is omitted it is seeded from
+        the Pricing `grandTotal` and Timeline `totalWeeks` of the sheets that were
+        just written. Status is always `DRAFT`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProposalRequest'
+            examples:
+              blank:
+                value:
+                  title: Quoting platform - phase 2
+                  currency: USD
+      responses:
+        '201':
+          description: Proposal created; the response also carries a `Location` header pointing at the new resource.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/ProposalWithSheets'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/proposals/{id}:
+    get:
+      operationId: proposalsGet
+      tags:
+        - Proposals
+      summary: Read a proposal with every sheet
+      description: >-
+        `sheets` is ordered by `sheetOrder`. `totalCost` and
+        `estimatedTimelineWeeks` are kept in sync with the Pricing and Timeline
+        sheets on every sheet write, so they are the values to display.
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      responses:
+        '200':
+          description: The proposal.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/ProposalWithSheets'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: proposalsUpdate
+      tags:
+        - Proposals
+      summary: Edit proposal metadata, or move its status
+      description: >-
+        Metadata and status cannot be changed in the same request (`400`), and
+        metadata edits are refused once the proposal leaves `DRAFT`
+        (`409 Only a DRAFT proposal can be edited.`) - an approved document must
+        not change underneath a client. Transitions to `APPROVED`,
+        `REJECTED`, `SENT_TO_CLIENT` or `ACCEPTED` require `ADMIN` or
+        `PRESALE_LEAD`; other moves are open to every role, which is the recorded
+        RBAC gap for this route. The legal map is
+        DRAFT to IN_REVIEW/REJECTED, IN_REVIEW to DRAFT/APPROVED/REJECTED,
+        APPROVED to IN_REVIEW/SENT_TO_CLIENT/REJECTED, SENT_TO_CLIENT to
+        ACCEPTED/REJECTED, REJECTED to DRAFT, and ACCEPTED is terminal.
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProposalRequest'
+            examples:
+              submitForApproval:
+                value:
+                  status: APPROVED
+      responses:
+        '200':
+          description: Proposal updated. The response has no `sheets` array.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/Proposal'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      operationId: proposalsDelete
+      tags:
+        - Proposals
+      summary: Delete a proposal
+      description: >-
+        Hard delete with no role guard and no status precondition - a proposal
+        already sent to a client can be removed. Portal sessions and materials
+        cascade with it. Nothing is written to the audit ledger.
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/proposals/{id}/sheets/{sheetName}:
+    put:
+      operationId: proposalsUpdateSheet
+      tags:
+        - Proposals
+      summary: Replace one sheet's content
+      description: >-
+        The whole `sheetData` object is replaced, so the caller must send the
+        complete sheet - a partial payload deletes the rest. Only the DRAFT
+        status is editable; an unknown sheet name is `400`. Two keys are
+        validated because the proposal totals are derived from them:
+        `Pricing & Quotation.grandTotal` must be a non-negative finite number and
+        `Timeline & Milestones.totalWeeks` a positive integer. `aiGenerated` is
+        forced to `false` by the controller, so a human edit always wins over the
+        "AI wrote this" marker. No role guard: any authenticated role, VIEWER
+        included, can rewrite a sheet.
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+        - $ref: '#/components/parameters/SheetNamePath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - sheetData
+              properties:
+                sheetData:
+                  type: object
+                  additionalProperties: true
+                  description: >-
+                    Free-form object; its keys depend on the sheet (see the
+                    `sheetData` defaults in the `ProposalSheet` schema).
+            examples:
+              pricing:
+                summary: Pricing & Quotation
+                value:
+                  sheetData:
+                    title: Commercial Proposal & Milestone Payments
+                    currency: USD
+                    items:
+                      - description: Backend development
+                        amount: 12500
+                    subtotal: 12500
+                    taxPercentage: 10
+                    taxAmount: 1250
+                    grandTotal: 13750
+      responses:
+        '200':
+          description: >-
+            The updated sheet only (not the proposal). `totalCost` and
+            `estimatedTimelineWeeks` on the parent proposal are re-synced.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/ProposalSheet'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/proposals/{id}/generate:
+    post:
+      operationId: proposalsGenerate
+      tags:
+        - Proposals
+      summary: Generate proposal sheets with AI and RAG grounding
+      description: >-
+        Runs one LLM call per requested sheet (all ten when `sheetNames` is
+        omitted), each grounded on the five closest knowledge chunks. Only a
+        DRAFT proposal can be generated (`409`). Numeric sheets are checked after
+        generation - an AI `grandTotal` or `totalWeeks` that fails validation
+        aborts with `409` rather than storing a broken quotation. Sources are
+        returned for citation display.
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateSheetsRequest'
+      responses:
+        '200':
+          description: Sheets written.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: object
+                        required:
+                          - proposalId
+                          - sheets
+                          - sources
+                        properties:
+                          proposalId:
+                            type: string
+                            format: uuid
+                          sheets:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/ProposalSheet'
+                          sources:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/RagSourceLite'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '502':
+          $ref: '#/components/responses/ExternalServiceUnavailable'
+  /api/v1/proposals/{id}/sheets/{sheetName}/generate:
+    post:
+      operationId: proposalsGenerateSheet
+      tags:
+        - Proposals
+      summary: Regenerate a single sheet
+      description: >-
+        Identical to `POST /proposals/{id}/generate` with `sheetNames` pinned to
+        the path segment, which must name a standard sheet. The whole sheet is
+        overwritten, `aiGenerated` becomes `true`.
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+        - $ref: '#/components/parameters/SheetNamePath'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                instructions:
+                  type: string
+                  maxLength: 4000
+                  description: Free-text steering appended to the prompt.
+      responses:
+        '200':
+          description: Sheet regenerated.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          proposalId:
+                            type: string
+                            format: uuid
+                          sheets:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/ProposalSheet'
+                          sources:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/RagSourceLite'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '502':
+          $ref: '#/components/responses/ExternalServiceUnavailable'
+  /api/v1/proposals/{id}/sections/{sectionName}/regenerate:
+    post:
+      operationId: proposalsRegenerateSection
+      tags:
+        - Proposals
+      summary: Regenerate the section named in the path
+      description: >-
+        Same pipeline as the per-sheet route - the path segment is matched against
+        the ten standard sheet names after `decodeURIComponent`, so a name like
+        `Risk%20Management%20(RAID)` works and an unknown one is a `400`.
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+        - name: sectionName
+          in: path
+          required: true
+          description: Sheet name, URL-encoded when it contains spaces or brackets.
+          schema:
+            $ref: '#/components/schemas/ProposalSheetName'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                instructions:
+                  type: string
+                  maxLength: 4000
+      responses:
+        '200':
+          description: Section regenerated.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          proposalId:
+                            type: string
+                            format: uuid
+                          sheets:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/ProposalSheet'
+                          sources:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/RagSourceLite'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '502':
+          $ref: '#/components/responses/ExternalServiceUnavailable'
+  /api/v1/proposals/{id}/submit-review:
+    post:
+      operationId: proposalsSubmitForReview
+      tags:
+        - Proposals
+      summary: Move a DRAFT proposal to IN_REVIEW
+      description: >-
+        A convenience transition with no body. It is the one status move that no
+        role can perform on a non-DRAFT proposal - `409 Only a DRAFT proposal can
+        be submitted for review.` - and a concurrent status change also answers
+        `409`. Writes a `PROPOSAL_STATUS_CHANGED` audit row.
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      responses:
+        '200':
+          description: Now IN_REVIEW.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/Proposal'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/v1/proposals/{id}/export-pdf:
+    get:
+      operationId: proposalsExportPdf
+      tags:
+        - Proposals
+      summary: Download the proposal as PDF
+      description: >-
+        Rendered locally from the stored sheets, at any status. The body is the
+        binary PDF, so a JSON error envelope can still arrive with
+        `Content-Type: application/json` when the proposal is missing. Filename is
+        `{sanitizedTitle}_Proposal_{version}.pdf` where the title keeps only
+        `[A-Za-z0-9_-]`.
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      responses:
+        '200':
+          description: PDF document.
+          headers:
+            Content-Disposition:
+              description: attachment, with the percent-encoded filename.
+              schema:
+                type: string
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/proposals/{id}/export-excel:
+    get:
+      operationId: proposalsExportExcel
+      tags:
+        - Proposals
+      summary: Download the proposal as an xlsx workbook
+      description: >-
+        One worksheet per sheet plus the pricing detail. Known finding: the
+        Pricing tab hard-codes "VAT 10%" instead of the stored `taxPercentage`,
+        and the Team tab prints stored money numbers rather than recomputing rate
+        times man-months, so a workbook can disagree with the API totals.
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      responses:
+        '200':
+          description: xlsx workbook.
+          headers:
+            Content-Disposition:
+              description: attachment, with the percent-encoded filename.
+              schema:
+                type: string
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/proposals/{proposalId}/portal-materials:
+    get:
+      operationId: portalListProposalMaterials
+      tags:
+        - Portal (staff)
+      summary: List every material of a proposal, shared or not
+      description: >-
+        Staff-side list. No role guard, so a VIEWER sees the whole material set
+        including rows with `isShared=false`. `meta.total` is the array length;
+        the collection is not paginated.
+      parameters:
+        - $ref: '#/components/parameters/ProposalIdPath'
+      responses:
+        '200':
+          description: Materials including the unshared ones.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/PortalMaterialDetail'
+                      meta:
+                        type: object
+                        properties:
+                          total:
+                            type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      operationId: portalCreateMaterial
+      tags:
+        - Portal (staff)
+      summary: Attach a material link to a proposal
+      description: >-
+        Restricted to `PORTAL_MANAGER_ROLES` (`ADMIN`, `PRESALE_LEAD`,
+        `SALES_REP`, `SOLUTION_ARCHITECT`, and `PRESALE_CONSULTANT` which is not
+        in `USER_ROLES`). There is no upload - `fileUrl` must be an `https://`
+        URL, so the file itself lives elsewhere. The proposal must already be
+        `APPROVED`, `SENT_TO_CLIENT` or `ACCEPTED`, otherwise `404` rather than
+        `409`. `isShared` defaults to `false`, and the created row is answered
+        without `isShared`/`createdBy`, so the caller cannot read back what it
+        just set.
+      parameters:
+        - $ref: '#/components/parameters/ProposalIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePortalMaterialRequest'
+            examples:
+              default:
+                value:
+                  title: Implementation timeline
+                  fileName: timeline.pdf
+                  fileUrl: https://files.example.com/timeline.pdf
+                  description: Milestone plan for phase 1
+                  mimeType: application/pdf
+                  isShared: true
+      responses:
+        '201':
+          description: Material stored.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/PortalMaterial'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Proposal not found, or not yet eligible for portal materials.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/proposals/{proposalId}/portal-materials/{materialId}:
+    delete:
+      operationId: portalDeleteMaterial
+      tags:
+        - Portal (staff)
+      summary: Remove a material
+      description: >-
+        `PORTAL_MANAGER_ROLES` only. A material of another proposal, or of
+        another tenant, is `404 Portal material not found.`; the pair of ids is
+        matched together.
+      parameters:
+        - $ref: '#/components/parameters/ProposalIdPath'
+        - name: materialId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/proposals/{proposalId}/portal-sessions:
+    get:
+      operationId: portalListProposalSessions
+      tags:
+        - Portal (staff)
+      summary: List the portal sessions issued for a proposal
+      description: >-
+        Shows revoked sessions too, with `revokedAt`, and a `commentCount` so the
+        UI can badge activity. No role guard - a VIEWER can read every client
+        email and name on this list; this is a recorded finding. Token material
+        (the hash) is never serialized.
+      parameters:
+        - $ref: '#/components/parameters/ProposalIdPath'
+      responses:
+        '200':
+          description: Sessions for the proposal.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/PortalSessionDetail'
+                      meta:
+                        type: object
+                        properties:
+                          total:
+                            type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/portal/sessions:
+    post:
+      operationId: portalCreateSession
+      tags:
+        - Portal (staff)
+      summary: Issue a client portal link
+      description: >-
+        Restricted to `PORTAL_MANAGER_ROLES`. The proposal must be `APPROVED`,
+        `SENT_TO_CLIENT` or `ACCEPTED`; sharing an `APPROVED` one also flips it to
+        `SENT_TO_CLIENT` in the same transaction, and only `ADMIN`/`PRESALE_LEAD`
+        may do that. The plaintext `accessToken` (43-character base64url) is
+        returned exactly once - only its SHA-256 hash is stored - so this response
+        cannot be reconstructed later. `expiresInHours` defaults to 168 (7 days)
+        and caps at 720 (30 days). `clientEmail` is lower-cased and must be a valid
+        address, unlike the client directory's free-text contact email.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePortalSessionRequest'
+            examples:
+              default:
+                value:
+                  proposalId: 6f2b7e1c-3f9d-4a8e-9c1b-2d7a55e0b4c1
+                  clientEmail: buyer@client.example
+                  clientName: Mai Nguyen
+                  expiresInHours: 168
+      responses:
+        '201':
+          description: Session created, with the one-time token.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/PortalSessionWithToken'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The proposal is not in a shareable status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              example:
+                success: false
+                error: Only an approved proposal can be shared with a client.
+                statusCode: 409
+  /api/v1/portal/sessions/{sessionId}:
+    delete:
+      operationId: portalRevokeSession
+      tags:
+        - Portal (staff)
+      summary: Revoke a portal session
+      description: >-
+        `PORTAL_MANAGER_ROLES` only. Soft revoke - the row keeps its audit value
+        with `revoked_at` set, and the token stops working immediately, including
+        mid-conversation. An already-revoked or unknown session answers `404`, which
+        makes a second revoke a `404` rather than an idempotent `204`.
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/portal/proposals/{proposalId}:
+    get:
+      operationId: portalClientGetProposal
+      tags:
+        - Portal (client)
+      summary: Client view of the shared proposal
+      description: >-
+        Authenticated by the portal token, not by a staff account. The projection
+        hides `organizationId`, `leadId`, `createdBy` and the sheet ids, but every
+        one of the ten sheets is included - internal ones such as
+        `Team & Rate Cards` and `Pricing & Quotation` too, which is a recorded
+        finding. `last_accessed_at` is bumped on each successful call. The proposal
+        must be `SENT_TO_CLIENT` or `ACCEPTED`, otherwise `404 Shared proposal
+        not found.`
+      security:
+        - portalBearer: []
+      parameters:
+        - $ref: '#/components/parameters/ProposalIdPath'
+      responses:
+        '200':
+          description: Shared proposal for the client.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/ClientPortalProposal'
+        '401':
+          $ref: '#/components/responses/UnauthorizedPortal'
+        '404':
+          description: Session is bound to a different, or no longer shared, proposal.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/portal/proposals/{proposalId}/questions:
+    post:
+      operationId: portalClientAsk
+      tags:
+        - Portal (client)
+      summary: Ask a question about the shared proposal
+      description: >-
+        Answers from the proposal's own sheets: every sheet contributes one
+        citation whose `excerpt` is the first 1800 characters of its JSON, so the
+        reply is grounded in what the client was shown. The question is capped at
+        5000 characters and the LLM call failing is a `502`.
+      security:
+        - portalBearer: []
+      parameters:
+        - $ref: '#/components/parameters/ProposalIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - question
+              properties:
+                question:
+                  type: string
+                  maxLength: 5000
+      responses:
+        '200':
+          description: Answer plus one citation per sheet.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/PortalAnswer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/UnauthorizedPortal'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '502':
+          $ref: '#/components/responses/ExternalServiceUnavailable'
+  /api/v1/portal/proposals/{proposalId}/comments:
+    get:
+      operationId: portalClientListComments
+      tags:
+        - Portal (client)
+      summary: Read the feedback thread of the shared proposal
+      description: >-
+        The most recent 500 comments, oldest first. Comments are flat - there is no
+        parent/thread field in the schema. A commenter can see every comment on the
+        proposal, including other people from the same organization.
+      security:
+        - portalBearer: []
+      parameters:
+        - $ref: '#/components/parameters/ProposalIdPath'
+      responses:
+        '200':
+          description: Comments.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/PortalComment'
+                      meta:
+                        type: object
+                        properties:
+                          total:
+                            type: integer
+        '401':
+          $ref: '#/components/responses/UnauthorizedPortal'
+    post:
+      operationId: portalClientCreateComment
+      tags:
+        - Portal (client)
+      summary: Leave feedback on the shared proposal
+      description: >-
+        `authorEmail` always comes from the session, never from the body, so a
+        client cannot forge another sender. `authorName` defaults to the session's
+        client name or email. Returns `201` with the stored row, and `404` when the
+        session was revoked or the proposal left the shared states mid-conversation.
+      security:
+        - portalBearer: []
+      parameters:
+        - $ref: '#/components/parameters/ProposalIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - body
+              properties:
+                body:
+                  type: string
+                  maxLength: 5000
+                authorName:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+      responses:
+        '201':
+          description: Comment stored.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/PortalComment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/UnauthorizedPortal'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/portal/proposals/{proposalId}/materials:
+    get:
+      operationId: portalClientListMaterials
+      tags:
+        - Portal (client)
+      summary: List the materials marked as shared
+      description: >-
+        Filtered to `is_shared = TRUE`, unlike the staff list on the sibling
+        `/proposals/{proposalId}/portal-materials` route which returns everything.
+      security:
+        - portalBearer: []
+      parameters:
+        - $ref: '#/components/parameters/ProposalIdPath'
+      responses:
+        '200':
+          description: Shared materials.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/PortalMaterial'
+                      meta:
+                        type: object
+                        properties:
+                          total:
+                            type: integer
+        '401':
+          $ref: '#/components/responses/UnauthorizedPortal'
+  /api/v1/portal/proposals/{proposalId}/export-pdf:
+    get:
+      operationId: portalClientExportPdf
+      tags:
+        - Portal (client)
+      summary: Download the shared proposal as PDF
+      description: >-
+        The same renderer the staff export uses, after re-checking that the
+        proposal is still shared. `Content-Type: application/pdf` with an
+        attachment disposition.
+      security:
+        - portalBearer: []
+      parameters:
+        - $ref: '#/components/parameters/ProposalIdPath'
+      responses:
+        '200':
+          description: PDF document.
+          headers:
+            Content-Disposition:
+              description: attachment, with the percent-encoded filename.
+              schema:
+                type: string
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/UnauthorizedPortal'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/knowledge/documents:
+    get:
+      operationId: knowledgeListDocuments
+      tags:
+        - Knowledge Vault
+      summary: List indexed knowledge documents
+      description: >-
+        `search` matches the title only - full-text search over chunk content is
+        `POST /rag/search`. There is no role guard, so a VIEWER can read the whole
+        vault listing.
+      parameters:
+        - name: category
+          in: query
+          required: false
+          description: >-
+            Free text, max 100 characters. There is no closed enum; `GENERAL` is
+            the value written when ingest omits it.
+          schema:
+            type: string
+            maxLength: 100
+        - name: domain
+          in: query
+          required: false
+          description: Same free-text filter, applied to the domain column.
+          schema:
+            type: string
+            maxLength: 100
+        - $ref: '#/components/parameters/SearchParam'
+        - $ref: '#/components/parameters/PageParam'
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          $ref: '#/components/responses/KnowledgeDocumentList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      operationId: knowledgeIngestDocument
+      tags:
+        - Knowledge Vault
+      summary: Index a document into the vault
+      description: >-
+        Splits `content` into roughly 400-word windows with 50-word overlap, asks
+        the Gemini embedding gateway for a 768-dimension vector per chunk and
+        writes them transactionally - if embedding fails, no document row is left
+        behind. `content` is chunked and discarded: the `knowledge_docs` table has
+        no content column, so the document body only survives inside
+        `document_chunks`, and `GET /knowledge/documents/{id}` cannot echo it back.
+        Identical text ingested twice is embedded and stored twice - there is no
+        dedupe. No role guard on this route.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IngestDocumentRequest'
+            examples:
+              default:
+                value:
+                  title: Payment gateway integration guide
+                  content: >-
+                    Our standard integration covers 3DS2, webhooks and
+                    reconciliation. Each payment attempt emits an event to the
+                    merchant queue...
+                  category: INTEGRATION
+                  domain: fintech
+      responses:
+        '201':
+          description: Document and its chunks stored.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/IngestResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '502':
+          $ref: '#/components/responses/ExternalServiceUnavailable'
+  /api/v1/knowledge/documents/{id}:
+    get:
+      operationId: knowledgeGetDocument
+      tags:
+        - Knowledge Vault
+      summary: Read a document's metadata
+      description: >-
+        Metadata only - chunk content lives in `document_chunks` and is reachable
+        through `POST /rag/search`. A document of another organization is `404`.
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      responses:
+        '200':
+          description: The document row.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/KnowledgeDocument'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      operationId: knowledgeDeleteDocument
+      tags:
+        - Knowledge Vault
+      summary: Delete a document and its chunks
+      description: >-
+        Cascades to `document_chunks`, so retrieval stops returning its text
+        immediately. No role guard - a VIEWER can empty the vault, which is a
+        recorded finding.
+      parameters:
+        - $ref: '#/components/parameters/UuidPathId'
+      responses:
+        '204':
+          $ref: '#/components/responses/NoContent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/v1/knowledge/ask:
+    post:
+      operationId: knowledgeAsk
+      tags:
+        - Knowledge Vault
+      summary: Ask the vault a grounded question
+      description: >-
+        Hybrid retrieval first (Gemini embedding of the question plus PostgreSQL
+        `hybrid_search_chunks`), then the Python service writes the answer from
+        those excerpts. Numbered `[1]`-style citations reference the chunks that
+        were actually used, so a wrong answer is traceable. `topK` is 1-10,
+        default 5. Needs the LLM service; without it the call is a `502` even
+        though retrieval itself succeeded.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KnowledgeAskRequest'
+      responses:
+        '200':
+          description: Answer with citations.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/KnowledgeAnswer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '502':
+          $ref: '#/components/responses/ExternalServiceUnavailable'
+  /api/v1/rag/search:
+    post:
+      operationId: ragSearch
+      tags:
+        - RAG
+      summary: Hybrid full-text plus vector search
+      description: >-
+        Runs PostgreSQL `hybrid_search_chunks` with equal full-text and semantic
+        weights and RRF `k=60`, scoped to the caller's organization and optionally
+        one `domain`. Deterministic and cheap enough to be the read model for the
+        other AI routes. `topK` here is 1-20, default 3. Known finding: the SQL
+        never selects `chunk_index`, so every hit reports `chunkIndex` 0 and
+        `semanticRank`/`ftsRank` are the only ordering signals that mean anything.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RagSearchRequest'
+            examples:
+              default:
+                value:
+                  query: payment gateway 3DS2 webhook retry
+                  domain: fintech
+                  topK: 5
+      responses:
+        '200':
+          description: Ranked chunks.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/DocumentChunk'
+                      meta:
+                        type: object
+                        properties:
+                          total:
+                            type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '502':
+          $ref: '#/components/responses/ExternalServiceUnavailable'
+  /api/v1/rag/ingest:
+    post:
+      operationId: ragIngest
+      tags:
+        - RAG
+      summary: Index a document (RAG-flavoured alias)
+      description: >-
+        The same use case as `POST /knowledge/documents` - identical validation,
+        chunking and embedding - but the response adds a human-readable `message`.
+        Both write to the same tables, so the two routes are interchangeable.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IngestDocumentRequest'
+      responses:
+        '201':
+          description: Document indexed.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/RagIngestResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '502':
+          $ref: '#/components/responses/ExternalServiceUnavailable'
+  /api/v1/rag/generate-proposal:
+    post:
+      operationId: ragGenerateProposal
+      tags:
+        - RAG
+      summary: Draft a proposal overview from an RFP
+      description: >-
+        The legacy single-shot generator: retrieve three chunks, ask the model for
+        an overview, return both. It does not create a `proposals` row - use
+        `POST /proposals` plus `POST /proposals/{id}/generate` for a persisted
+        document. Retrieval is fixed at topK 3 and `maxTokens` is 1-8000.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RagGenerateProposalRequest'
+      responses:
+        '200':
+          description: Overview text plus the sources it came from.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/RagGeneratedOverview'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '502':
+          $ref: '#/components/responses/ExternalServiceUnavailable'
+  /api/v1/dashboard/overview:
+    get:
+      operationId: dashboardOverview
+      tags:
+        - Dashboard
+      summary: Pipeline KPIs, stage counts and the active-lead panel
+      description: >-
+        Aggregates computed live from `leads` and `proposals` for the caller's
+        organization. `pipeline` always contains all nine stages in order, each
+        with its lead count and its per-currency estimated value (REJECTED
+        proposals excluded from the money). `kpis.activeLeads` counts anything not
+        WON/LOST/REJECTED while `qualifiedLeads` counts
+        QUALIFIED/PROPOSAL_DRAFTING/APPROVED. The `activeLeads` panel is capped by
+        `leadLimit` (default 8, 1-50). No role guard, so a VIEWER reads the whole
+        revenue pipeline. A `?organizationId` in the query is ignored - the scope
+        always comes from the token.
+      parameters:
+        - name: leadLimit
+          in: query
+          required: false
+          description: >-
+            Size of the active-lead panel. An empty value means "not provided" and
+            falls back to the default, like every other list endpoint.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 8
+      responses:
+        '200':
+          description: Dashboard aggregates.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        $ref: '#/components/schemas/DashboardOverview'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/dashboard/leads:
+    get:
+      operationId: dashboardLeads
+      tags:
+        - Dashboard
+      summary: Recent active leads for a widget
+      description: >-
+        Excludes WON, LOST and REJECTED. `clientName` is joined server-side and the
+        RFP text is never included. `meta.total` is the number of rows returned,
+        not the tenant-wide count, so a widget cannot tell that more rows sit
+        behind `limit`.
+      parameters:
+        - $ref: '#/components/parameters/DashboardLimitParam'
+      responses:
+        '200':
+          description: Active leads.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/DashboardLead'
+                      meta:
+                        $ref: '#/components/schemas/DashboardListMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/dashboard/activity:
+    get:
+      operationId: dashboardActivity
+      tags:
+        - Dashboard
+      summary: Recent activity feed
+      description: >-
+        Synthesized from `leads.created_at/updated_at` and
+        `proposals.created_at/updated_at` - NOT from `audit_logs`. Each entity can
+        contribute at most two rows (`<uuid>:created` and `<uuid>:updated`), an
+        `:updated` row only exists when `updated_at` is more than one second after
+        creation, and a later edit overwrites the earlier one, so this feed cannot
+        reconcile with G14 and never shows sheet writes, pricing applies, portal
+        sessions or deletes.
+      parameters:
+        - $ref: '#/components/parameters/DashboardLimitParam'
+      responses:
+        '200':
+          description: Activity events, newest first.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/DashboardActivity'
+                      meta:
+                        $ref: '#/components/schemas/DashboardListMeta'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/v1/audit-logs:
+    get:
+      operationId: auditLogsList
+      tags:
+        - Audit Logs
+      summary: Read the organization's activity ledger
+      description: >-
+        `requireRole(ADMIN, PRESALE_LEAD)`; every other role gets `403` naming the
+        allowed roles. Newest first, scoped to the token's organization, and the
+        ledger itself has no write, update or delete route. `actorName` is resolved
+        by a LEFT JOIN on `users`, so a deleted actor yields `null` rather than
+        disappearing. `ip_address` is stored but never serialized, and a payload is
+        returned as an object (a non-object column value becomes `{}`).
+        Two limitations to know before building a security view on this: no code
+        path ever writes `resultStatus=FAILED`, so filtering on it always returns
+        nothing, and `from`/`to` are validated individually but never compared -
+        `from` after `to` is a silent empty page.
+      parameters:
+        - name: action
+          in: query
+          required: false
+          description: >-
+            Exact match, max 100 characters. Observed values include
+            `USER_REGISTERED`, `USER_CREATED`, `CLIENT_CREATED`, `LEAD_CREATED`,
+            `LEAD_UPDATED`, `LEAD_STATUS_CHANGED`, `PROPOSAL_STATUS_CHANGED`,
+            `RATE_CARD_CREATED`, `PRICING_APPLIED`, `PORTAL_SESSION_CREATED`.
+          schema:
+            type: string
+            maxLength: 100
+        - name: entityType
+          in: query
+          required: false
+          description: >-
+            Exact match, max 100 characters (`lead`, `proposal`, `client`,
+            `rate_card`, `user`, `portal_session`).
+          schema:
+            type: string
+            maxLength: 100
+        - name: entityId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: actorId
+          in: query
+          required: false
+          description: Filters `user_id`.
+          schema:
+            type: string
+            format: uuid
+        - name: resultStatus
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/AuditResultStatus'
+        - name: from
+          in: query
+          required: false
+          description: >-
+            Parsed with `Date.parse`, so short forms such as `2020` or `0` are
+            accepted and silently normalized rather than rejected. Applied as
+            `created_at >= from`.
+          schema:
+            type: string
+            format: date-time
+            example: 2026-10-21T00:00:00.000Z
+        - name: to
+          in: query
+          required: false
+          description: Applied as `created_at <= to`.
+          schema:
+            type: string
+            format: date-time
+        - $ref: '#/components/parameters/PageParam'
+        - name: limit
+          in: query
+          required: false
+          description: Default 50 and maximum 200 - wider than the other lists.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        '200':
+          $ref: '#/components/responses/AuditLogList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+components:
+  securitySchemes:
+    bearerAccess:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >-
+        Staff access token, HS256, 900 second lifetime. `Bearer` takes
+        precedence when both this header and the cookie are present.
+    accessCookie:
+      type: apiKey
+      in: cookie
+      name: presaleee_access
+      description: >-
+        The same access token as an httpOnly cookie with `path=/api/v1/auth`,
+        `sameSite` from `AUTH_COOKIE_SAME_SITE` and `secure` from
+        `AUTH_COOKIE_SECURE`.
+    portalBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+      description: >-
+        Client portal token returned once by `POST /api/v1/portal/sessions`
+        (`accessToken`). Not a JWT; only its SHA-256 hash is stored.
+  parameters:
+    UuidPathId:
+      name: id
+      in: path
+      required: true
+      description: >-
+        Resource id. Must be a valid UUID (version 1-8 variant checked); a
+        numeric, boolean or malformed value is rejected as `400` before any query
+        runs.
+      schema:
+        type: string
+        format: uuid
+    LeadIdPath:
+      name: leadId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ProposalIdPath:
+      name: proposalId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    MeetingIdPath:
+      name: meetingId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    SheetNamePath:
+      name: sheetName
+      in: path
+      required: true
+      description: >-
+        One of the ten standard sheet names. Percent-encode the spaces, for
+        example `Pricing%20%26%20Quotation`; the value is URI-decoded before it is
+        matched.
+      schema:
+        $ref: '#/components/schemas/ProposalSheetName'
+    DashboardLimitParam:
+      name: limit
+      in: query
+      required: false
+      description: >-
+        Rows for this widget. Default 20, maximum 100; `0`, `101` and non-integers
+        are `400` and the message names this parameter.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    OriginHeader:
+      name: Origin
+      in: header
+      required: false
+      description: >-
+        Browser origin. Checked against `FRONTEND_URL` by the cookie-writing
+        auth routes; a non-browser caller may omit it.
+      schema:
+        type: string
+        example: http://localhost:3000
+    PageParam:
+      name: page
+      in: query
+      required: false
+      description: 1-based page number.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100000
+        default: 1
+    SearchParam:
+      name: search
+      in: query
+      required: false
+      description: Case-insensitive substring filter, 1-200 characters.
+      schema:
+        type: string
+        maxLength: 200
+  responses:
+    BadRequest:
+      description: >-
+        `ValidationError` - unparsable JSON, oversized field, unknown enum
+        value, malformed UUID, empty patch, invalid pagination or limit.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            success: false
+            error: title must be a string of at most 255 characters.
+            statusCode: 400
+    Unauthorized:
+      description: >-
+        `UnauthorizedError` - no token, expired or badly signed token, a portal
+        session that is revoked/expired, or a credential check that failed.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            success: false
+            error: Authentication required.
+            statusCode: 401
+    Forbidden:
+      description: >-
+        `AppError` 403 - the token role is not in the route's allow-list, the
+        token carries no `organizationId`, or the `Origin` does not match
+        `FRONTEND_URL`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            success: false
+            error: 'This operation requires one of the following roles: ADMIN, PRESALE_LEAD.'
+            statusCode: 403
+    NotFound:
+      description: >-
+        `NotFoundError` - the id is unknown to the caller's organization. A row
+        owned by another tenant also answers `404`, never `403`, so tenant
+        existence is not leaked.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            success: false
+            error: Lead not found.
+            statusCode: 404
+    Conflict:
+      description: >-
+        `ConflictError` - a unique constraint, a state-machine violation, an
+        optimistic-locking race, or a missing business precondition.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            success: false
+            error: Lead cannot transition from NEW to WON.
+            statusCode: 409
+    ExternalServiceUnavailable:
+      description: >-
+        `ExternalServiceError` - the Python LLM service (or the Gemini embedding
+        gateway) failed or was unreachable. The upstream message is sanitized;
+        the caller only sees that the AI service is unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            success: false
+            error: AI service is unavailable. Please try again later.
+            statusCode: 502
+    NoContent:
+      description: Deleted. No body is written.
+    PayloadTooLarge:
+      description: Request body over the 2 MB JSON limit.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            success: false
+            error: Request body is too large.
+            statusCode: 413
+    UnauthorizedPortal:
+      description: >-
+        The portal token is missing, malformed, revoked, expired, or bound to a
+        different proposal.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            success: false
+            error: Client portal session is invalid or expired.
+            statusCode: 401
+    AuthSessionCreated:
+      description: >-
+        Account and organization created. Sets `presaleee_access`; the refresh
+        token is only in the body here.
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/SuccessEnvelope'
+              - properties:
+                  data:
+                    $ref: '#/components/schemas/RegisterSession'
+    AuthUserOnly:
+      description: >-
+        Session established. Both httpOnly cookies are set; no token appears in
+        the body.
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/SuccessEnvelope'
+              - properties:
+                  data:
+                    type: object
+                    required:
+                      - user
+                    properties:
+                      user:
+                        $ref: '#/components/schemas/PublicAuthUser'
+    MemberList:
+      description: A page of staff members.
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/SuccessEnvelope'
+              - $ref: '#/components/schemas/PaginatedResult'
+              - properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MemberDirectoryEntry'
+    ClientList:
+      description: A page of clients.
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/SuccessEnvelope'
+              - $ref: '#/components/schemas/PaginatedResult'
+              - properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Client'
+    LeadList:
+      description: A page of leads, without the RFP text.
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/SuccessEnvelope'
+              - $ref: '#/components/schemas/PaginatedResult'
+              - properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LeadListItem'
+    RateCardList:
+      description: A page of rate cards.
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/SuccessEnvelope'
+              - $ref: '#/components/schemas/PaginatedResult'
+              - properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RateCard'
+    ProposalList:
+      description: A page of proposals, without sheets.
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/SuccessEnvelope'
+              - $ref: '#/components/schemas/PaginatedResult'
+              - properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Proposal'
+    KnowledgeDocumentList:
+      description: A page of vault documents.
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/SuccessEnvelope'
+              - $ref: '#/components/schemas/PaginatedResult'
+              - properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/KnowledgeDocument'
+    AuditLogList:
+      description: A page of ledger entries, newest first.
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/SuccessEnvelope'
+              - $ref: '#/components/schemas/PaginatedResult'
+              - properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AuditLogEntry'
+  schemas:
+    SuccessEnvelope:
+      type: object
+      description: The shape every successful JSON response shares.
+      required:
+        - success
+        - data
+      properties:
+        success:
+          type: boolean
+          example: true
+    ErrorEnvelope:
+      type: object
+      description: The shape every failure shares (`errorHandler.ts:20-44`).
+      required:
+        - success
+        - error
+        - statusCode
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+          description: Human-readable message. Upstream AI detail is sanitized.
+        statusCode:
+          type: integer
+          description: Repeats the HTTP status inside the body.
+    PaginatedResult:
+      type: object
+      description: >-
+        Pagination block used by every list except the dashboard widgets, which
+        report the returned length instead.
+      properties:
+        meta:
+          type: object
+          required:
+            - total
+            - page
+            - limit
+            - totalPages
+          properties:
+            total:
+              type: integer
+              description: Rows matching the filter across the whole tenant.
+            page:
+              type: integer
+            limit:
+              type: integer
+            totalPages:
+              type: integer
+              description: ceil(total / limit), never zero - an empty result is 1.
+    MessageResult:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+    HealthProbe:
+      type: object
+      description: Not wrapped in the success envelope.
+      properties:
+        status:
+          type: string
+          example: ok
+        service:
+          type: string
+          example: presaleee-backend
+        architecture:
+          type: string
+          example: clean-architecture
+        timestamp:
+          type: string
+          format: date-time
+    UserRole:
+      type: string
+      description: >-
+        The five defined roles. Note that `PRESALE_CONSULTANT`, accepted by the
+        portal manager lists, is not one of them.
+      enum:
+        - ADMIN
+        - PRESALE_LEAD
+        - SOLUTION_ARCHITECT
+        - SALES_REP
+        - VIEWER
+    UserStatus:
+      type: string
+      enum:
+        - ACTIVE
+        - INVITED
+        - DEACTIVATED
+    CurrencyCode:
+      type: string
+      description: Three letters, case-insensitive on input and upper-cased on storage.
+      pattern: ^[A-Za-z]{3}$
+      example: USD
+    AuditResultStatus:
+      type: string
+      description: >-
+        `FAILED` is declared but never written by any code path, so a filter on it
+        always returns an empty page.
+      enum:
+        - SUCCESS
+        - FAILED
+    ClientIndustry:
+      type: string
+      description: >-
+        Display labels, not codes - sending `FINANCIAL_SERVICES` is a `400`.
+      enum:
+        - Retail
+        - Fintech
+        - Healthcare
+        - Logistics
+        - Manufacturing
+        - Education
+        - Real Estate
+        - Government
+        - Telecom
+        - Other
+    LeadStatus:
+      type: string
+      enum:
+        - NEW
+        - IN_REVIEW
+        - QUALIFYING
+        - QUALIFIED
+        - PROPOSAL_DRAFTING
+        - APPROVED
+        - REJECTED
+        - WON
+        - LOST
+    LeadSource:
+      type: string
+      enum:
+        - INBOUND_EMAIL
+        - WEBSITE
+        - REFERRAL
+        - MEETING
+        - MANUAL
+    MeetingStatus:
+      type: string
+      description: >-
+        `INSPECTED` is only reachable through a successful analysis; `OPEN` is the
+        only status in which a transcript can be written.
+      enum:
+        - OPEN
+        - LOCKED
+        - INSPECTED
+    ProposalStatus:
+      type: string
+      enum:
+        - DRAFT
+        - IN_REVIEW
+        - APPROVED
+        - SENT_TO_CLIENT
+        - ACCEPTED
+        - REJECTED
+    ProposalSheetName:
+      type: string
+      description: >-
+        The ten standard sheets, in the order they are created. All ten are visible
+        to a client through the portal; there is no internal-sheet flag.
+      enum:
+        - Overview
+        - Scope of Work
+        - Architecture & Tech Stack
+        - Timeline & Milestones
+        - Team & Rate Cards
+        - Pricing & Quotation
+        - Assumptions & Dependencies
+        - Risk Management (RAID)
+        - SLA & Maintenance
+        - Appendices & Case Studies
+    RateCardLevel:
+      type: string
+      enum:
+        - JUNIOR
+        - MID
+        - SENIOR
+        - LEAD
+    RateSource:
+      type: string
+      description: >-
+        Which path produced the line's monthly rate - the value a reviewer needs to
+        see before trusting a quotation.
+      enum:
+        - RATE_CARD
+        - MANUAL_OVERRIDE
+    PriorityLevel:
+      type: string
+      nullable: true
+      enum:
+        - High
+        - Medium
+        - Low
+    QualificationRecommendation:
+      type: string
+      enum:
+        - QUALIFY
+        - REVIEW
+        - DISQUALIFY
+    DashboardActivityType:
+      type: string
+      description: >-
+        Only these four exist because the feed is derived from entity timestamps.
+      enum:
+        - LEAD_CREATED
+        - LEAD_UPDATED
+        - PROPOSAL_CREATED
+        - PROPOSAL_UPDATED
+    PublicAuthUser:
+      type: object
+      description: >-
+        The token-derived identity shape. No password or hash is ever serialized.
+      required:
+        - id
+        - email
+        - fullName
+        - role
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        organizationId:
+          type: string
+          format: uuid
+          nullable: true
+        email:
+          type: string
+        fullName:
+          type: string
+        avatarUrl:
+          type: string
+          nullable: true
+        role:
+          $ref: '#/components/schemas/UserRole'
+        status:
+          $ref: '#/components/schemas/UserStatus'
+    OrganizationSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        domain:
+          type: string
+          nullable: true
+        plan:
+          type: string
+          description: Always `FREE` today; the column has no other writer.
+          example: FREE
+        createdAt:
+          type: string
+          format: date-time
+        memberCount:
+          type: integer
+    RegisterSession:
+      type: object
+      description: >-
+        Registration signs the caller in immediately - only the access token is also
+        set as a cookie.
+      required:
+        - user
+      properties:
+        user:
+          $ref: '#/components/schemas/PublicAuthUser'
+        organization:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/OrganizationSummary'
+        accessToken:
+          type: string
+          description: HS256 access token, 900 second lifetime.
+        refreshToken:
+          type: string
+          description: >-
+            Opaque 32-256 character token, returned in the body exactly once and
+            stored hashed.
+    MemberDirectoryEntry:
+      type: object
+      description: >-
+        Directory row. `organizationName` is only present on
+        `GET /users?allOrganizations=true`; single-organization reads omit it.
+      required:
+        - id
+        - email
+        - fullName
+        - role
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        organizationId:
+          type: string
+          format: uuid
+        email:
+          type: string
+        fullName:
+          type: string
+        avatarUrl:
+          type: string
+          nullable: true
+        role:
+          $ref: '#/components/schemas/UserRole'
+        status:
+          $ref: '#/components/schemas/UserStatus'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        organizationName:
+          type: string
+          nullable: true
+    Client:
+      type: object
+      required:
+        - id
+        - organizationId
+        - companyName
+        - country
+      properties:
+        id:
+          type: string
+          format: uuid
+        organizationId:
+          type: string
+          format: uuid
+        companyName:
+          type: string
+          maxLength: 255
+        industry:
+          type: string
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/ClientIndustry'
+        contactPerson:
+          type: string
+          nullable: true
+        contactEmail:
+          type: string
+          nullable: true
+          description: Free text - not format-validated on write.
+        contactPhone:
+          type: string
+          nullable: true
+        country:
+          type: string
+          description: >-
+            2-100 characters starting with a letter. A NULL in the database is read
+            back as `Vietnam`.
+          example: Vietnam
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    RateCard:
+      type: object
+      description: >-
+        Money columns are rounded to two decimals and capped at 1e9 by
+        `nonNegativeAmount`.
+      required:
+        - id
+        - organizationId
+        - roleName
+        - level
+        - hourlyRateUsd
+        - dailyRateUsd
+        - currency
+        - isActive
+      properties:
+        id:
+          type: string
+          format: uuid
+        organizationId:
+          type: string
+          format: uuid
+        roleName:
+          type: string
+          maxLength: 100
+        level:
+          $ref: '#/components/schemas/RateCardLevel'
+        hourlyRateUsd:
+          type: number
+          format: double
+        dailyRateUsd:
+          type: number
+          format: double
+        monthlyRateUsd:
+          type: number
+          format: double
+          nullable: true
+          description: >-
+            Derived when absent - daily x 21, else hourly x 8 x 21 (21 billable days
+            is a domain constant).
+        currency:
+          type: string
+          example: USD
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    PricingInputLine:
+      type: object
+      required:
+        - roleName
+        - manMonths
+      properties:
+        roleName:
+          type: string
+          maxLength: 100
+          description: Must match an active rate card unless an override is given.
+        level:
+          type: string
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/RateCardLevel'
+        rateCardId:
+          type: string
+          format: uuid
+          nullable: true
+        manMonths:
+          type: number
+          format: double
+          minimum: 0.0001
+          maximum: 1200
+          description: Must be greater than zero and at most 1200 person-months.
+        monthlyRateOverride:
+          type: number
+          format: double
+          nullable: true
+          description: >-
+            Positive values only - an override of zero is ignored rather than
+            silently free labour.
+    PricingLine:
+      type: object
+      description: One priced line of the bill of materials.
+      properties:
+        roleName:
+          type: string
+        level:
+          type: string
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/RateCardLevel'
+        rateCardId:
+          type: string
+          format: uuid
+          nullable: true
+        manMonths:
+          type: number
+          format: double
+        monthlyRate:
+          type: number
+          format: double
+        totalCost:
+          type: number
+          format: double
+        rateSource:
+          $ref: '#/components/schemas/RateSource'
+    PricingCalculationResult:
+      type: object
+      required:
+        - currency
+        - totalEffortManMonths
+        - totalCost
+        - lines
+      properties:
+        currency:
+          type: string
+        totalEffortManMonths:
+          type: number
+          format: double
+        totalCost:
+          type: number
+          format: double
+        billableDaysPerMonth:
+          type: integer
+          example: 21
+        billableHoursPerDay:
+          type: integer
+          example: 8
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/PricingLine'
+    ExtractedMetadata:
+      type: object
+      description: >-
+        Free-form JSON owned by the intake analyzer and read by the proposal
+        generator. Recognized keys and their shapes are listed here; anything else
+        is stored verbatim.
+      properties:
+        projectName:
+          type: string
+          nullable: true
+        clientIndustry:
+          type: string
+          nullable: true
+        businessGoal:
+          type: string
+          nullable: true
+        timelineWeeks:
+          type: integer
+          nullable: true
+        budgetUsd:
+          type: number
+          nullable: true
+        targetPlatforms:
+          type: array
+          items:
+            type: string
+        coreFunctionalModules:
+          type: array
+          items:
+            type: string
+        integrationsRequired:
+          type: array
+          items:
+            type: string
+        complianceAndSecurity:
+          type: array
+          items:
+            type: string
+        priorityLevel:
+          $ref: '#/components/schemas/PriorityLevel'
+        discoveryInsights:
+          type: array
+          description: Appended by a successful meeting analysis.
+          items:
+            type: object
+    Lead:
+      type: object
+      description: The full lead row, as returned by create, get and patch.
+      required:
+        - id
+        - organizationId
+        - title
+        - source
+        - status
+        - rawRfpContent
+        - extractedMetadata
+      properties:
+        id:
+          type: string
+          format: uuid
+        organizationId:
+          type: string
+          format: uuid
+        clientId:
+          type: string
+          format: uuid
+          nullable: true
+        createdBy:
+          type: string
+          format: uuid
+          nullable: true
+        assignedTo:
+          type: string
+          format: uuid
+          nullable: true
+        title:
+          type: string
+          maxLength: 255
+        source:
+          $ref: '#/components/schemas/LeadSource'
+        status:
+          $ref: '#/components/schemas/LeadStatus'
+        rawRfpContent:
+          type: string
+          maxLength: 50000
+        extractedMetadata:
+          $ref: '#/components/schemas/ExtractedMetadata'
+        bantScore:
+          type: integer
+          nullable: true
+          description: >-
+            0-100. `APPROVED` cannot be reached while this is null.
+        bantDetails:
+          type: object
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/LeadQualification'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    LeadListItem:
+      type: object
+      description: >-
+        The list projection of a lead - identical to `Lead` minus `rawRfpContent`
+        and `bantDetails`, which is what keeps `GET /leads` cheap.
+      required:
+        - id
+        - organizationId
+        - title
+        - source
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        organizationId:
+          type: string
+          format: uuid
+        clientId:
+          type: string
+          format: uuid
+          nullable: true
+        createdBy:
+          type: string
+          format: uuid
+          nullable: true
+        assignedTo:
+          type: string
+          format: uuid
+          nullable: true
+        title:
+          type: string
+        source:
+          $ref: '#/components/schemas/LeadSource'
+        status:
+          $ref: '#/components/schemas/LeadStatus'
+        extractedMetadata:
+          $ref: '#/components/schemas/ExtractedMetadata'
+        bantScore:
+          type: integer
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    QualificationCriterion:
+      type: object
+      description: One BANT dimension. The four scores must sum to the total.
+      required:
+        - score
+        - maxScore
+        - assessment
+      properties:
+        score:
+          type: integer
+          minimum: 0
+          maximum: 25
+        maxScore:
+          type: integer
+          example: 25
+        assessment:
+          type: string
+          maxLength: 2000
+        evidence:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+    LeadQualification:
+      type: object
+      description: >-
+        Validated before it is written: an out-of-range score, an unknown
+        recommendation or a total that does not match the criteria aborts with
+        `409` and leaves the lead untouched.
+      required:
+        - score
+        - recommendation
+        - summary
+        - criteria
+      properties:
+        score:
+          type: integer
+          minimum: 0
+          maximum: 100
+        recommendation:
+          $ref: '#/components/schemas/QualificationRecommendation'
+        summary:
+          type: string
+          maxLength: 4000
+        criteria:
+          type: object
+          required:
+            - budget
+            - authority
+            - need
+            - timeline
+          properties:
+            budget:
+              $ref: '#/components/schemas/QualificationCriterion'
+            authority:
+              $ref: '#/components/schemas/QualificationCriterion'
+            need:
+              $ref: '#/components/schemas/QualificationCriterion'
+            timeline:
+              $ref: '#/components/schemas/QualificationCriterion'
+        risks:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+        nextSteps:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+        evaluatedAt:
+          type: string
+          format: date-time
+    IntakeDraftLead:
+      type: object
+      description: >-
+        A lead that does not exist yet - every persisted column is null so the UI
+        cannot accidentally treat it as saved.
+      properties:
+        id:
+          type: string
+          nullable: true
+          example: null
+        organizationId:
+          type: string
+          nullable: true
+        clientId:
+          type: string
+          nullable: true
+        createdBy:
+          type: string
+          nullable: true
+        assignedTo:
+          type: string
+          nullable: true
+        title:
+          type: string
+          nullable: true
+        source:
+          $ref: '#/components/schemas/LeadSource'
+        status:
+          type: string
+          nullable: true
+        rawRfpContent:
+          type: string
+        extractedMetadata:
+          $ref: '#/components/schemas/ExtractedMetadata'
+        bantScore:
+          type: integer
+          nullable: true
+        bantDetails:
+          type: object
+          nullable: true
+        createdAt:
+          type: string
+          nullable: true
+        updatedAt:
+          type: string
+          nullable: true
+    AnalyzeIntakeResult:
+      type: object
+      required:
+        - draft
+        - missingInformation
+      properties:
+        draft:
+          $ref: '#/components/schemas/IntakeDraftLead'
+        missingInformation:
+          type: array
+          description: What the RFP did not answer, phrased as items to ask about.
+          items:
+            type: string
+    MeetingAttendee:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          maxLength: 200
+        email:
+          type: string
+          description: Trimmed before validation, so surrounding spaces are fine.
+        role:
+          type: string
+          maxLength: 100
+    MeetingActionItem:
+      type: object
+      properties:
+        task:
+          type: string
+          maxLength: 1000
+        assignee:
+          type: string
+          nullable: true
+          maxLength: 200
+        deadline:
+          type: string
+          nullable: true
+          maxLength: 100
+          description: Free text, not a date column.
+    MeetingGapAnalysis:
+      type: object
+      description: >-
+        Always an object with three arrays. When nothing has been analyzed it is
+        three empty arrays, never `{}`.
+      properties:
+        risks:
+          type: array
+          items:
+            type: string
+        missingInformation:
+          type: array
+          items:
+            type: string
+        followUpQuestions:
+          type: array
+          items:
+            type: string
+    MeetingAnalysis:
+      type: object
+      description: >-
+        The raw AI result as stored, `{}` before the first successful analysis.
+      properties:
+        summary:
+          type: string
+          maxLength: 20000
+        technicalSummary:
+          type: string
+          maxLength: 20000
+        decisions:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+        actionItems:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/MeetingActionItem'
+        openQuestions:
+          type: array
+          maxItems: 50
+          items:
+            type: string
+        gapAnalysis:
+          $ref: '#/components/schemas/MeetingGapAnalysis'
+    Meeting:
+      type: object
+      required:
+        - id
+        - leadId
+        - title
+        - meetingDate
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        leadId:
+          type: string
+          format: uuid
+        organizationId:
+          type: string
+          format: uuid
+        createdBy:
+          type: string
+          format: uuid
+          nullable: true
+        title:
+          type: string
+          maxLength: 255
+        meetingDate:
+          type: string
+          format: date-time
+        attendees:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/MeetingAttendee'
+        status:
+          $ref: '#/components/schemas/MeetingStatus'
+        rawTranscript:
+          type: string
+          nullable: true
+          maxLength: 500000
+        cleanNotes:
+          type: string
+          nullable: true
+          description: Mirrors `analysis.summary` after a successful analysis.
+        decisions:
+          type: array
+          items:
+            type: string
+        actionItems:
+          type: array
+          items:
+            $ref: '#/components/schemas/MeetingActionItem'
+        openQuestions:
+          type: array
+          items:
+            type: string
+        gapAnalysis:
+          $ref: '#/components/schemas/MeetingGapAnalysis'
+        analysis:
+          $ref: '#/components/schemas/MeetingAnalysis'
+        analyzedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ProposalSheet:
+      type: object
+      description: >-
+        `sheetData` is a free-form object whose keys depend on the sheet. The
+        defaults written on creation all begin with `title`; then Overview adds
+        `projectName`, `executiveSummary`, `keyObjectives`, `currency`; Scope of
+        Work `modules`; Architecture & Tech Stack `stack`,
+        `nonFunctionalRequirements`; Timeline & Milestones `totalWeeks`,
+        `milestones`; Team & Rate Cards `roles`, `totalEffortManMonths`,
+        `totalTeamCost`; Pricing & Quotation `currency`, `items`, `subtotal`,
+        `taxPercentage`, `taxAmount`, `grandTotal`; Assumptions & Dependencies
+        `items`; Risk Management (RAID) `risks`; SLA & Maintenance `warrantyMonths`,
+        `warrantyTerms`, `incidentMatrix`; Appendices & Case Studies `caseStudies`.
+      required:
+        - id
+        - proposalId
+        - sheetName
+        - sheetOrder
+        - sheetData
+        - aiGenerated
+      properties:
+        id:
+          type: string
+          format: uuid
+        proposalId:
+          type: string
+          format: uuid
+        sheetName:
+          $ref: '#/components/schemas/ProposalSheetName'
+        sheetOrder:
+          type: integer
+          minimum: 1
+          maximum: 10
+        sheetData:
+          type: object
+          additionalProperties: true
+        aiGenerated:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    Proposal:
+      type: object
+      description: >-
+        The projection without sheets, as returned by list, patch and
+        submit-review.
+      required:
+        - id
+        - title
+        - version
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        organizationId:
+          type: string
+          format: uuid
+          nullable: true
+        leadId:
+          type: string
+          format: uuid
+          nullable: true
+          description: >-
+            Set only through `POST /leads/{leadId}/proposals`; nulled by a lead
+            delete.
+        createdBy:
+          type: string
+          format: uuid
+          nullable: true
+        title:
+          type: string
+          maxLength: 255
+        version:
+          type: string
+          minLength: 1
+          maxLength: 20
+          example: v1.0
+        status:
+          $ref: '#/components/schemas/ProposalStatus'
+        totalCost:
+          type: number
+          format: double
+          nullable: true
+          description: Mirrors the Pricing sheet's `grandTotal`.
+        currency:
+          type: string
+          example: USD
+        estimatedTimelineWeeks:
+          type: integer
+          nullable: true
+          description: Mirrors the Timeline sheet's `totalWeeks`.
+        exportExcelUrl:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ProposalWithSheets:
+      allOf:
+        - $ref: '#/components/schemas/Proposal'
+        - type: object
+          required:
+            - sheets
+          properties:
+            sheets:
+              type: array
+              items:
+                $ref: '#/components/schemas/ProposalSheet'
+    RagSourceLite:
+      type: object
+      description: A citation for AI-generated proposal content.
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          nullable: true
+        excerpt:
+          type: string
+          maxLength: 500
+    PortalSessionWithToken:
+      type: object
+      description: >-
+        The only response in the API that carries a usable portal credential - the
+        plaintext token exists nowhere else.
+      required:
+        - id
+        - proposalId
+        - clientEmail
+        - expiresAt
+        - accessToken
+      properties:
+        id:
+          type: string
+          format: uuid
+        proposalId:
+          type: string
+          format: uuid
+        organizationId:
+          type: string
+          format: uuid
+        clientEmail:
+          type: string
+        clientName:
+          type: string
+          nullable: true
+        expiresAt:
+          type: string
+          format: date-time
+        accessToken:
+          type: string
+          description: 43-character base64url; present only in this response.
+    PortalSessionDetail:
+      type: object
+      description: Staff-side session row; no token material at all.
+      properties:
+        id:
+          type: string
+          format: uuid
+        proposalId:
+          type: string
+          format: uuid
+        clientEmail:
+          type: string
+        clientName:
+          type: string
+          nullable: true
+        expiresAt:
+          type: string
+          format: date-time
+        revokedAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastAccessedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        commentCount:
+          type: integer
+    PortalMaterial:
+      type: object
+      description: >-
+        The client-facing projection - no `isShared` and no `createdBy`, which is
+        also what `POST /proposals/{proposalId}/portal-materials` returns.
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        fileName:
+          type: string
+        fileUrl:
+          type: string
+          description: Always an `https://` URL; nothing is uploaded here.
+        mimeType:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    PortalMaterialDetail:
+      allOf:
+        - $ref: '#/components/schemas/PortalMaterial'
+        - type: object
+          properties:
+            isShared:
+              type: boolean
+            createdBy:
+              type: string
+              format: uuid
+              nullable: true
+    PortalComment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        proposalId:
+          type: string
+          format: uuid
+        sessionId:
+          type: string
+          format: uuid
+        authorName:
+          type: string
+        authorEmail:
+          type: string
+          description: Taken from the session, never from the request body.
+        body:
+          type: string
+          maxLength: 5000
+        createdAt:
+          type: string
+          format: date-time
+    ClientPortalSheet:
+      type: object
+      description: >-
+        Sheet content without the internal identifiers, so a client cannot infer
+        the row ids used by staff routes.
+      properties:
+        sheetName:
+          $ref: '#/components/schemas/ProposalSheetName'
+        sheetOrder:
+          type: integer
+        sheetData:
+          type: object
+          additionalProperties: true
+    ClientPortalProposal:
+      type: object
+      description: >-
+        The client view. All ten sheets are exposed, internal ones included - a
+        recorded finding.
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        version:
+          type: string
+        status:
+          $ref: '#/components/schemas/ProposalStatus'
+        totalCost:
+          type: number
+          format: double
+          nullable: true
+        currency:
+          type: string
+        estimatedTimelineWeeks:
+          type: integer
+          nullable: true
+        sheets:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClientPortalSheet'
+    PortalAnswerCitation:
+      type: object
+      properties:
+        label:
+          type: string
+          example: '[Team & Rate Cards]'
+        sheetName:
+          $ref: '#/components/schemas/ProposalSheetName'
+        excerpt:
+          type: string
+          description: First 1800 characters of the sheet's JSON.
+    PortalAnswer:
+      type: object
+      required:
+        - answer
+      properties:
+        answer:
+          type: string
+        citations:
+          type: array
+          items:
+            $ref: '#/components/schemas/PortalAnswerCitation'
+    KnowledgeDocument:
+      type: object
+      description: >-
+        Metadata only - there is no `content` column on `knowledge_docs`, so the
+        document body is not readable back from this row.
+      properties:
+        id:
+          type: string
+          format: uuid
+        organizationId:
+          type: string
+          format: uuid
+        uploadedBy:
+          type: string
+          format: uuid
+          nullable: true
+        title:
+          type: string
+          maxLength: 255
+        category:
+          type: string
+          description: Free text; `GENERAL` when ingest omits it.
+        domain:
+          type: string
+          description: Free text; `GENERAL` when ingest omits it.
+        fileUrl:
+          type: string
+          nullable: true
+        fileType:
+          type: string
+          description: Always `TEXT` - the only supported ingest kind.
+        totalTokens:
+          type: integer
+        totalChunks:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    IngestResult:
+      type: object
+      required:
+        - docId
+        - totalChunks
+      properties:
+        docId:
+          type: string
+          format: uuid
+        totalChunks:
+          type: integer
+    RagIngestResult:
+      allOf:
+        - $ref: '#/components/schemas/IngestResult'
+        - type: object
+          properties:
+            message:
+              type: string
+    DocumentChunkMetadata:
+      type: object
+      properties:
+        title:
+          type: string
+        category:
+          type: string
+        domain:
+          type: string
+        section:
+          type: string
+          nullable: true
+        tech_stack:
+          type: string
+          nullable: true
+        compliance:
+          type: string
+          nullable: true
+    DocumentChunk:
+      type: object
+      description: >-
+        A retrieval hit. `embedding` is deliberately never serialized.
+      properties:
+        id:
+          type: string
+          format: uuid
+        docId:
+          type: string
+          format: uuid
+        chunkIndex:
+          type: integer
+          description: >-
+            Always 0 today - the retrieval SQL does not select `chunk_index`, so the
+            position within the document is lost.
+        chunkContent:
+          type: string
+        metadata:
+          $ref: '#/components/schemas/DocumentChunkMetadata'
+        combinedScore:
+          type: number
+          format: double
+          description: Reciprocal-rank fusion score (weights 1.0 / 1.0, k = 60).
+        semanticRank:
+          type: integer
+          nullable: true
+        ftsRank:
+          type: integer
+          nullable: true
+    KnowledgeCitation:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        documentId:
+          type: string
+          format: uuid
+        label:
+          type: string
+          description: Numbered marker used in the answer text, for example `[1]`.
+        title:
+          type: string
+        excerpt:
+          type: string
+          maxLength: 1200
+        score:
+          type: number
+          format: double
+          nullable: true
+    KnowledgeAnswer:
+      type: object
+      required:
+        - answer
+      properties:
+        answer:
+          type: string
+        citations:
+          type: array
+          items:
+            $ref: '#/components/schemas/KnowledgeCitation'
+    RagGeneratedOverview:
+      type: object
+      required:
+        - overview
+      properties:
+        overview:
+          type: string
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/DocumentChunk'
+    DashboardKpis:
+      type: object
+      properties:
+        totalLeads:
+          type: integer
+        activeLeads:
+          type: integer
+          description: Every status except WON, LOST and REJECTED.
+        qualifiedLeads:
+          type: integer
+          description: QUALIFIED, PROPOSAL_DRAFTING and APPROVED.
+        proposalsInProgress:
+          type: integer
+          description: Proposals in DRAFT or IN_REVIEW.
+        estimatedValueByCurrency:
+          type: array
+          items:
+            $ref: '#/components/schemas/MoneyAmount'
+    MoneyAmount:
+      type: object
+      required:
+        - currency
+        - amount
+      properties:
+        currency:
+          type: string
+        amount:
+          type: number
+          format: double
+          description: >-
+            A null `total_cost` is summed as zero; REJECTED proposals are excluded.
+    DashboardPipelineStage:
+      type: object
+      description: >-
+        `count` is the number of leads in the stage, counted on its own;
+        `estimatedValueByCurrency` is the joined proposal money per currency. These
+        were once fed from the same grouped query, which made a multi-currency stage
+        report one currency's count.
+      properties:
+        status:
+          $ref: '#/components/schemas/LeadStatus'
+        count:
+          type: integer
+        estimatedValueByCurrency:
+          type: array
+          items:
+            $ref: '#/components/schemas/MoneyAmount'
+    DashboardOverview:
+      type: object
+      required:
+        - kpis
+        - pipeline
+        - activeLeads
+        - generatedAt
+      properties:
+        kpis:
+          $ref: '#/components/schemas/DashboardKpis'
+        pipeline:
+          type: array
+          description: Always nine entries, in pipeline order.
+          items:
+            $ref: '#/components/schemas/DashboardPipelineStage'
+        activeLeads:
+          type: array
+          items:
+            $ref: '#/components/schemas/DashboardLead'
+        generatedAt:
+          type: string
+          format: date-time
+    DashboardLead:
+      type: object
+      description: >-
+        A widget projection - enough for a card, and deliberately not the full lead
+        (no RFP text, no client id).
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        source:
+          type: string
+        status:
+          $ref: '#/components/schemas/LeadStatus'
+        bantScore:
+          type: integer
+          nullable: true
+        clientName:
+          type: string
+          nullable: true
+        assignedTo:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    DashboardActivity:
+      type: object
+      properties:
+        id:
+          type: string
+          description: >-
+            Synthetic key `<entityId>:created` or `<entityId>:updated`, so at most
+            two events per entity can ever exist.
+        type:
+          $ref: '#/components/schemas/DashboardActivityType'
+        entityId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        status:
+          type: string
+        occurredAt:
+          type: string
+          format: date-time
+    DashboardListMeta:
+      type: object
+      description: >-
+        Warning - `total` is the length of the returned array, not the tenant-wide
+        count, unlike every other list in this API.
+      properties:
+        total:
+          type: integer
+        limit:
+          type: integer
+    AuditLogEntry:
+      type: object
+      description: >-
+        Immutable read model: there is no route to create, update or delete a row,
+        and immutability currently rests on that absence rather than on database
+        triggers. `ip_address` is stored but never returned.
+      properties:
+        id:
+          type: string
+          format: uuid
+        organizationId:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+          nullable: true
+        actorName:
+          type: string
+          nullable: true
+          description: "`users.full_name` via LEFT JOIN, so a removed actor is null."
+        action:
+          type: string
+        entityType:
+          type: string
+        entityId:
+          type: string
+          format: uuid
+          nullable: true
+        payload:
+          type: object
+          additionalProperties: true
+          description: >-
+            Before/after detail. A stored value that is not a JSON object becomes
+            `{}`.
+        resultStatus:
+          $ref: '#/components/schemas/AuditResultStatus'
+        createdAt:
+          type: string
+          format: date-time
+    AuthRegisterRequest:
+      type: object
+      required:
+        - email
+        - fullName
+        - organizationName
+        - password
+      properties:
+        email:
+          type: string
+          maxLength: 255
+          format: email
+        fullName:
+          type: string
+          maxLength: 255
+        organizationName:
+          type: string
+          maxLength: 255
+        organizationDomain:
+          type: string
+          maxLength: 100
+          nullable: true
+          description: "`null`, an empty string or an absent key all store NULL."
+        password:
+          type: string
+          minLength: 12
+          maxLength: 128
+    AuthLoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          maxLength: 254
+          format: email
+        password:
+          type: string
+          maxLength: 128
+          description: Non-empty only - the 12-character policy applies when setting, not when signing in.
+    ForgotPasswordRequest:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          maxLength: 255
+          format: email
+    ResetPasswordRequest:
+      type: object
+      required:
+        - token
+        - password
+      properties:
+        token:
+          type: string
+          minLength: 32
+          maxLength: 256
+        password:
+          type: string
+          minLength: 12
+          maxLength: 128
+    PasswordResetRequestResult:
+      type: object
+      properties:
+        message:
+          type: string
+        resetToken:
+          type: string
+          description: Present only when `NODE_ENV` is not `production`.
+        resetUrl:
+          type: string
+          description: Present only when `NODE_ENV` is not `production`.
+    UpdateOwnProfileRequest:
+      type: object
+      minProperties: 1
+      properties:
+        fullName:
+          type: string
+          maxLength: 255
+        avatarUrl:
+          type: string
+          maxLength: 2000
+          nullable: true
+        password:
+          type: string
+          minLength: 12
+          maxLength: 128
+          description: Requires `currentPassword` in the same request.
+        currentPassword:
+          type: string
+          description: Verified against the stored hash; wrong is `401`.
+    CreateMemberRequest:
+      type: object
+      required:
+        - email
+        - fullName
+        - password
+      properties:
+        email:
+          type: string
+          maxLength: 255
+          format: email
+        fullName:
+          type: string
+          maxLength: 255
+        password:
+          type: string
+          minLength: 12
+          maxLength: 128
+        role:
+          $ref: '#/components/schemas/UserRole'
+          description: Defaults to `VIEWER` when omitted.
+    UpdateMemberRequest:
+      type: object
+      minProperties: 1
+      properties:
+        fullName:
+          type: string
+          maxLength: 255
+        role:
+          $ref: '#/components/schemas/UserRole'
+        status:
+          $ref: '#/components/schemas/UserStatus'
+    CreateClientRequest:
+      type: object
+      required:
+        - companyName
+      properties:
+        companyName:
+          type: string
+          minLength: 1
+          maxLength: 255
+        industry:
+          type: string
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/ClientIndustry'
+        contactPerson:
+          type: string
+          maxLength: 255
+          nullable: true
+        contactEmail:
+          type: string
+          maxLength: 255
+          nullable: true
+        contactPhone:
+          type: string
+          maxLength: 50
+          nullable: true
+        country:
+          type: string
+          pattern: ^[A-Za-z][A-Za-z\s.-]{1,99}$
+          default: Vietnam
+    UpdateClientRequest:
+      type: object
+      minProperties: 1
+      properties:
+        companyName:
+          type: string
+          minLength: 1
+          maxLength: 255
+        industry:
+          type: string
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/ClientIndustry'
+        contactPerson:
+          type: string
+          maxLength: 255
+          nullable: true
+        contactEmail:
+          type: string
+          maxLength: 255
+          nullable: true
+        contactPhone:
+          type: string
+          maxLength: 50
+          nullable: true
+        country:
+          type: string
+          pattern: ^[A-Za-z][A-Za-z\s.-]{1,99}$
+    CreateRateCardRequest:
+      type: object
+      required:
+        - roleName
+        - hourlyRateUsd
+        - dailyRateUsd
+      properties:
+        roleName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        level:
+          allOf:
+            - $ref: '#/components/schemas/RateCardLevel'
+          description: Defaults to `SENIOR`.
+        hourlyRateUsd:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1000000000
+        dailyRateUsd:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1000000000
+        monthlyRateUsd:
+          type: number
+          format: double
+          nullable: true
+          minimum: 0
+          maximum: 1000000000
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        isActive:
+          type: boolean
+          default: true
+    UpdateRateCardRequest:
+      type: object
+      minProperties: 1
+      properties:
+        roleName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        level:
+          $ref: '#/components/schemas/RateCardLevel'
+        hourlyRateUsd:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1000000000
+        dailyRateUsd:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1000000000
+        monthlyRateUsd:
+          type: number
+          format: double
+          nullable: true
+          minimum: 0
+          maximum: 1000000000
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        isActive:
+          type: boolean
+    PricingCalculateRequest:
+      type: object
+      required:
+        - lines
+      properties:
+        lines:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/PricingInputLine'
+        proposalId:
+          type: string
+          format: uuid
+          nullable: true
+          description: >-
+            When present and `apply` is not false, the computed total is written to
+            this proposal.
+        apply:
+          type: boolean
+          description: >-
+            Defaults to true when `proposalId` is given. `apply=true` without a
+            `proposalId` is a `400`.
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+    CreateLeadRequest:
+      type: object
+      required:
+        - title
+        - rawRfpContent
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        rawRfpContent:
+          type: string
+          minLength: 1
+          maxLength: 50000
+        source:
+          $ref: '#/components/schemas/LeadSource'
+        extractedMetadata:
+          type: object
+          additionalProperties: true
+          description: Must be a JSON object; defaults to `{}`.
+        clientId:
+          type: string
+          format: uuid
+          nullable: true
+        assignedTo:
+          type: string
+          format: uuid
+          nullable: true
+    UpdateLeadRequest:
+      type: object
+      minProperties: 1
+      description: >-
+        `status` is deliberately not accepted here; the state machine lives on
+        `PATCH /leads/{id}/status`.
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        rawRfpContent:
+          type: string
+          minLength: 1
+          maxLength: 50000
+        source:
+          $ref: '#/components/schemas/LeadSource'
+        extractedMetadata:
+          type: object
+          additionalProperties: true
+        clientId:
+          type: string
+          format: uuid
+          nullable: true
+        assignedTo:
+          type: string
+          format: uuid
+          nullable: true
+    AnalyzeIntakeRequest:
+      type: object
+      required:
+        - rawRfpContent
+      properties:
+        rawRfpContent:
+          type: string
+          minLength: 1
+          maxLength: 50000
+        source:
+          $ref: '#/components/schemas/LeadSource'
+    CreateMeetingRequest:
+      type: object
+      required:
+        - title
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        meetingDate:
+          type: string
+          description: >-
+            Any value `new Date()` can parse; defaults to the moment of the call.
+            Unparsable is `400`.
+          example: 2026-10-28T03:00:00.000Z
+        attendees:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/MeetingAttendee'
+    CreateProposalRequest:
+      type: object
+      required:
+        - title
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        version:
+          type: string
+          minLength: 1
+          maxLength: 20
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        totalCost:
+          type: number
+          format: double
+          minimum: 0
+          description: Seeded from the Pricing sheet's `grandTotal` when omitted.
+        estimatedTimelineWeeks:
+          type: integer
+          minimum: 1
+          description: Seeded from the Timeline sheet's `totalWeeks` when omitted.
+        initialSheets:
+          type: array
+          maxItems: 10
+          description: >-
+            Names must be standard, no duplicates, `sheetOrder` must match the
+            standard order and `sheetData` must be a non-array object. When omitted
+            all ten blank sheets are created.
+          items:
+            type: object
+            required:
+              - sheetName
+              - sheetOrder
+              - sheetData
+            properties:
+              sheetName:
+                $ref: '#/components/schemas/ProposalSheetName'
+              sheetOrder:
+                type: integer
+                minimum: 1
+                maximum: 10
+              sheetData:
+                type: object
+                additionalProperties: true
+              aiGenerated:
+                type: boolean
+    UpdateProposalRequest:
+      type: object
+      minProperties: 1
+      description: >-
+        Metadata keys and `status` are mutually exclusive in one request, and
+        metadata requires the proposal to still be DRAFT.
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        version:
+          type: string
+          minLength: 1
+          maxLength: 20
+        totalCost:
+          type: number
+          format: double
+          nullable: true
+          minimum: 0
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        estimatedTimelineWeeks:
+          type: integer
+          nullable: true
+          minimum: 1
+        exportExcelUrl:
+          type: string
+          nullable: true
+        status:
+          $ref: '#/components/schemas/ProposalStatus'
+    GenerateSheetsRequest:
+      type: object
+      properties:
+        sheetNames:
+          type: array
+          minItems: 1
+          maxItems: 10
+          description: Omit to generate all ten sheets.
+          items:
+            $ref: '#/components/schemas/ProposalSheetName'
+        instructions:
+          type: string
+          maxLength: 4000
+    CreatePortalSessionRequest:
+      type: object
+      required:
+        - proposalId
+        - clientEmail
+      properties:
+        proposalId:
+          type: string
+          format: uuid
+        clientEmail:
+          type: string
+          maxLength: 320
+          format: email
+          description: Lower-cased before storage.
+        clientName:
+          type: string
+          minLength: 1
+          maxLength: 200
+        expiresInHours:
+          type: integer
+          minimum: 1
+          maximum: 720
+          default: 168
+    CreatePortalMaterialRequest:
+      type: object
+      required:
+        - title
+        - fileName
+        - fileUrl
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        fileName:
+          type: string
+          minLength: 1
+          maxLength: 255
+        fileUrl:
+          type: string
+          pattern: ^https://
+          maxLength: 2048
+          description: HTTP is refused; the URL must be https.
+        description:
+          type: string
+          maxLength: 4000
+          nullable: true
+        mimeType:
+          type: string
+          maxLength: 150
+          nullable: true
+        isShared:
+          type: boolean
+          default: false
+    IngestDocumentRequest:
+      type: object
+      required:
+        - title
+        - content
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        content:
+          type: string
+          minLength: 1
+          maxLength: 1000000
+          description: >-
+            Split into roughly 400-word chunks with a 50-word overlap; the text
+            itself is only kept inside the chunk rows.
+        category:
+          type: string
+          maxLength: 100
+          description: Free text. An empty string is rejected; omit it for `GENERAL`.
+        domain:
+          type: string
+          maxLength: 100
+          description: Free text. An empty string is rejected; omit it for `GENERAL`.
+    KnowledgeAskRequest:
+      type: object
+      required:
+        - question
+      properties:
+        question:
+          type: string
+          minLength: 1
+          maxLength: 20000
+        domain:
+          type: string
+          maxLength: 100
+          description: Restricts retrieval to one domain.
+        topK:
+          type: integer
+          minimum: 1
+          maximum: 10
+          default: 5
+    RagSearchRequest:
+      type: object
+      required:
+        - query
+      properties:
+        query:
+          type: string
+          minLength: 1
+          maxLength: 20000
+        domain:
+          type: string
+          maxLength: 100
+        topK:
+          type: integer
+          minimum: 1
+          maximum: 20
+          default: 3
+          description: >-
+            1-20 here, while `POST /knowledge/ask` caps the same idea at 1-10.
+    RagGenerateProposalRequest:
+      type: object
+      required:
+        - rfpText
+      properties:
+        rfpText:
+          type: string
+          minLength: 1
+          maxLength: 20000
+        domain:
+          type: string
+          maxLength: 100
+        maxTokens:
+          type: integer
+          minimum: 1
+          maximum: 8000
+          default: 1500
+

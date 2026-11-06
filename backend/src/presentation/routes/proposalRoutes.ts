@@ -1,11 +1,17 @@
 import { Router } from 'express';
 import { ProposalController } from '../controllers/ProposalController.js';
+import { requireAuth, requireOrganization } from '../middlewares/requireAuth.js';
 
 export function createProposalRouter(controller: ProposalController): Router {
   const router = Router();
+  router.use(requireAuth, requireOrganization);
 
   // Excel Export endpoint (must be before :id if matched specifically)
   router.get('/:id/export-excel', controller.exportExcel);
+  router.post('/:id/generate', controller.generateAll);
+  router.post('/:id/sheets/:sheetName/generate', controller.generateSheet);
+  router.post('/:id/sections/:sectionName/regenerate', controller.regenerateSection);
+  router.post('/:id/submit-review', controller.submitForReview);
 
   // Generate proposal dynamically from Lead Context using AI RAG
   router.post('/generate-from-lead', controller.generateFromLead);

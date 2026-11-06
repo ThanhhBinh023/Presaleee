@@ -14,12 +14,9 @@ import { Overview } from './components/Overview';
 import { AIWorkspace } from './components/AIWorkspace';
 import { RfpIntake } from './components/RfpIntake';
 import { KnowledgeVault } from './components/KnowledgeVault';
-import { MembersDirectory } from './components/MembersDirectory';
-import { Profile } from './components/Profile';
-import { ClientsDirectory } from './components/ClientsDirectory';
-import { AuditLog } from './components/AuditLog';
 import { RequireAuth } from './components/common/RequireAuth';
 import { AuthProvider, useAuth } from './hooks/useAuth';
+import { ToastProvider } from './components/common/Toast';
 
 type Page =
   | 'home'
@@ -28,11 +25,7 @@ type Page =
   | 'overview'
   | 'ai-workspace'
   | 'rfps'
-  | 'vault'
-  | 'members'
-  | 'profile'
-  | 'clients'
-  | 'audit';
+  | 'vault';
 
 function pageFromHash(hash: string): Page {
   const route = hash.split('?')[0];
@@ -42,10 +35,6 @@ function pageFromHash(hash: string): Page {
   if (route === '#ai-workspace') return 'ai-workspace';
   if (route === '#rfps') return 'rfps';
   if (route === '#vault') return 'vault';
-  if (route === '#members') return 'members';
-  if (route === '#profile') return 'profile';
-  if (route === '#clients') return 'clients';
-  if (route === '#audit') return 'audit';
   return 'home';
 }
 
@@ -71,9 +60,6 @@ const AppShell: React.FC = () => {
   const navigateToAIWorkspace = () => goTo('ai-workspace');
   const navigateToRfps = () => goTo('rfps');
   const navigateToVault = () => goTo('vault');
-  const navigateToMembers = () => goTo('members');
-  const navigateToClients = () => goTo('clients');
-  const navigateToAudit = () => goTo('audit');
 
   const handleLogout = async () => {
     try {
@@ -106,9 +92,6 @@ const AppShell: React.FC = () => {
           onNavigateAIWorkspace={navigateToAIWorkspace}
           onNavigateRfps={navigateToRfps}
           onNavigateVault={navigateToVault}
-          onNavigateMembers={navigateToMembers}
-          onNavigateClients={navigateToClients}
-          onNavigateAudit={navigateToAudit}
         />
       </RequireAuth>
     );
@@ -121,6 +104,7 @@ const AppShell: React.FC = () => {
           onNavigateOverview={navigateToOverview}
           onNavigateAIWorkspace={navigateToAIWorkspace}
           onLogout={handleLogout}
+          onNavigateVault={navigateToVault}
         />
       </RequireAuth>
     );
@@ -138,20 +122,12 @@ const AppShell: React.FC = () => {
     );
   }
 
-  if (currentPage === 'clients') {
-    return (
-      <RequireAuth>
-        <ClientsDirectory onBackToOverview={navigateToOverview} />
-      </RequireAuth>
-    );
+  if (currentPage === 'reset-password') {
+    return <ResetPassword onBackToHome={navigateToHome} onDone={navigateToSignIn} />;
   }
 
-  if (currentPage === 'audit') {
-    return (
-      <RequireAuth>
-        <AuditLog onBackToOverview={navigateToOverview} />
-      </RequireAuth>
-    );
+  if (currentPage === 'signin') {
+    return <SignIn onBackToHome={navigateToHome} onLoginSuccess={navigateToOverview} />;
   }
 
   if (currentPage === 'members') {
@@ -209,7 +185,9 @@ const AppShell: React.FC = () => {
 
 export const App: React.FC = () => (
   <AuthProvider>
-    <AppShell />
+    <ToastProvider>
+      <AppShell />
+    </ToastProvider>
   </AuthProvider>
 );
 

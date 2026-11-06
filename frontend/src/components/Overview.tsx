@@ -6,9 +6,8 @@ import {
   LayoutGrid, 
   FileText, 
   Sparkles, 
-  BookOpen, 
-  CreditCard, 
-  Search, 
+  BookOpen,
+Search, 
   SlidersHorizontal, 
   Plus, 
   Download, 
@@ -220,10 +219,6 @@ export const Overview: React.FC<OverviewProps> = ({
               { name: 'RFPs & Specs', icon: FileText },
               { name: 'AI Workspace', icon: Sparkles, badge: 'New' },
               { name: 'Knowledge Vault', icon: BookOpen },
-              { name: 'Clients', icon: Building2 },
-              { name: 'Audit trail', icon: ShieldCheck },
-              { name: 'Members', icon: Users },
-              { name: 'Plan & Quota', icon: CreditCard },
             ].map((item) => {
               const Icon = item.icon;
               const isActive = activeNav === item.name;

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useToast } from './common/Toast';
 import { 
   X, 
   ShieldCheck, 
@@ -17,6 +18,7 @@ interface ClientPortalModalProps {
 }
 
 export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({ isOpen, onClose }) => {
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState<'proposal' | 'prototype' | 'materials' | 'discussion'>('proposal');
   const [clientQuery, setClientQuery] = useState('');
   const [aiAnswers, setAiAnswers] = useState<Array<{ q: string; a: string }>>([
@@ -79,7 +81,7 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({ isOpen, on
 
           <div className="flex items-center gap-2">
             <button
-              onClick={() => alert('Proposal exported to client PDF package')}
+              onClick={() => toast.success('Đã xuất thành công gói hồ sơ đề xuất Client PDF Package!', 'Client Portal')}
               className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-white"
             >
               <Download className="w-3.5 h-3.5 text-slate-500" />

@@ -1,6 +1,11 @@
 import { dbPool } from './infrastructure/database/connection.js';
 import { PostgresKnowledgeRepository } from './infrastructure/database/repositories/PostgresKnowledgeRepository.js';
 import { PostgresProposalRepository } from './infrastructure/database/repositories/PostgresProposalRepository.js';
+import { PostgresMeetingRepository } from './infrastructure/database/repositories/PostgresMeetingRepository.js';
+import { PostgresAuthRepository } from './infrastructure/database/repositories/PostgresAuthRepository.js';
+import { PostgresUserRepository } from './infrastructure/database/repositories/PostgresUserRepository.js';
+import { PostgresAuditRepository } from './infrastructure/database/repositories/PostgresAuditRepository.js';
+
 import { GeminiEmbeddingGateway } from './infrastructure/ai/GeminiEmbeddingGateway.js';
 import { FastAPILMGateway } from './infrastructure/ai/FastAPILMGateway.js';
 import { ExcelProposalExporterService } from './infrastructure/services/ExcelProposalExporterService.js';
@@ -301,7 +306,6 @@ export function createContainer(): ServiceContainer {
     searchHybridRAGUseCase,
     ingestDocumentUseCase,
     generateProposalUseCase,
-
     createProposalUseCase,
     getProposalByIdUseCase,
     listProposalsUseCase,

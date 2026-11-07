@@ -81,10 +81,8 @@ export class PostgresProposalRepository implements IProposalRepository {
     const proposal = this.mapProposal(proposalRes.rows[0]);
 
     const sheetsRes = await this.pool.query(
-      `SELECT * FROM proposal_sheets WHERE proposal_id = $1 AND EXISTS (
-         SELECT 1 FROM proposals p WHERE p.id = proposal_sheets.proposal_id AND p.organization_id = $2
-       ) ORDER BY sheet_order ASC;`,
-      [id, organizationId]
+      'SELECT * FROM proposal_sheets WHERE proposal_id = $1 ORDER BY sheet_order ASC;',
+      [id]
     );
 
     const sheets = sheetsRes.rows.map(row => this.mapSheet(row));
@@ -95,7 +93,32 @@ export class PostgresProposalRepository implements IProposalRepository {
     };
   }
 
-  async findAll(filter: ProposalFilterParams): Promise<{ proposals: Proposal[]; total: number }> {
+  async findByLeadId(leadId: string): Promise<ProposalWithSheets | null> {
+    const proposalRes = await this.pool.query(
+      'SELECT * FROM proposals WHERE lead_id = $1 ORDER BY updated_at DESC LIMIT 1;',
+      [leadId]
+    );
+
+    if (proposalRes.rows.length === 0) {
+      return null;
+    }
+
+    const proposal = this.mapProposal(proposalRes.rows[0]);
+
+    const sheetsRes = await this.pool.query(
+      'SELECT * FROM proposal_sheets WHERE proposal_id = $1 ORDER BY sheet_order ASC;',
+      [proposal.id]
+    );
+
+    const sheets = sheetsRes.rows.map(row => this.mapSheet(row));
+
+    return {
+      ...proposal,
+      sheets
+    };
+  }
+
+  async findAll(filter: ProposalFilterParams = {}): Promise<{ proposals: Proposal[]; total: number }> {
     const conditions: string[] = [];
     const values: any[] = [];
     let idx = 1;

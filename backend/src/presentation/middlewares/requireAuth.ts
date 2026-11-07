@@ -10,7 +10,7 @@ export function requireOrganization(req: Request, _res: Response, next: NextFunc
   next();
 }
 
-export function requireAuth(req: Request, _res: Response, next: NextFunction): void {
+export function extractToken(req: Request): string | undefined {
   const authorization = req.header('authorization');
   const bearerToken = authorization?.startsWith('Bearer ')
     ? authorization.slice('Bearer '.length).trim()
@@ -28,7 +28,11 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction): v
       cookieToken = undefined;
     }
   }
-  const token = bearerToken || cookieToken;
+  return bearerToken || cookieToken;
+}
+
+export function requireAuth(req: Request, _res: Response, next: NextFunction): void {
+  const token = extractToken(req);
   if (!token) {
     next(new UnauthorizedError('Authentication required.'));
     return;
@@ -39,4 +43,16 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction): v
   } catch (error) {
     next(error);
   }
+}
+
+export function optionalAuth(req: Request, _res: Response, next: NextFunction): void {
+  const token = extractToken(req);
+  if (token) {
+    try {
+      req.auth = verifyAccessToken(token);
+    } catch {
+      // Ignore invalid token for optional auth
+    }
+  }
+  next();
 }

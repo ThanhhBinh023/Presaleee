@@ -4,7 +4,8 @@ import { ValidationError } from '../../domain/errors/AppError.js';
 import { ProposalStatus } from '../../domain/entities/Proposal.js';
 
 export interface ListProposalsDTO {
-  organizationId: string;
+  organizationId?: string;
+  leadId?: string;
   status?: string;
   search?: string;
   page?: number;
@@ -34,6 +35,7 @@ export class ListProposalsUseCase {
 
     const filter: ProposalFilterParams = {
       organizationId: dto.organizationId,
+      leadId: dto.leadId,
       status: dto.status,
       search: dto.search,
       limit,

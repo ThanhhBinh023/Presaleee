@@ -10,6 +10,7 @@ import { PostgresDashboardRepository } from './infrastructure/database/repositor
 import { GeminiEmbeddingGateway } from './infrastructure/ai/GeminiEmbeddingGateway.js';
 import { FastAPILMGateway } from './infrastructure/ai/FastAPILMGateway.js';
 import { ExcelProposalExporterService } from './infrastructure/services/ExcelProposalExporterService.js';
+import { PdfProposalExporterService } from './infrastructure/services/PdfProposalExporterService.js';
 
 import { SearchHybridRAGUseCase } from './application/use-cases/SearchHybridRAGUseCase.js';
 import { IngestDocumentUseCase } from './application/use-cases/IngestDocumentUseCase.js';
@@ -22,16 +23,16 @@ import { UpdateProposalUseCase } from './application/use-cases/UpdateProposalUse
 import { UpdateProposalSheetUseCase } from './application/use-cases/UpdateProposalSheetUseCase.js';
 import { DeleteProposalUseCase } from './application/use-cases/DeleteProposalUseCase.js';
 import { ExportProposalToExcelUseCase } from './application/use-cases/ExportProposalToExcelUseCase.js';
-import { GenerateProposalFromLeadUseCase } from './application/use-cases/GenerateProposalFromLeadUseCase.js';
+import { CreateProposalFromLeadUseCase } from './application/use-cases/CreateProposalFromLeadUseCase.js';
+import { GenerateProposalSheetsUseCase } from './application/use-cases/GenerateProposalSheetsUseCase.js';
+import { ExportProposalToPdfUseCase } from './application/use-cases/ExportProposalToPdfUseCase.js';
 
+import { RAGController } from './presentation/controllers/RAGController.js';
+import { ProposalController } from './presentation/controllers/ProposalController.js';
+import { LeadIntakeController } from './presentation/controllers/LeadIntakeController.js';
 import { AnalyzeLeadIntakeUseCase } from './application/use-cases/AnalyzeLeadIntakeUseCase.js';
-
-import { CreateMeetingUseCase } from './application/use-cases/CreateMeetingUseCase.js';
-import { InspectMeetingUseCase } from './application/use-cases/InspectMeetingUseCase.js';
-import { UpdateMeetingLifecycleUseCase } from './application/use-cases/UpdateMeetingLifecycleUseCase.js';
-import { ListMeetingsByLeadUseCase } from './application/use-cases/ListMeetingsByLeadUseCase.js';
-import { GetMeetingByIdUseCase } from './application/use-cases/GetMeetingByIdUseCase.js';
-
+import { PostgresAuthRepository } from './infrastructure/database/repositories/PostgresAuthRepository.js';
+import { AuthController } from './presentation/controllers/AuthController.js';
 import {
   LoginUseCase,
   RefreshSessionUseCase,
@@ -40,41 +41,72 @@ import {
   ForgotPasswordUseCase,
   ResetPasswordUseCase
 } from './application/use-cases/AuthUseCases.js';
+import { PostgresLeadRepository } from './infrastructure/database/repositories/PostgresLeadRepository.js';
 import {
-  RegisterUseCase,
-  ListOrganizationsUseCase,
-  ListMembersUseCase,
-  GetMemberUseCase,
-  AddMemberUseCase,
-  UpdateMemberUseCase,
-  UpdateOwnProfileUseCase
-} from './application/use-cases/UserUseCases.js';
-import {
-  GetDashboardOverviewUseCase,
-  ListDashboardLeadsUseCase,
-  ListDashboardActivityUseCase
-} from './application/use-cases/DashboardUseCases.js';
-
-import { RAGController } from './presentation/controllers/RAGController.js';
-import { ProposalController } from './presentation/controllers/ProposalController.js';
-import { LeadIntakeController } from './presentation/controllers/LeadIntakeController.js';
-import { MeetingController } from './presentation/controllers/MeetingController.js';
-import { AuthController } from './presentation/controllers/AuthController.js';
-import { UserController } from './presentation/controllers/UserController.js';
+  CreateLeadUseCase,
+  ListLeadsUseCase,
+  GetLeadUseCase,
+  UpdateLeadUseCase,
+  UpdateLeadStatusUseCase,
+  DeleteLeadUseCase,
+  QualifyLeadUseCase,
+  GetLatestQualificationUseCase
+} from './application/use-cases/LeadUseCases.js';
+import { PostgresDashboardRepository } from './infrastructure/database/repositories/PostgresDashboardRepository.js';
+import { GetDashboardOverviewUseCase, ListDashboardActivityUseCase, ListDashboardLeadsUseCase } from './application/use-cases/DashboardUseCases.js';
 import { DashboardController } from './presentation/controllers/DashboardController.js';
+import { KnowledgeController } from './presentation/controllers/KnowledgeController.js';
+import { ListKnowledgeDocumentsUseCase, GetKnowledgeDocumentUseCase, DeleteKnowledgeDocumentUseCase } from './application/use-cases/KnowledgeVaultUseCases.js';
+import { AskKnowledgeUseCase } from './application/use-cases/AskKnowledgeUseCase.js';
+import { PostgresMeetingRepository } from './infrastructure/database/repositories/PostgresMeetingRepository.js';
+import { MeetingController } from './presentation/controllers/MeetingController.js';
+import {
+  AnalyzeMeetingUseCase, CreateMeetingUseCase, GetMeetingUseCase,
+  ListLeadMeetingsUseCase, SaveMeetingTranscriptUseCase, UpdateMeetingStatusUseCase
+} from './application/use-cases/MeetingUseCases.js';
+import { SubmitProposalForReviewUseCase } from './application/use-cases/SubmitProposalForReviewUseCase.js';
+import { PostgresPortalRepository } from './infrastructure/database/repositories/PostgresPortalRepository.js';
+import { PortalController } from './presentation/controllers/PortalController.js';
+import {
+  AskPortalProposalUseCase, CreatePortalCommentUseCase, CreatePortalSessionUseCase,
+  CreatePortalMaterialUseCase, DeletePortalMaterialUseCase,
+  ExportPortalProposalPdfUseCase, GetPortalProposalUseCase, ListPortalCommentsUseCase,
+  ListPortalMaterialsUseCase, RevokePortalSessionUseCase,
+  ListProposalPortalSessionsUseCase, ListProposalPortalMaterialsUseCase
+} from './application/use-cases/PortalUseCases.js';
+import { PostgresClientRepository } from './infrastructure/database/repositories/PostgresClientRepository.js';
+import { PostgresRateCardRepository } from './infrastructure/database/repositories/PostgresRateCardRepository.js';
+import { PostgresUserRepository } from './infrastructure/database/repositories/PostgresUserRepository.js';
+import { PostgresAuditRepository } from './infrastructure/database/repositories/PostgresAuditRepository.js';
+import { ReferenceValidator } from './application/services/ReferenceValidator.js';
+import {
+  CreateClientUseCase, DeleteClientUseCase, GetClientUseCase,
+  ListClientsUseCase, ListClientLeadsUseCase, UpdateClientUseCase
+} from './application/use-cases/ClientUseCases.js';
+import { ClientController } from './presentation/controllers/ClientController.js';
+import {
+  CalculateQuotationPricingUseCase, CreateRateCardUseCase, DeleteRateCardUseCase,
+  GetRateCardUseCase, ListRateCardsUseCase, UpdateRateCardUseCase
+} from './application/use-cases/RateCardUseCases.js';
+import { RateCardController } from './presentation/controllers/RateCardController.js';
+import {
+  AddMemberUseCase, GetMemberUseCase, ListMembersUseCase, ListOrganizationsUseCase,
+  RegisterUseCase, UpdateMemberUseCase, UpdateOwnProfileUseCase
+} from './application/use-cases/UserUseCases.js';
+import { UserController } from './presentation/controllers/UserController.js';
+import { ListAuditLogsUseCase } from './application/use-cases/AuditUseCases.js';
+import { AuditController } from './presentation/controllers/AuditController.js';
 
 export interface ServiceContainer {
   knowledgeRepository: PostgresKnowledgeRepository;
   proposalRepository: PostgresProposalRepository;
-  meetingRepository: PostgresMeetingRepository;
   authRepository: PostgresAuthRepository;
-  userRepository: PostgresUserRepository;
-  auditRepository: PostgresAuditRepository;
+  leadRepository: PostgresLeadRepository;
   dashboardRepository: PostgresDashboardRepository;
-
   embeddingGateway: GeminiEmbeddingGateway;
   llmGateway: FastAPILMGateway;
   excelExporterService: ExcelProposalExporterService;
+  pdfExporterService: PdfProposalExporterService;
 
   // RAG Use Cases
   searchHybridRAGUseCase: SearchHybridRAGUseCase;
@@ -89,68 +121,54 @@ export interface ServiceContainer {
   updateProposalSheetUseCase: UpdateProposalSheetUseCase;
   deleteProposalUseCase: DeleteProposalUseCase;
   exportProposalToExcelUseCase: ExportProposalToExcelUseCase;
-  generateProposalFromLeadUseCase: GenerateProposalFromLeadUseCase;
-
-  // Lead Intake Use Cases
-  analyzeLeadIntakeUseCase: AnalyzeLeadIntakeUseCase;
-
-  // Meeting Use Cases
-  createMeetingUseCase: CreateMeetingUseCase;
-  inspectMeetingUseCase: InspectMeetingUseCase;
-  updateMeetingLifecycleUseCase: UpdateMeetingLifecycleUseCase;
-  listMeetingsByLeadUseCase: ListMeetingsByLeadUseCase;
-  getMeetingByIdUseCase: GetMeetingByIdUseCase;
+  exportProposalToPdfUseCase: ExportProposalToPdfUseCase;
+  generateProposalSheetsUseCase: GenerateProposalSheetsUseCase;
 
   // Presentation Controllers
   ragController: RAGController;
   proposalController: ProposalController;
   leadIntakeController: LeadIntakeController;
-  meetingController: MeetingController;
   authController: AuthController;
-  userController: UserController;
   dashboardController: DashboardController;
+  knowledgeController: KnowledgeController;
+  meetingRepository: PostgresMeetingRepository;
+  meetingController: MeetingController;
+  portalRepository: PostgresPortalRepository;
+  portalController: PortalController;
+  clientRepository: PostgresClientRepository;
+  rateCardRepository: PostgresRateCardRepository;
+  userRepository: PostgresUserRepository;
+  auditRepository: PostgresAuditRepository;
+  clientController: ClientController;
+  rateCardController: RateCardController;
+  userController: UserController;
+  auditController: AuditController;
 }
 
 export function createContainer(): ServiceContainer {
   // 1. Infrastructure layer
   const knowledgeRepository = new PostgresKnowledgeRepository(dbPool);
   const proposalRepository = new PostgresProposalRepository(dbPool);
-  const meetingRepository = new PostgresMeetingRepository(dbPool);
   const authRepository = new PostgresAuthRepository(dbPool);
+  const leadRepository = new PostgresLeadRepository(dbPool);
+  const dashboardRepository = new PostgresDashboardRepository(dbPool);
+  const meetingRepository = new PostgresMeetingRepository(dbPool);
+  const portalRepository = new PostgresPortalRepository(dbPool);
+  const clientRepository = new PostgresClientRepository(dbPool);
+  const rateCardRepository = new PostgresRateCardRepository(dbPool);
   const userRepository = new PostgresUserRepository(dbPool);
   const auditRepository = new PostgresAuditRepository(dbPool);
-  const dashboardRepository = new PostgresDashboardRepository(dbPool);
-
+  const referenceValidator = new ReferenceValidator(clientRepository, userRepository);
   const embeddingGateway = new GeminiEmbeddingGateway();
   const llmGateway = new FastAPILMGateway();
   const excelExporterService = new ExcelProposalExporterService();
+  const pdfExporterService = new PdfProposalExporterService();
 
   // 2. Application layer (Use Cases)
   const searchHybridRAGUseCase = new SearchHybridRAGUseCase(knowledgeRepository, embeddingGateway);
   const ingestDocumentUseCase = new IngestDocumentUseCase(knowledgeRepository, embeddingGateway);
   const generateProposalUseCase = new GenerateProposalUseCase(searchHybridRAGUseCase, llmGateway);
   const analyzeLeadIntakeUseCase = new AnalyzeLeadIntakeUseCase(llmGateway);
-
-  const createProposalUseCase = new CreateProposalUseCase(proposalRepository);
-  const getProposalByIdUseCase = new GetProposalByIdUseCase(proposalRepository);
-  const listProposalsUseCase = new ListProposalsUseCase(proposalRepository);
-  const updateProposalUseCase = new UpdateProposalUseCase(proposalRepository);
-  const updateProposalSheetUseCase = new UpdateProposalSheetUseCase(proposalRepository);
-  const deleteProposalUseCase = new DeleteProposalUseCase(proposalRepository);
-  const exportProposalToExcelUseCase = new ExportProposalToExcelUseCase(proposalRepository, excelExporterService);
-  const generateProposalFromLeadUseCase = new GenerateProposalFromLeadUseCase(
-    proposalRepository,
-    searchHybridRAGUseCase,
-    llmGateway,
-    dbPool
-  );
-
-  const createMeetingUseCase = new CreateMeetingUseCase(meetingRepository);
-  const inspectMeetingUseCase = new InspectMeetingUseCase(meetingRepository, llmGateway, dbPool);
-  const updateMeetingLifecycleUseCase = new UpdateMeetingLifecycleUseCase(meetingRepository);
-  const listMeetingsByLeadUseCase = new ListMeetingsByLeadUseCase(meetingRepository);
-  const getMeetingByIdUseCase = new GetMeetingByIdUseCase(meetingRepository);
-
   const loginUseCase = new LoginUseCase(authRepository);
   const refreshSessionUseCase = new RefreshSessionUseCase(authRepository);
   const logoutUseCase = new LogoutUseCase(authRepository);
@@ -159,9 +177,19 @@ export function createContainer(): ServiceContainer {
   const resetPasswordUseCase = new ResetPasswordUseCase(authRepository);
   const registerUseCase = new RegisterUseCase(userRepository, authRepository, auditRepository);
 
-  const getDashboardOverviewUseCase = new GetDashboardOverviewUseCase(dashboardRepository);
-  const listDashboardLeadsUseCase = new ListDashboardLeadsUseCase(dashboardRepository);
-  const listDashboardActivityUseCase = new ListDashboardActivityUseCase(dashboardRepository);
+  const createProposalUseCase = new CreateProposalUseCase(proposalRepository);
+  const createProposalFromLeadUseCase = new CreateProposalFromLeadUseCase(leadRepository, createProposalUseCase);
+  const getProposalByIdUseCase = new GetProposalByIdUseCase(proposalRepository);
+  const listProposalsUseCase = new ListProposalsUseCase(proposalRepository);
+  const updateProposalUseCase = new UpdateProposalUseCase(proposalRepository);
+  const updateProposalSheetUseCase = new UpdateProposalSheetUseCase(proposalRepository);
+  const deleteProposalUseCase = new DeleteProposalUseCase(proposalRepository);
+  const exportProposalToExcelUseCase = new ExportProposalToExcelUseCase(proposalRepository, excelExporterService);
+  const exportProposalToPdfUseCase = new ExportProposalToPdfUseCase(proposalRepository, pdfExporterService);
+  const submitProposalForReviewUseCase = new SubmitProposalForReviewUseCase(proposalRepository);
+  const generateProposalSheetsUseCase = new GenerateProposalSheetsUseCase(
+    proposalRepository, leadRepository, meetingRepository, searchHybridRAGUseCase, llmGateway
+  );
 
   // 3. Presentation layer (Controllers)
   const ragController = new RAGController(
@@ -172,27 +200,28 @@ export function createContainer(): ServiceContainer {
 
   const proposalController = new ProposalController(
     createProposalUseCase,
+    createProposalFromLeadUseCase,
     getProposalByIdUseCase,
     listProposalsUseCase,
     updateProposalUseCase,
     updateProposalSheetUseCase,
     deleteProposalUseCase,
     exportProposalToExcelUseCase,
-    generateProposalFromLeadUseCase,
-    proposalRepository
+    generateProposalSheetsUseCase,
+    exportProposalToPdfUseCase,
+    submitProposalForReviewUseCase
   );
-
-  const leadIntakeController = new LeadIntakeController(analyzeLeadIntakeUseCase, dbPool, llmGateway);
-
-  const meetingController = new MeetingController(
-    createMeetingUseCase,
-    inspectMeetingUseCase,
-    updateMeetingLifecycleUseCase,
-    listMeetingsByLeadUseCase,
-    getMeetingByIdUseCase,
-    meetingRepository
+  const leadIntakeController = new LeadIntakeController(
+    analyzeLeadIntakeUseCase,
+    new CreateLeadUseCase(leadRepository, referenceValidator, auditRepository),
+    new ListLeadsUseCase(leadRepository),
+    new GetLeadUseCase(leadRepository),
+    new UpdateLeadUseCase(leadRepository, referenceValidator, auditRepository),
+    new UpdateLeadStatusUseCase(leadRepository, auditRepository),
+    new DeleteLeadUseCase(leadRepository, auditRepository),
+    new QualifyLeadUseCase(leadRepository, llmGateway, auditRepository),
+    new GetLatestQualificationUseCase(leadRepository)
   );
-
   const authController = new AuthController(
     loginUseCase,
     refreshSessionUseCase,
@@ -202,7 +231,58 @@ export function createContainer(): ServiceContainer {
     resetPasswordUseCase,
     registerUseCase
   );
+  const dashboardController = new DashboardController(
+    new GetDashboardOverviewUseCase(dashboardRepository),
+    new ListDashboardLeadsUseCase(dashboardRepository),
+    new ListDashboardActivityUseCase(dashboardRepository)
+  );
+  const knowledgeController = new KnowledgeController(
+    ingestDocumentUseCase,
+    new ListKnowledgeDocumentsUseCase(knowledgeRepository),
+    new GetKnowledgeDocumentUseCase(knowledgeRepository),
+    new DeleteKnowledgeDocumentUseCase(knowledgeRepository),
+    new AskKnowledgeUseCase(searchHybridRAGUseCase, llmGateway)
+  );
+  const meetingController = new MeetingController(
+    new ListLeadMeetingsUseCase(meetingRepository, leadRepository),
+    new CreateMeetingUseCase(meetingRepository, leadRepository),
+    new GetMeetingUseCase(meetingRepository),
+    new SaveMeetingTranscriptUseCase(meetingRepository),
+    new AnalyzeMeetingUseCase(meetingRepository, leadRepository, llmGateway),
+    new UpdateMeetingStatusUseCase(meetingRepository)
+  );
+  const getPortalProposalUseCase = new GetPortalProposalUseCase(proposalRepository);
+  const portalController = new PortalController(
+    new CreatePortalSessionUseCase(portalRepository, proposalRepository),
+    getPortalProposalUseCase,
+    new AskPortalProposalUseCase(proposalRepository, llmGateway),
+    new ListPortalCommentsUseCase(portalRepository),
+    new CreatePortalCommentUseCase(portalRepository),
+    new ListPortalMaterialsUseCase(portalRepository),
+    new ExportPortalProposalPdfUseCase(exportProposalToPdfUseCase, getPortalProposalUseCase),
+    new RevokePortalSessionUseCase(portalRepository),
+    new CreatePortalMaterialUseCase(portalRepository),
+    new DeletePortalMaterialUseCase(portalRepository),
+    new ListProposalPortalSessionsUseCase(portalRepository, proposalRepository),
+    new ListProposalPortalMaterialsUseCase(portalRepository, proposalRepository)
+  );
 
+  const clientController = new ClientController(
+    new CreateClientUseCase(clientRepository, auditRepository),
+    new ListClientsUseCase(clientRepository),
+    new GetClientUseCase(clientRepository),
+    new UpdateClientUseCase(clientRepository, auditRepository),
+    new DeleteClientUseCase(clientRepository, auditRepository),
+    new ListClientLeadsUseCase(clientRepository, leadRepository)
+  );
+  const rateCardController = new RateCardController(
+    new CreateRateCardUseCase(rateCardRepository, auditRepository),
+    new ListRateCardsUseCase(rateCardRepository),
+    new GetRateCardUseCase(rateCardRepository),
+    new UpdateRateCardUseCase(rateCardRepository, auditRepository),
+    new DeleteRateCardUseCase(rateCardRepository, auditRepository),
+    new CalculateQuotationPricingUseCase(rateCardRepository, auditRepository, proposalRepository)
+  );
   const userController = new UserController(
     new ListOrganizationsUseCase(userRepository),
     new ListMembersUseCase(userRepository),
@@ -211,6 +291,7 @@ export function createContainer(): ServiceContainer {
     new UpdateMemberUseCase(userRepository, auditRepository),
     new UpdateOwnProfileUseCase(authRepository, userRepository, auditRepository)
   );
+  const auditController = new AuditController(new ListAuditLogsUseCase(auditRepository));
 
   const dashboardController = new DashboardController(
     getDashboardOverviewUseCase,
@@ -221,14 +302,14 @@ export function createContainer(): ServiceContainer {
   return {
     knowledgeRepository,
     proposalRepository,
-    meetingRepository,
     authRepository,
-    userRepository,
-    auditRepository,
+    leadRepository,
     dashboardRepository,
     embeddingGateway,
     llmGateway,
     excelExporterService,
+    pdfExporterService,
+
     searchHybridRAGUseCase,
     ingestDocumentUseCase,
     generateProposalUseCase,
@@ -239,20 +320,27 @@ export function createContainer(): ServiceContainer {
     updateProposalSheetUseCase,
     deleteProposalUseCase,
     exportProposalToExcelUseCase,
-    generateProposalFromLeadUseCase,
-    analyzeLeadIntakeUseCase,
-    createMeetingUseCase,
-    inspectMeetingUseCase,
-    updateMeetingLifecycleUseCase,
-    listMeetingsByLeadUseCase,
-    getMeetingByIdUseCase,
+    exportProposalToPdfUseCase,
+    generateProposalSheetsUseCase,
+
     ragController,
     proposalController,
     leadIntakeController,
-    meetingController,
     authController,
+    dashboardController,
+    knowledgeController,
+    meetingRepository,
+    meetingController,
+    portalRepository,
+    portalController,
+    clientRepository,
+    rateCardRepository,
+    userRepository,
+    auditRepository,
+    clientController,
+    rateCardController,
     userController,
-    dashboardController
+    auditController
   };
 }
 

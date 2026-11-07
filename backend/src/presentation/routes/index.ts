@@ -36,6 +36,7 @@ export function createApiRouter(
     router.use('/dashboard', createDashboardRouter(dashboardController));
   }
   router.use('/rag', createRAGRouter(ragController));
+  router.use('/knowledge', createKnowledgeRouter(knowledgeController));
   router.use('/proposals', createProposalRouter(proposalController));
   router.use('/leads', createLeadIntakeRouter(leadIntakeController));
   if (meetingController) {

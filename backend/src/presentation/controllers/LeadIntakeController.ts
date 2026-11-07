@@ -237,70 +237,62 @@ Yêu cầu trả về định dạng JSON thuần túy (không markdown) với c
     }
   };
 
-  updateLead = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  create = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      if (!this.dbPool) {
-        res.status(404).json({ success: false, error: 'Database not connected.' });
-        return;
-      }
-      const leadId = req.params.id;
-      const { title, source, status, rawRfpContent, extractedMetadata } = req.body;
-
-      const existingRes = await this.dbPool.query('SELECT * FROM leads WHERE id = $1 LIMIT 1;', [leadId]);
-      if (existingRes.rows.length === 0) {
-        res.status(404).json({ success: false, error: 'Lead not found.' });
-        return;
-      }
-
-      const current = existingRes.rows[0];
-      const newTitle = title !== undefined ? title : current.title;
-      const newSource = source !== undefined ? source : current.source;
-      const newStatus = status !== undefined ? status : current.status;
-      const newRaw = rawRfpContent !== undefined ? rawRfpContent : current.raw_rfp_content;
-      const newMeta = extractedMetadata !== undefined 
-        ? (typeof extractedMetadata === 'string' ? extractedMetadata : JSON.stringify(extractedMetadata))
-        : JSON.stringify(current.extracted_metadata || {});
-
-      const updateRes = await this.dbPool.query(
-        `UPDATE leads
-         SET title = $1, source = $2, status = $3, raw_rfp_content = $4, extracted_metadata = $5::jsonb, updated_at = NOW()
-         WHERE id = $6
-         RETURNING *;`,
-        [newTitle, newSource, newStatus, newRaw, newMeta, leadId]
-      );
-
-      res.status(200).json({
-        success: true,
-        data: updateRes.rows[0]
-      });
-    } catch (error) {
-      console.error('[LeadIntakeController.updateLead] Error:', error);
-      next(error);
-    }
+      const lead = await this.createUseCase.execute(this.scoped(req, req.body || {}));
+      res.status(201).location(`/api/v1/leads/${lead.id}`).json({ success: true, data: lead });
+    } catch (error) { next(error); }
   };
 
-  deleteLead = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  list = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      if (!this.dbPool) {
-        res.status(404).json({ success: false, error: 'Database not connected.' });
-        return;
-      }
-      const leadId = req.params.id;
-      await this.dbPool.query('DELETE FROM meetings WHERE lead_id = $1;', [leadId]);
-      await this.dbPool.query('DELETE FROM proposals WHERE lead_id = $1;', [leadId]);
-      const deleteRes = await this.dbPool.query('DELETE FROM leads WHERE id = $1 RETURNING id;', [leadId]);
-      if (deleteRes.rows.length === 0) {
-        res.status(404).json({ success: false, error: 'Lead not found.' });
-        return;
-      }
-      res.status(200).json({
-        success: true,
-        message: 'Lead deleted successfully.',
-        data: { id: leadId }
-      });
-    } catch (error) {
-      console.error('[LeadIntakeController.deleteLead] Error:', error);
-      next(error);
-    }
+      const result = await this.listUseCase.execute(this.scoped(req, req.query as Record<string, unknown>));
+      res.status(200).json({ success: true, data: result.leads, meta: {
+        total: result.total, page: result.page, limit: result.limit, totalPages: result.totalPages
+      } });
+    } catch (error) { next(error); }
+  };
+
+  getById = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const lead = await this.getUseCase.execute(paramId(req.params.id), this.scope(req).organizationId);
+      res.status(200).json({ success: true, data: lead });
+    } catch (error) { next(error); }
+  };
+
+  update = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const lead = await this.updateUseCase.execute({ ...this.scoped(req, req.body || {}), id: paramId(req.params.id) });
+      res.status(200).json({ success: true, data: lead });
+    } catch (error) { next(error); }
+  };
+
+  updateStatus = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const body = req.body && typeof req.body === 'object' ? req.body as Record<string, unknown> : {};
+      const lead = await this.updateStatusUseCase.execute(paramId(req.params.id), this.scope(req), body.status);
+      res.status(200).json({ success: true, data: lead });
+    } catch (error) { next(error); }
+  };
+
+  delete = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      await this.deleteUseCase.execute(paramId(req.params.id), this.scope(req));
+      res.status(204).end();
+    } catch (error) { next(error); }
+  };
+
+  qualify = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const qualification = await this.qualifyUseCase.execute(paramId(req.params.id), this.scope(req));
+      res.status(200).json({ success: true, data: qualification });
+    } catch (error) { next(error); }
+  };
+
+  getLatestQualification = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const qualification = await this.getLatestQualificationUseCase.execute(paramId(req.params.id), this.scope(req).organizationId);
+      res.status(200).json({ success: true, data: qualification });
+    } catch (error) { next(error); }
   };
 }

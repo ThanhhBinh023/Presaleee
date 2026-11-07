@@ -17,11 +17,14 @@ export class ApiError extends Error {
 interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
+  /** Override the default 10s timeout. AI intake and BANT scoring routinely exceed it. */
+  timeoutMs?: number;
 }
 
 async function send<T>(path: string, options: RequestOptions): Promise<ApiEnvelope<T>> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   let response: Response;
   try {
@@ -35,7 +38,7 @@ async function send<T>(path: string, options: RequestOptions): Promise<ApiEnvelo
   } catch {
     clearTimeout(timer);
     if (controller.signal.aborted) {
-      throw new ApiError(0, `Request timed out after ${REQUEST_TIMEOUT_MS / 1000}s. Is the backend running?`);
+      throw new ApiError(0, `Request timed out after ${timeoutMs / 1000}s. Is the backend running?`);
     }
     throw new ApiError(0, `Cannot reach the API at ${API_BASE_URL}. Start it with "npm run dev:backend".`);
   }
@@ -70,6 +73,64 @@ export async function apiRequestWithMeta<T>(
 ): Promise<{ data: T; meta: ListMeta | null }> {
   const payload = await send<T>(path, options);
   return { data: payload.data as T, meta: payload.meta ?? null };
+}
+
+function filenameFromDisposition(header: string | null, fallback: string): string {
+  if (!header) return fallback;
+  const utf = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (utf?.[1]) {
+    try {
+      return decodeURIComponent(utf[1]);
+    } catch {
+      return utf[1];
+    }
+  }
+  const ascii = /filename="?([^";]+)"?/i.exec(header);
+  return ascii?.[1] ?? fallback;
+}
+
+/** Binary downloads (Excel / PDF) are not JSON envelopes. */
+export async function apiDownload(path: string, fallbackName: string, timeoutMs = 30_000): Promise<void> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      method: 'GET',
+      credentials: 'include',
+      signal: controller.signal
+    });
+  } catch {
+    clearTimeout(timer);
+    if (controller.signal.aborted) {
+      throw new ApiError(0, `Download timed out after ${timeoutMs / 1000}s.`);
+    }
+    throw new ApiError(0, `Cannot reach the API at ${API_BASE_URL}.`);
+  }
+  clearTimeout(timer);
+
+  if (!response.ok) {
+    const text = await response.text();
+    let message = `Download failed with status ${response.status}`;
+    try {
+      const payload = JSON.parse(text) as { error?: string };
+      if (payload.error) message = payload.error;
+    } catch {
+      if (text.trim()) message = text.slice(0, 200);
+    }
+    throw new ApiError(response.status, message);
+  }
+
+  const blob = await response.blob();
+  const filename = filenameFromDisposition(response.headers.get('Content-Disposition'), fallbackName);
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 export { API_BASE_URL };

@@ -1,0 +1,287 @@
+{
+  "runId": "20261021095243",
+  "suite": "G11 Knowledge Vault + G12 Hybrid RAG",
+  "baseUrl": "http://127.0.0.1:5099",
+  "startedAt": "2026-10-21T09:52:43.980Z",
+  "finishedAt": "2026-10-21T09:53:16.143Z",
+  "durationMs": 32163,
+  "totals": {
+    "cases": 28,
+    "PASS": 28
+  },
+  "trackedTestData": {
+    "userIds": [
+      "f4703ab0-1ea2-4cfe-a285-458f954bca07",
+      "561bd0a6-dad3-4383-a40f-0881379ebaa2",
+      "db4d7d92-10fb-41f9-b6a5-6869ebcd018b",
+      "a4292e5f-6c93-46f5-99cf-cab177b1f36b"
+    ],
+    "organizationIds": [
+      "f7652868-5de4-43c2-abe2-d706da1499ff",
+      "80e1cbe2-3fb3-4333-b956-db070f08354f"
+    ]
+  },
+  "observations": [],
+  "results": [
+    {
+      "id": "G11/G12-00",
+      "title": "Bootstrap: two tenants, vault roles, fixture documents indexed with real embeddings",
+      "status": "PASS",
+      "durationMs": 8058,
+      "notes": [
+        "org A f7652868-5de4-43c2-abe2-d706da1499ff, org B 80e1cbe2-3fb3-4333-b956-db070f08354f",
+        "fixtures: fts 71817651-b7e9-49c0-aa55-da734c4737ca (1 chunk), semantic 43141a02-8dea-44cf-9a5b-ba9bcc84be89, large 2df7dd3e-49a2-45c1-9086-f09a745ece04 (5 chunks), foreign cc1eda78-63d3-40d0-881f-5d8efb1c1bd2"
+      ]
+    },
+    {
+      "id": "G11-01",
+      "title": "POST /knowledge/documents contract: 201, docId plus chunk count, row and metadata written",
+      "status": "PASS",
+      "durationMs": 2163,
+      "notes": [
+        "stored 2 windows, all vector(768), tsvector populated, chunk metadata.title = \"E2E G11 Trimmed Title 20261021095243\"",
+        "the ingest DTO carries the full \"content\" string but knowledge_docs has no content column: only the chunked text is stored"
+      ]
+    },
+    {
+      "id": "G11-02",
+      "title": "Ingest guards: title and content must be non-empty text, malformed bodies rejected with 400",
+      "status": "PASS",
+      "durationMs": 102,
+      "notes": [
+        "these payloads used to raise unhandled 500s: the DTO fields are now unknown-typed and validated in IngestDocumentUseCase",
+        "a JSON scalar body is rejected by the parser (express strict mode) and surfaced as a 500 until errorHandler.ts mapped entity.parse.failed to 400",
+        "guard attempts left 0 document rows"
+      ]
+    },
+    {
+      "id": "G11-03",
+      "title": "Ingest length limits: title 255, category/domain 100, content 1,000,000 characters",
+      "status": "PASS",
+      "durationMs": 1580,
+      "notes": [
+        "an oversize body is rejected before any row is created, so no orphan document or chunk is written"
+      ]
+    },
+    {
+      "id": "G11-04",
+      "title": "Ingest label defaults: category and domain default to GENERAL when omitted or null, reject empty strings",
+      "status": "PASS",
+      "durationMs": 1491,
+      "notes": [
+        "omitted or null category/domain become GENERAL, but an empty-string or non-string label is a 400 — the fallback is only triggered by undefined/null"
+      ]
+    },
+    {
+      "id": "G11-05",
+      "title": "GET /knowledge/documents list envelope: pagination meta, ordering, serialized columns",
+      "status": "PASS",
+      "durationMs": 146,
+      "notes": [
+        "total 8, totalPages 1, first page 8 rows, newest \"E2E G11 Nulls 20261021095243\""
+      ]
+    },
+    {
+      "id": "G11-06",
+      "title": "List filters: category, domain, title search and combinations",
+      "status": "PASS",
+      "durationMs": 1228,
+      "notes": [
+        "filters: category 2, domain 1, search 1, combo 1, unknown 0"
+      ]
+    },
+    {
+      "id": "G11-07",
+      "title": "List pagination: page and limit boundaries, invalid values rejected",
+      "status": "PASS",
+      "durationMs": 584,
+      "notes": [
+        "an empty page value falls back to the default, every other non-integer value is a 400"
+      ]
+    },
+    {
+      "id": "G11-08",
+      "title": "Vault isolation: organization B cannot list, read or search organization A documents",
+      "status": "PASS",
+      "durationMs": 964,
+      "notes": [
+        "cross-tenant access answers 404 rather than 403, so the vault does not confirm that an id exists in another tenant"
+      ]
+    },
+    {
+      "id": "G11-09",
+      "title": "GET /knowledge/documents/:id contract: full row shape, no content or embedding leakage",
+      "status": "PASS",
+      "durationMs": 200,
+      "notes": [
+        "row shape: id,organizationId,uploadedBy,title,category,domain,fileUrl,fileType,totalTokens,totalChunks,createdAt,updatedAt",
+        "knowledge_docs content columns: 0 (the raw text only survives inside document_chunks)"
+      ]
+    },
+    {
+      "id": "G11-10",
+      "title": "GET /knowledge/documents/:id guards: unknown id 404, malformed UUID 400, anonymous 401",
+      "status": "PASS",
+      "durationMs": 84,
+      "notes": [
+        "a malformed id is now a 400 from the shared UUID validator; it used to reach PostgreSQL and raise a 500"
+      ]
+    },
+    {
+      "id": "G11-11",
+      "title": "DELETE /knowledge/documents/:id: 204, chunks and embeddings cascade away with the document",
+      "status": "PASS",
+      "durationMs": 2160,
+      "notes": [
+        "after delete: knowledge_docs=0 document_chunks=0 (FK ON DELETE CASCADE verified)"
+      ]
+    },
+    {
+      "id": "G11-12",
+      "title": "DELETE guards: replay 404, foreign 404 leaves the row, malformed UUID 400, anonymous 401",
+      "status": "PASS",
+      "durationMs": 310,
+      "notes": []
+    },
+    {
+      "id": "G11-13",
+      "title": "Role coverage: a VIEWER can ingest and delete knowledge because the vault routes have no role guard",
+      "status": "PASS",
+      "durationMs": 896,
+      "notes": [
+        "knowledgeRoutes.ts applies requireAuth + requireOrganization only: POST /documents and DELETE /documents/:id are writable by VIEWER, unlike the proposal and portal write routes which are role-checked",
+        "the same gap covers POST /rag/ingest, POST /rag/search and POST /knowledge/ask"
+      ]
+    },
+    {
+      "id": "G11-14",
+      "title": "POST /knowledge/ask guards: question, domain and topK validated before any provider call",
+      "status": "PASS",
+      "durationMs": 34,
+      "notes": [
+        "guards run before the embedding and LLM calls, so they answer 400 even while the AI service is offline"
+      ]
+    },
+    {
+      "id": "G11-15",
+      "title": "POST /knowledge/ask live path: grounded citations, or a sanitized 502 while the AI service is offline",
+      "status": "PASS",
+      "durationMs": 473,
+      "notes": [
+        "answer path skipped with the 502: the FastAPI LLM service on http://localhost:8000 is offline, retrieval guards are covered by G11-14"
+      ]
+    },
+    {
+      "id": "G12-01",
+      "title": "POST /rag/search hybrid ranking: the rare-token document wins, chunk shape is safe",
+      "status": "PASS",
+      "durationMs": 451,
+      "notes": [
+        "hits 5, top \"E2E G11 Rare Token Doc 20261021095243\" score 0.0327868852459016 semanticRank 1 ftsRank 1",
+        "every chunk reports chunkIndex 0: hybrid_search_chunks does not select chunk_index, so consumers cannot show which part of a document matched"
+      ]
+    },
+    {
+      "id": "G12-02",
+      "title": "Search topK: default 3, boundary 1 and 20 honored, invalid values rejected",
+      "status": "PASS",
+      "durationMs": 1427,
+      "notes": [
+        "widths: default 3, topK=1 1, topK=20 13"
+      ]
+    },
+    {
+      "id": "G12-03",
+      "title": "Search guards: query type, blank, oversize and domain validation",
+      "status": "PASS",
+      "durationMs": 1120,
+      "notes": [
+        "a numeric query used to reach the embedding gateway and raise a 500; it is now a 400"
+      ]
+    },
+    {
+      "id": "G12-04",
+      "title": "Search domain filter and semantic-only recall across the fixture corpus",
+      "status": "PASS",
+      "durationMs": 1338,
+      "notes": [
+        "HEALTH 1 hits, PAYMENTS 1 hits, unknown domain 0 hits"
+      ]
+    },
+    {
+      "id": "G12-05",
+      "title": "Search isolation: organization B cannot retrieve organization A vectors and vice versa",
+      "status": "PASS",
+      "durationMs": 1907,
+      "notes": [
+        "org B rare-token search returned 1 rows (none from org A), own-token search returned 1"
+      ]
+    },
+    {
+      "id": "G12-06",
+      "title": "POST /rag/ingest parity with the vault endpoint: same validation, same rows, plus a message",
+      "status": "PASS",
+      "durationMs": 1424,
+      "notes": [
+        "this endpoint used to raise unhandled 500s for a numeric title, numeric content and numeric domain — the shared IngestDocumentUseCase now rejects all three with 400"
+      ]
+    },
+    {
+      "id": "G12-07",
+      "title": "Duplicate content: the same text ingested twice yields two documents and no deduplication",
+      "status": "PASS",
+      "durationMs": 1232,
+      "notes": [
+        "there is no content hash or uniqueness constraint: identical text is embedded, stored and re-ranked twice"
+      ]
+    },
+    {
+      "id": "G12-08",
+      "title": "Large document: 1500-word sliding windows are all searchable and capped by topK",
+      "status": "PASS",
+      "durationMs": 920,
+      "notes": [
+        "window openings: \"driven billing and…\", \"driven billing and…\", \"the platform route…\", \"segment7 platform …\", \"segment14 platform…\"",
+        "5/5 returned windows belong to the 1500-word document",
+        "window lengths 705-2823 chars, null vectors 0"
+      ]
+    },
+    {
+      "id": "G12-09",
+      "title": "Ingest rollback invariant: no knowledge_docs row survives without its chunks in either tenant",
+      "status": "PASS",
+      "durationMs": 216,
+      "notes": [
+        "17 chunks across both tenants, all vector(768) and all tsvector-populated, zero chunk-less documents",
+        "the embedding-failure rollback itself could not be forced: the provider is Gemini, so a synthetic 502 cannot be injected against it"
+      ]
+    },
+    {
+      "id": "G12-10",
+      "title": "POST /rag/generate-proposal guards: rfpText and maxTokens validated before any provider call",
+      "status": "PASS",
+      "durationMs": 23,
+      "notes": [
+        "maxTokens arrives through Number(), so \"lots\" becomes NaN and is rejected as a non-integer rather than reaching the LLM"
+      ]
+    },
+    {
+      "id": "G12-11",
+      "title": "POST /rag/generate-proposal live path: overview plus sources, or a sanitized 502 while the AI service is offline",
+      "status": "PASS",
+      "durationMs": 439,
+      "notes": [
+        "generation skipped with the 502 after 436 ms: retrieval ran first (topK is fixed at 3 inside the use case) and only the LLM call failed"
+      ]
+    },
+    {
+      "id": "G11/G12-99",
+      "title": "Teardown: every document removed through the API, zero rows left for both tenants",
+      "status": "PASS",
+      "durationMs": 1188,
+      "notes": [
+        "11 documents deleted, PostgreSQL confirms 0 knowledge_docs and 0 document_chunks for both tenants"
+      ]
+    }
+  ]
+}

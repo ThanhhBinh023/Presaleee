@@ -1,0 +1,208 @@
+{
+  "runId": "20261021093750",
+  "suite": "G13 Dashboard + G14 Audit Logs",
+  "baseUrl": "http://127.0.0.1:5099",
+  "startedAt": "2026-10-21T09:37:50.799Z",
+  "finishedAt": "2026-10-21T09:38:04.611Z",
+  "durationMs": 13812,
+  "totals": {
+    "cases": 24,
+    "FAIL": 19,
+    "PASS": 5
+  },
+  "trackedTestData": {
+    "userIds": [
+      "9b8030c0-594e-43a4-b133-d6249f5cd4da",
+      "76c8d4e6-7a9c-41c1-8320-07f4cf0deab8",
+      "b8ad6f6d-4234-41be-8c8b-675a24c46d24",
+      "2805d7c5-1da4-4c4a-af68-18c3db0c29dc",
+      "d350c4fe-6a71-4f82-b5b7-b36174cbd149"
+    ],
+    "organizationIds": [
+      "423cf104-5f88-465b-858e-1fc1d2bd1524",
+      "40305b53-d58d-4e2c-996b-3dd6fc796de7",
+      "92871ca6-fd36-4567-bf70-3349a029bca4"
+    ]
+  },
+  "observations": [],
+  "results": [
+    {
+      "id": "G13/G14-00",
+      "title": "Bootstrap: three tenants, roles, an eleven-lead pipeline with costed proposals",
+      "status": "FAIL",
+      "durationMs": 5028,
+      "reason": "Error: client fixture expected 201, got 400 {\"success\":false,\"error\":\"industry must be one of Retail, Fintech, Healthcare, Logistics, Manufacturing, Education, Real Estate, Government, Telecom, Other.\",\"s"
+    },
+    {
+      "id": "G13-01",
+      "title": "GET /dashboard/overview KPIs match the fixture pipeline exactly",
+      "status": "FAIL",
+      "durationMs": 574,
+      "reason": "Error: totalLeads expected 11, got 0"
+    },
+    {
+      "id": "G13-02",
+      "title": "Pipeline stages: all nine statuses in order, per-stage lead counts and currency values",
+      "status": "FAIL",
+      "durationMs": 82,
+      "reason": "Error: per-stage counts disagree with the fixtures: NEW: 0 (want 2); IN_REVIEW: 0 (want 2); QUALIFYING: 0 (want 1); QUALIFIED: 0 (want 3); PROPOSAL_DRAFTING: 0 (want 1); REJECTED: 0 (want 1); WON: 0 (want 1)"
+    },
+    {
+      "id": "G13-03",
+      "title": "Overview activeLeads panel: leadLimit caps the panel, ordering, joined client name, no RFP text",
+      "status": "FAIL",
+      "durationMs": 79,
+      "reason": "Error: default leadLimit 8 expected, got 0 of 9 active leads"
+    },
+    {
+      "id": "G13-04",
+      "title": "Overview leadLimit contract: 1 and 50 accepted, out-of-range, non-integer and empty value handled",
+      "status": "FAIL",
+      "durationMs": 87,
+      "reason": "Error: leadLimit=1 expected 1 row, got 0"
+    },
+    {
+      "id": "G13-05",
+      "title": "GET /dashboard/leads contract: default limit 20, ordering, projected columns",
+      "status": "FAIL",
+      "durationMs": 80,
+      "reason": "Error: expected the 9 active leads, got 0"
+    },
+    {
+      "id": "G13-06",
+      "title": "Dashboard limit guards: 100 accepted, 0 / 101 / 200 / negative / non-integer rejected",
+      "status": "FAIL",
+      "durationMs": 77,
+      "reason": "Error: limit=100 expected all rows, got 200 {\"success\":true,\"data\":[],\"meta\":{\"total\":0,\"limit\":100}}"
+    },
+    {
+      "id": "G13-07",
+      "title": "GET /dashboard/activity contract: synthesized feed, four event types, ids and ordering",
+      "status": "FAIL",
+      "durationMs": 83,
+      "reason": "Error: activity returned no rows"
+    },
+    {
+      "id": "G13-08",
+      "title": "Activity source is entity timestamps, not audit_logs: sub-second edits vanish, so the two feeds disagree",
+      "status": "FAIL",
+      "durationMs": 85,
+      "reason": "Error: lead rename expected 200, got 400 {\"success\":false,\"error\":\"id must be a valid UUID or null.\",\"statusCode\":400}"
+    },
+    {
+      "id": "G13-09",
+      "title": "Empty tenant: a fresh organization gets zeroed KPIs, nine empty stages and empty panels",
+      "status": "PASS",
+      "durationMs": 231,
+      "notes": [
+        "no NULL/NaN/undefined reaches the client for an organization with no data"
+      ]
+    },
+    {
+      "id": "G13-10",
+      "title": "Tenant isolation and scope override: a query organizationId can never move the dashboard into another tenant",
+      "status": "FAIL",
+      "durationMs": 81,
+      "reason": "Error: org B must see only its own lead, got {\"totalLeads\":0,\"activeLeads\":0,\"qualifiedLeads\":0,\"proposalsInProgress\":0,\"estimatedValueByCurrency\":[]}"
+    },
+    {
+      "id": "G13-11",
+      "title": "Dashboard access: anonymous 401, every authenticated role can read (no role guard on the dashboard)",
+      "status": "FAIL",
+      "durationMs": 86,
+      "reason": "Error: LEAD must see the same tenant-wide numbers"
+    },
+    {
+      "id": "G14-01",
+      "title": "GET /audit-logs contract: envelope, meta, newest-first order, actor name resolved",
+      "status": "PASS",
+      "durationMs": 163,
+      "notes": [
+        "total 5 rows, first \"USER_CREATED\" user actor \"E2E E2E G13 Org A 20261021093750\""
+      ]
+    },
+    {
+      "id": "G14-02",
+      "title": "Audit RBAC: ADMIN and PRESALE_LEAD read, every other role gets 403 naming the allowed roles",
+      "status": "PASS",
+      "durationMs": 313,
+      "notes": [
+        "the role is taken from the access token, so a body or query field cannot widen it"
+      ]
+    },
+    {
+      "id": "G14-03",
+      "title": "Filters: action, entityType, entityId, actorId and combinations match the fixture write counts",
+      "status": "FAIL",
+      "durationMs": 601,
+      "reason": "Error: action=USER_REGISTERED expected 3 rows, got 1"
+    },
+    {
+      "id": "G14-04",
+      "title": "resultStatus: SUCCESS returns everything, FAILED always returns zero because nothing writes a FAILED audit",
+      "status": "PASS",
+      "durationMs": 923,
+      "notes": [
+        "AUDIT_RESULT_STATUSES defines SUCCESS and FAILED, and no code path ever records FAILED: a security dashboard filtered on FAILED is permanently empty, including credential-stuffing attempts"
+      ]
+    },
+    {
+      "id": "G14-05",
+      "title": "Time window filters: from/to accept ISO-8601, normalize it, and reject anything unparsable",
+      "status": "FAIL",
+      "durationMs": 608,
+      "reason": "TypeError: Cannot read properties of undefined (reading 'total')"
+    },
+    {
+      "id": "G14-06",
+      "title": "Pagination: default 50, limit up to 200, page offsets, disjoint pages, real total",
+      "status": "FAIL",
+      "durationMs": 307,
+      "reason": "Error: limit=5 pages must each hold 5 rows"
+    },
+    {
+      "id": "G14-07",
+      "title": "Query guards: malformed UUIDs, repeated keys, oversized filters and unknown parameters",
+      "status": "PASS",
+      "durationMs": 211,
+      "notes": [
+        "sort order is fixed server-side: no sort parameter can reorder or widen the response"
+      ]
+    },
+    {
+      "id": "G14-08",
+      "title": "Payload integrity: no credentials serialized, ip_address stored but never returned",
+      "status": "FAIL",
+      "durationMs": 768,
+      "reason": "TypeError: Cannot read properties of undefined (reading 'has_ip')"
+    },
+    {
+      "id": "G14-09",
+      "title": "Audit completeness: status transitions are recorded, but proposal create / sheet write / delete are silent",
+      "status": "FAIL",
+      "durationMs": 1706,
+      "reason": "Error: metadata edit expected 200, got 400 {\"success\":false,\"error\":\"At least one proposal field is required.\",\"statusCode\":400}"
+    },
+    {
+      "id": "G14-10",
+      "title": "Immutability: no write route exists for audit logs, and reading never mutates the ledger",
+      "status": "FAIL",
+      "durationMs": 561,
+      "reason": "error: column \"tginsert\" does not exist"
+    },
+    {
+      "id": "G14-11",
+      "title": "Cross-tenant audit isolation: organization B cannot read or filter organization A history",
+      "status": "FAIL",
+      "durationMs": 157,
+      "reason": "Error: filtering by an org A entity expected 0 rows, got {\"success\":false,\"error\":\"entityId must be a valid UUID or null.\",\"statusCode\":400}"
+    },
+    {
+      "id": "G13/G14-99",
+      "title": "Teardown: fixture counts reconciled with SQL, audit trail left intact for the cleanup script",
+      "status": "FAIL",
+      "durationMs": 916,
+      "reason": "Error: the deletion audit row must survive the deletion itself (append-only ledger)"
+    }
+  ]
+}

@@ -1,11 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { WorkspacePill } from './workspace/WorkspacePill';
 import { UserCard } from './workspace/UserCard';
-import { fetchDashboardOverview } from '../services/dashboardService';
-import type { DashboardOverviewData } from '../services/dashboardService';
-import { fetchLeads } from '../services/leadService';
-import type { LeadItem } from '../services/leadService';
 import { 
   LayoutGrid, 
   FileText, 
@@ -19,9 +15,9 @@ import {
   ShieldCheck, 
   Bot, 
   Zap, 
+  ArrowUpRight, 
   ChevronRight,
-  ArrowRight,
-  Briefcase
+  Users
 } from 'lucide-react';
 
 interface OverviewProps {
@@ -29,13 +25,27 @@ interface OverviewProps {
   onNavigateAIWorkspace?: () => void;
   onNavigateRfps?: () => void;
   onNavigateVault?: () => void;
+  onNavigateMembers?: () => void;
+  onNavigateClients?: () => void;
+  onNavigateAudit?: () => void;
+  onNavigateLeads?: () => void;
+  onNavigateRateCards?: () => void;
+  onNavigateMeetings?: () => void;
+  onNavigateProposals?: () => void;
 }
 
 export const Overview: React.FC<OverviewProps> = ({ 
   onLogout, 
   onNavigateAIWorkspace,
   onNavigateRfps,
-  onNavigateVault
+  onNavigateVault,
+  onNavigateMembers,
+  onNavigateClients,
+  onNavigateAudit,
+  onNavigateLeads,
+  onNavigateRateCards,
+  onNavigateMeetings,
+  onNavigateProposals
 }) => {
   const { user } = useAuth();
   const [activeNav, setActiveNav] = useState('Overview');
@@ -45,6 +55,8 @@ export const Overview: React.FC<OverviewProps> = ({
   const [loading, setLoading] = useState(true);
   const [recommendationDismissed, setRecommendationDismissed] = useState(false);
   const [synthesized, setSynthesized] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const { user } = useAuth();
 
   useEffect(() => {
     async function loadData() {
@@ -126,7 +138,6 @@ export const Overview: React.FC<OverviewProps> = ({
               </span>
             </div>
 
-            {/* Real Organization Workspace Pill */}
             <WorkspacePill />
           </div>
 
@@ -135,8 +146,15 @@ export const Overview: React.FC<OverviewProps> = ({
             {[
               { name: 'Overview', icon: LayoutGrid },
               { name: 'RFPs & Specs', icon: FileText },
-              { name: 'AI Workspace', icon: Sparkles, badge: 'Active' },
+              { name: 'Leads', icon: Zap },
+              { name: 'Meetings', icon: Calendar },
+              { name: 'Proposals', icon: FileText },
+              { name: 'Rate cards', icon: CreditCard },
+              { name: 'AI Workspace', icon: Sparkles, badge: 'New' },
               { name: 'Knowledge Vault', icon: BookOpen },
+              { name: 'Clients', icon: Building2 },
+              { name: 'Audit trail', icon: ShieldCheck },
+              { name: 'Members', icon: Users },
             ].map((item) => {
               const Icon = item.icon;
               const isActive = activeNav === item.name;
@@ -149,7 +167,21 @@ export const Overview: React.FC<OverviewProps> = ({
                     } else if (item.name === 'RFPs & Specs' && onNavigateRfps) {
                       onNavigateRfps();
                     } else if (item.name === 'Knowledge Vault' && onNavigateVault) {
-                      onNavigateVault();
+                      onNavigateVault();;
+                    } else if (item.name === 'Clients' && onNavigateClients) {
+                      onNavigateClients();
+                    } else if (item.name === 'Audit trail' && onNavigateAudit) {
+                      onNavigateAudit();
+                    } else if (item.name === 'Members' && onNavigateMembers) {
+                      onNavigateMembers();
+                    } else if (item.name === 'Leads' && onNavigateLeads) {
+                      onNavigateLeads();
+                    } else if (item.name === 'Rate cards' && onNavigateRateCards) {
+                      onNavigateRateCards();
+                    } else if (item.name === 'Meetings' && onNavigateMeetings) {
+                      onNavigateMeetings();
+                    } else if (item.name === 'Proposals' && onNavigateProposals) {
+                      onNavigateProposals();
                     } else {
                       setActiveNav(item.name);
                     }
@@ -177,7 +209,7 @@ export const Overview: React.FC<OverviewProps> = ({
 
         {/* Real User Profile & Logout at Bottom of Sidebar */}
         <div className="p-3 border-t border-slate-100">
-          <UserCard onLogout={onLogout} logoutTitle="Sign out" subtitle="email" />
+          <UserCard onLogout={onLogout} logoutTitle="Sign out to Home" />
         </div>
 
       </aside>
@@ -193,7 +225,7 @@ export const Overview: React.FC<OverviewProps> = ({
             <span className="text-slate-400">Workspace</span>
             <ChevronRight className="w-3.5 h-3.5 text-slate-300" />
             <span className="font-bold text-brand-700 bg-emerald-50 px-2 py-0.5 rounded border border-brand-200">
-              {user?.role?.replace(/_/g, ' ') || 'PRESALE WORKSPACE'}
+              {user?.role.replace(/_/g, ' ') || 'Workspace'}
             </span>
           </div>
 

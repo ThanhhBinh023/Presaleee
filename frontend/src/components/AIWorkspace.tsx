@@ -56,6 +56,15 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
   // Requirement 2: Default subnav is 'Intake & Scope'
   const [activeSubnav, setActiveSubnav] = useState<'Intake & Scope' | 'Discovery Meetings' | 'Technical Sessions' | 'Proposal Builder v2.4' | 'Client Intelligence'>('Intake & Scope');
 
+  const {
+    members: workspaceMembers,
+    meta: workspaceMeta,
+    isLoading: isLoadingMembers,
+    error: membersError
+  } = useMemberDirectory({ limit: 5 });
+  const visibleMembers = workspaceMembers.slice(0, 4);
+  const hiddenMemberCount = Math.max(0, (workspaceMeta?.total ?? workspaceMembers.length) - visibleMembers.length);
+
   // Client Portal preview modal
   const [portalModalOpen, setPortalModalOpen] = useState(false);
   const [emailCopied, setEmailCopied] = useState(false);
@@ -215,7 +224,6 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
               </span>
             </div>
 
-            {/* Real Organization Workspace Pill */}
             <WorkspacePill />
           </div>
 
@@ -260,12 +268,46 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
               <BookOpen className="w-4 h-4 text-slate-400" />
               <span>Knowledge Vault</span>
             </button>
+
+            <button
+              onClick={() => navigateTo('leads')}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all"
+            >
+              <FileText className="w-4 h-4 text-slate-400" />
+              <span>Leads</span>
+            </button>
+            <button
+              onClick={() => navigateTo('rate-cards')}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all"
+            >
+              <CreditCard className="w-4 h-4 text-slate-400" />
+              <span>Rate cards</span>
+            </button>
+            <button
+              onClick={() => navigateTo('meetings')}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all"
+            >
+              <History className="w-4 h-4 text-slate-400" />
+              <span>Meetings</span>
+            </button>
+            <button
+              onClick={() => navigateTo('proposals')}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all"
+            >
+              <Layers className="w-4 h-4 text-slate-400" />
+              <span>Proposals</span>
+            </button>
           </nav>
         </div>
 
-        {/* Real Logged-in User Card at bottom of sidebar (Thứ nhất: Xóa Alex Vance) */}
-        <div className="p-3 border-t border-slate-100">
-          <UserCard onLogout={onLogout} logoutTitle="Sign out" subtitle="email" />
+        {/* User Card at bottom of sidebar */}
+        <div className="p-3 border-t border-slate-100 space-y-2">
+          <button className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-500 hover:text-slate-900 hover:bg-slate-50">
+            <Settings className="w-3.5 h-3.5" />
+            <span>Settings</span>
+          </button>
+
+          <UserCard onLogout={onLogout} subtitle="role" />
         </div>
 
       </aside>
@@ -323,7 +365,37 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                 )}
               </div>
 
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-3">
+                {/* Avatar Stack — thành viên thật của tổ chức */}
+                <button
+                  onClick={() => navigateTo('members')}
+                  title="Member list"
+                  className="flex items-center -space-x-1.5"
+                >
+                  {visibleMembers.map((member, index) => (
+                    <span
+                      key={member.id}
+                      className={`w-6 h-6 rounded-full border-2 border-white text-[10px] flex items-center justify-center font-bold ${
+                        index % 2 === 0 ? 'bg-slate-300 text-slate-700' : 'bg-slate-400 text-white'
+                      }`}
+                    >
+                      {initialsOf(member.fullName)}
+                    </span>
+                  ))}
+                  {hiddenMemberCount > 0 && (
+                    <span className="w-6 h-6 rounded-full bg-brand-100 border-2 border-white text-[10px] flex items-center justify-center font-bold text-brand-800">
+                      +{hiddenMemberCount}
+                    </span>
+                  )}
+                  {isLoadingMembers && <span className="text-[10px] font-mono text-slate-400 pr-1.5">loading…</span>}
+                  {!isLoadingMembers && membersError && <span className="text-[10px] font-mono text-rose-500 pr-1.5">error</span>}
+                </button>
+
+                <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-mono font-medium text-slate-700 hover:bg-slate-50 transition-colors">
+                  <History className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Version Log</span>
+                </button>
+
                 <button 
                   onClick={onNavigateRfps}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold shadow-2xs transition-all"

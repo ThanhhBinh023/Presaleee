@@ -23,13 +23,17 @@ export class RAGService {
     title: string,
     category: string,
     domain: string,
-    content: string
+    content: string,
+    organizationId: string,
+    uploadedBy: string
   ): Promise<{ docId: string; totalChunks: number }> {
     return container.ingestDocumentUseCase.execute({
       title,
       category,
       domain,
-      content
+      content,
+      organizationId,
+      uploadedBy
     });
   }
 
@@ -38,11 +42,13 @@ export class RAGService {
    */
   static async searchRelevantContext(
     queryText: string,
+    organizationId: string,
     domain?: string,
     topK: number = 3
   ): Promise<RetrievedChunk[]> {
     const result = await container.searchHybridRAGUseCase.execute({
       query: queryText,
+      organizationId,
       domain,
       topK
     });
@@ -54,10 +60,12 @@ export class RAGService {
    */
   static async generateContextAwareProposalOverview(
     rfpText: string,
+    organizationId: string,
     domain?: string
   ): Promise<{ overview: string; sources: RetrievedChunk[] }> {
     return container.generateProposalUseCase.execute({
       rfpText,
+      organizationId,
       domain
     });
   }

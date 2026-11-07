@@ -1,38 +1,20 @@
-import { Meeting, MeetingStatus, MeetingSourceTool, ActionItem, GapAnalysis } from '../entities/Meeting.js';
+import { Meeting, MeetingAttendee, MeetingStatus, MeetingAnalysis } from '../entities/Meeting.js';
 
-export interface CreateMeetingParams {
+export interface MeetingScope { organizationId: string; }
+
+export interface CreateMeetingInput extends MeetingScope {
   leadId: string;
-  createdBy?: string | null;
+  createdBy: string;
   title: string;
-  meetingOrder?: number;
-  meetingDate?: Date;
-  status?: MeetingStatus;
-  sourceTool?: MeetingSourceTool;
-  audioRecordUrl?: string | null;
-  rawTranscript?: string | null;
-}
-
-export interface UpdateMeetingParams {
-  title?: string;
-  status?: MeetingStatus;
-  meetingOrder?: number;
-  meetingDate?: Date;
-  sourceTool?: MeetingSourceTool;
-  audioRecordUrl?: string | null;
-  rawTranscript?: string | null;
-  cleanNotes?: string | null;
-  keyDiscussionPoints?: string[];
-  clarifiedRequirements?: string[];
-  actionItems?: ActionItem[];
-  suggestedFollowupQuestions?: string[];
-  discussionTopics?: string[];
-  gapAnalysis?: GapAnalysis;
+  meetingDate: string;
+  attendees: MeetingAttendee[];
 }
 
 export interface IMeetingRepository {
-  create(params: CreateMeetingParams): Promise<Meeting>;
-  findById(id: string): Promise<Meeting | null>;
-  listByLeadId(leadId: string): Promise<Meeting[]>;
-  update(id: string, params: UpdateMeetingParams): Promise<Meeting>;
-  delete(id: string): Promise<boolean>;
+  create(input: CreateMeetingInput): Promise<Meeting | null>;
+  listByLead(leadId: string, scope: MeetingScope): Promise<Meeting[]>;
+  findById(meetingId: string, scope: MeetingScope): Promise<Meeting | null>;
+  saveTranscript(meetingId: string, scope: MeetingScope, transcript: string, append: boolean): Promise<Meeting | null>;
+  changeStatus(meetingId: string, scope: MeetingScope, status: MeetingStatus, allowedCurrent: MeetingStatus[]): Promise<Meeting | null>;
+  saveAnalysis(meetingId: string, scope: MeetingScope, analysis: MeetingAnalysis): Promise<Meeting | null>;
 }

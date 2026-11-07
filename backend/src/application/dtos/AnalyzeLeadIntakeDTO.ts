@@ -1,6 +1,4 @@
-export const LEAD_SOURCES = ['INBOUND_EMAIL', 'WEBSITE', 'REFERRAL', 'MEETING', 'MANUAL'] as const;
-
-export type LeadSource = (typeof LEAD_SOURCES)[number];
+import { LeadSource } from '../../domain/entities/Lead.js';
 
 export interface AnalyzeLeadIntakeInputDTO {
   rawRfpContent: string;

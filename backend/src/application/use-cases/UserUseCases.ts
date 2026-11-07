@@ -191,9 +191,9 @@ export class UpdateMemberUseCase {
     }
 
     const updates: Parameters<IUserRepository['update']>[1] = {};
-    assignIfPresent(dto, updates, 'fullName', (value: any) => requiredText(value, 'fullName', 255));
-    assignIfPresent(dto, updates, 'role', (value: any) => parseRole(value, 'role'));
-    assignIfPresent(dto, updates, 'status', (value: any) => optionalEnum(value, USER_STATUSES, 'status'));
+    assignIfPresent(dto, updates, 'fullName', value => requiredText(value, 'fullName', 255));
+    assignIfPresent(dto, updates, 'role', value => parseRole(value, 'role'));
+    assignIfPresent(dto, updates, 'status', value => optionalEnum(value, USER_STATUSES, 'status'));
     if (Object.keys(updates).length === 0) throw new ValidationError('At least one editable field is required.');
 
     const losesAdmin = target.role === 'ADMIN'
@@ -233,8 +233,8 @@ export class UpdateOwnProfileUseCase {
     if (!current) throw new NotFoundError('User not found.');
 
     const updates: Parameters<IUserRepository['update']>[1] = {};
-    assignIfPresent(dto, updates, 'fullName', (value: any) => requiredText(value, 'fullName', 255));
-    assignIfPresent(dto, updates, 'avatarUrl', (value: any) =>
+    assignIfPresent(dto, updates, 'fullName', value => requiredText(value, 'fullName', 255));
+    assignIfPresent(dto, updates, 'avatarUrl', value =>
       value === null || value === '' ? null : requiredText(value, 'avatarUrl', 2000));
     if (Object.keys(updates).length === 0 && dto.password === undefined) {
       throw new ValidationError('At least one editable field is required.');

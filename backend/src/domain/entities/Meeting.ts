@@ -1,47 +1,38 @@
-export type MeetingStatus = 'OPEN' | 'LOCKED' | 'INSPECTED' | 'REOPENED';
+export const MEETING_STATUSES = ['OPEN', 'LOCKED', 'INSPECTED'] as const;
+export type MeetingStatus = typeof MEETING_STATUSES[number];
 
-export type MeetingSourceTool =
-  | 'ZOOM'
-  | 'GOOGLE_MEET'
-  | 'TEAMS'
-  | 'FIREFLIES'
-  | 'OTTER'
-  | 'FATHOM'
-  | 'MANUAL'
-  | 'OTHER';
-
-export interface ActionItem {
-  id?: string;
-  task: string;
-  assignee: string;
-  deadline?: string;
-  completed?: boolean;
+export interface MeetingAnalysis {
+  summary: string;
+  technicalSummary: string;
+  decisions: string[];
+  actionItems: Array<{ task: string; assignee: string | null; deadline: string | null }>;
+  openQuestions: string[];
+  gapAnalysis: { risks: string[]; missingInformation: string[]; followUpQuestions: string[] };
 }
 
-export interface GapAnalysis {
-  missingParameters: string[];
-  proactiveQuestions: string[];
-  presaleRecommendations?: string[];
+export interface MeetingAttendee {
+  name: string;
+  email?: string;
+  role?: string;
 }
 
 export interface Meeting {
   id: string;
   leadId: string;
-  createdBy?: string | null;
+  organizationId: string;
+  createdBy: string | null;
   title: string;
-  meetingOrder: number;
-  meetingDate: Date;
+  meetingDate: string;
+  attendees: MeetingAttendee[];
   status: MeetingStatus;
-  sourceTool: MeetingSourceTool;
-  audioRecordUrl?: string | null;
-  rawTranscript?: string | null;
-  cleanNotes?: string | null;
-  keyDiscussionPoints: string[];
-  clarifiedRequirements: string[];
-  actionItems: ActionItem[];
-  suggestedFollowupQuestions: string[];
-  discussionTopics: string[];
-  gapAnalysis: GapAnalysis;
-  createdAt?: Date;
-  updatedAt?: Date;
+  rawTranscript: string | null;
+  cleanNotes: string | null;
+  decisions: string[];
+  actionItems: MeetingAnalysis['actionItems'];
+  openQuestions: string[];
+  gapAnalysis: MeetingAnalysis['gapAnalysis'];
+  analysis: MeetingAnalysis | Record<string, never>;
+  analyzedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 }

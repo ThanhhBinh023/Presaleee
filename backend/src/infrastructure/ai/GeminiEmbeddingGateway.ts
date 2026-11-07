@@ -46,7 +46,9 @@ export class GeminiEmbeddingGateway implements IEmbeddingGateway {
       return results;
     } catch (error: any) {
       if (error instanceof ExternalServiceError) throw error;
-      throw new ExternalServiceError(`Gemini embedding failed: ${error?.message || 'Unknown error'}`);
+      // Upstream messages can contain the request URL, which carries the API key.
+      console.error(`[embedding-gateway] ${error?.message || 'Unknown error'}`);
+      throw new ExternalServiceError('Embedding generation failed. Please retry in a moment.');
     }
   }
 }

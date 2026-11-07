@@ -17,10 +17,22 @@ const ACTION_SUGGESTIONS = [
   'USER_PASSWORD_CHANGED',
   'RATE_CARD_CREATED',
   'RATE_CARD_UPDATED',
-  'RATE_CARD_DELETED'
+  'RATE_CARD_DELETED',
+  'PRICING_CALCULATED',
+  'PRICING_APPLIED',
+  'LEAD_CREATED',
+  'LEAD_UPDATED',
+  'LEAD_STATUS_CHANGED',
+  'LEAD_QUALIFIED',
+  'LEAD_DELETED',
+  'PROPOSAL_STATUS_CHANGED',
+  'PROPOSAL_SUBMITTED_FOR_REVIEW',
+  'PROPOSAL_SHARED_WITH_CLIENT',
+  'CLIENT_PORTAL_SESSION_CREATED',
+  'CLIENT_PORTAL_SESSION_REVOKED'
 ];
 
-const ENTITY_TYPE_SUGGESTIONS = ['client', 'user', 'rate_card'];
+const ENTITY_TYPE_SUGGESTIONS = ['client', 'user', 'rate_card', 'lead', 'proposal'];
 
 const FILTER_DEBOUNCE_MS = 400;
 
@@ -112,7 +124,7 @@ export const AuditLog: React.FC<AuditLogProps> = ({ onBackToOverview }) => {
             </button>
             <h1 className="mt-1 text-2xl font-bold tracking-tight">Audit trail</h1>
             <p className="mt-1 text-xs text-slate-500">
-              Read-only history of every write in your organization. Newest first.
+              Read-only ledger. Newest first. Proposal sheet writes, meetings and knowledge ingest are not recorded. FAILED is empty unless a fixture row exists — writers never emit it.
             </p>
           </div>
           <div className="flex gap-2">
@@ -121,6 +133,12 @@ export const AuditLog: React.FC<AuditLogProps> = ({ onBackToOverview }) => {
               className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50"
             >
               Clients
+            </button>
+            <button
+              onClick={() => navigateTo('overview')}
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50"
+            >
+              Dashboard
             </button>
             <button
               onClick={reload}

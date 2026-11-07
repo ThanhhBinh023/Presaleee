@@ -1,43 +1,24 @@
-import { apiRequest } from './apiClient';
+import { apiRequest, apiRequestWithMeta } from './apiClient';
+import type { ListMeta } from '../types/auth';
+import type { DashboardActivity, DashboardLead, DashboardOverview } from '../types/dashboard';
 
-export interface DashboardKpis {
-  totalLeads: number;
-  activeLeads: number;
-  qualifiedLeads: number;
-  proposalsInProgress: number;
-  estimatedValueByCurrency: Array<{ currency: string; amount: number }>;
-}
+const PREFIX = '/api/v1/dashboard';
 
-export interface DashboardPipelineStage {
-  status: string;
-  count: number;
-  estimatedValueByCurrency: Array<{ currency: string; amount: number }>;
-}
+export const dashboardService = {
+  getOverview: (leadLimit?: number) => {
+    const query = leadLimit !== undefined ? `?leadLimit=${encodeURIComponent(String(leadLimit))}` : '';
+    return apiRequest<DashboardOverview>(`${PREFIX}/overview${query}`);
+  },
 
-export interface DashboardLead {
-  id: string;
-  title: string;
-  source: string;
-  status: string;
-  bantScore: number | null;
-  clientName: string | null;
-  assignedTo: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
+  listLeads: async (limit?: number): Promise<{ leads: DashboardLead[]; meta: ListMeta | null }> => {
+    const query = limit !== undefined ? `?limit=${encodeURIComponent(String(limit))}` : '';
+    const result = await apiRequestWithMeta<DashboardLead[]>(`${PREFIX}/leads${query}`);
+    return { leads: result.data ?? [], meta: result.meta };
+  },
 
-export interface DashboardOverviewData {
-  kpis: DashboardKpis;
-  pipeline: DashboardPipelineStage[];
-  activeLeads: DashboardLead[];
-  generatedAt: string;
-}
-
-export async function fetchDashboardOverview(): Promise<DashboardOverviewData | null> {
-  try {
-    return await apiRequest<DashboardOverviewData>('/api/v1/dashboard/overview');
-  } catch (err) {
-    console.error('Failed to fetch dashboard overview:', err);
-    return null;
+  listActivity: async (limit?: number): Promise<{ activity: DashboardActivity[]; meta: ListMeta | null }> => {
+    const query = limit !== undefined ? `?limit=${encodeURIComponent(String(limit))}` : '';
+    const result = await apiRequestWithMeta<DashboardActivity[]>(`${PREFIX}/activity${query}`);
+    return { activity: result.data ?? [], meta: result.meta };
   }
-}
+};

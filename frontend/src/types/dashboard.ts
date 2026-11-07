@@ -1,0 +1,62 @@
+import type { LeadStatus } from './lead';
+
+export const DASHBOARD_PIPELINE_STATUSES: readonly LeadStatus[] = [
+  'NEW',
+  'IN_REVIEW',
+  'QUALIFYING',
+  'QUALIFIED',
+  'PROPOSAL_DRAFTING',
+  'APPROVED',
+  'REJECTED',
+  'WON',
+  'LOST'
+];
+
+export interface CurrencyAmount {
+  currency: string;
+  amount: number;
+}
+
+export interface DashboardKpis {
+  totalLeads: number;
+  activeLeads: number;
+  qualifiedLeads: number;
+  proposalsInProgress: number;
+  estimatedValueByCurrency: CurrencyAmount[];
+}
+
+export interface DashboardPipelineStage {
+  status: LeadStatus;
+  count: number;
+  estimatedValueByCurrency: CurrencyAmount[];
+}
+
+export interface DashboardLead {
+  id: string;
+  title: string;
+  source: string;
+  status: LeadStatus;
+  bantScore: number | null;
+  clientName: string | null;
+  assignedTo: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type DashboardActivityType = 'LEAD_CREATED' | 'LEAD_UPDATED' | 'PROPOSAL_CREATED' | 'PROPOSAL_UPDATED';
+
+export interface DashboardActivity {
+  id: string;
+  type: DashboardActivityType;
+  entityId: string;
+  title: string;
+  status: string;
+  occurredAt: string;
+}
+
+export interface DashboardOverview {
+  kpis: DashboardKpis;
+  pipeline: DashboardPipelineStage[];
+  activeLeads: DashboardLead[];
+  generatedAt: string;
+}

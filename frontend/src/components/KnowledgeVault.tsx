@@ -1,17 +1,18 @@
-import { useToast } from './common/Toast';
-import React, { useState } from 'react';
-import { 
-  LayoutGrid, 
-  FileText, 
-  Sparkles, 
-  BookOpen,
-Search, 
-  Plus, 
-  Send, 
-  Bot
-} from 'lucide-react';
-import { WorkspacePill } from './workspace/WorkspacePill';
-import { UserCard } from './workspace/UserCard';
+import React, { useEffect, useState } from 'react';
+import { useAuth } from '../hooks/useAuth';
+import { useKnowledgeDirectory } from '../hooks/useKnowledgeDirectory';
+import { knowledgeService } from '../services/knowledgeService';
+import { navigateTo, readHashQuery } from '../navigation';
+import { formatDateTime } from '../utils/format';
+import { KNOWLEDGE_CATEGORIES } from '../types/knowledge';
+import type {
+  GenerateProposalOverviewResult,
+  KnowledgeAskResult,
+  KnowledgeDocument,
+  RagChunk
+} from '../types/knowledge';
+
+const PAGE_SIZE = 20;
 
 interface KnowledgeVaultProps {
   onNavigateOverview: () => void;
@@ -19,423 +20,397 @@ interface KnowledgeVaultProps {
   onLogout: () => void;
 }
 
+type RagTab = 'search' | 'ask' | 'generate';
+
 export const KnowledgeVault: React.FC<KnowledgeVaultProps> = ({
   onNavigateOverview,
-  onNavigateAIWorkspace,
-  onLogout
+  onNavigateAIWorkspace
 }) => {
-  const toast = useToast();
-  const [selectedCategory, setSelectedCategory] = useState('All');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [chatInput, setChatInput] = useState('');
-  const [chatHistory, setChatHistory] = useState([
-    {
-      sender: 'user',
-      text: 'Chúng ta đã từng làm dự án tương tự cho ngành Fintech/Banking chưa?',
-    },
-    {
-      sender: 'ai',
-      text: 'Có. Chúng ta đã triển khai thành công 3 dự án tương tự: "Global Core Banking Modernization" (Proposal 2024), "High-Throughput Payment Ledger" (Case Study), và "Tier-1 Event Mesh Architecture". Tất cả đều đạt chứng chỉ SOC-2 Type II và độ trễ dưới 50ms.',
-      citations: [
-        'Prop-2024-Fintech-Core.pdf (Page 14)',
-        'CaseStudy-Ledger-Modernization.pdf',
-      ],
-    },
-    {
-      sender: 'user',
-      text: 'Ratecard cho Lead Cloud Architect và Senior Systems Engineer là bao nhiêu?',
-    },
-    {
-      sender: 'ai',
-      text: 'Theo bảng Ratecard chuẩn 2025 (Ref: Master-Ratecard-2025.xlsx):\n• Lead Cloud Architect: $165 - $190/hr (Tier-1 Enterprise)\n• Senior Systems Engineer: $125 - $145/hr\nCả hai vị trí đều áp dụng bảo lãnh năng lực tối thiểu 160 giờ/tháng.',
-      citations: ['Global-Commercial-Ratecard-2025.xlsx (Tab: Cloud & DevOps)'],
-    },
-  ]);
+  const { user } = useAuth();
 
-  const categories = [
-    'All',
-    'Proposal cũ',
-    'Architecture',
-    'Case Study',
-    'Pricing & Ratecard',
-    'Compliance & Legal',
-    'Technical Specs',
-  ];
+  const [searchInput, setSearchInput] = useState('');
+  const [search, setSearch] = useState('');
+  const [category, setCategory] = useState('');
+  const [domainFilter, setDomainFilter] = useState('');
+  const [page, setPage] = useState(1);
 
-  const assets = [
-    {
-      title: 'Global Core Banking SOW Template',
-      category: 'Proposal cũ',
-      format: 'PDF',
-      updated: '3 days ago',
-      tags: ['Fintech', 'Kubernetes', 'Kafka'],
-      usage: 'Used in 14 Proposals',
-    },
-    {
-      title: 'Tier-1 High-Availability Event Mesh Reference',
-      category: 'Architecture',
-      format: 'DOCX',
-      updated: '1 week ago',
-      tags: ['Active-Active', 'Sub-50ms', 'RPO=0'],
-      usage: 'Used in 28 Proposals',
-    },
-    {
-      title: 'SOC-2 Type II Compliance & Security Matrix',
-      category: 'Compliance & Legal',
-      format: 'PDF',
-      updated: '2 weeks ago',
-      tags: ['SOC-2', 'FIDO2', 'Zero-Trust'],
-      usage: 'Used in 35 Proposals',
-    },
-    {
-      title: 'Master IT Engineering Services Ratecard 2025',
-      category: 'Pricing & Ratecard',
-      format: 'XLSX',
-      updated: 'Jan 2025',
-      tags: ['Ratecard', 'FTE', 'Blended Rates'],
-      usage: 'Universal Reference',
-    },
-    {
-      title: 'Payment Gateway Migration 48k TPS Case Study',
-      category: 'Case Study',
-      format: 'PDF',
-      updated: 'Dec 2024',
-      tags: ['Case Study', 'Ledger', '48K TPS'],
-      usage: 'Used in 19 Proposals',
-    },
-    {
-      title: 'Zero-Downtime Database CDC Replication Spec',
-      category: 'Technical Specs',
-      format: 'PDF',
-      updated: '2 weeks ago',
-      tags: ['Debezium', 'Kafka', 'Aurora'],
-      usage: 'Used in 12 Proposals',
-    },
-  ];
-
-  const handleSendChat = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!chatInput.trim()) return;
-
-    const userText = chatInput;
-    setChatInput('');
-
-    setChatHistory((prev) => [
-      ...prev,
-      { sender: 'user', text: userText },
-      {
-        sender: 'ai',
-        text: `Dựa trên tài liệu trong Asset Hub của Presaleee, yêu cầu "${userText}" đã được xác thực trong các kiến trúc chuẩn của chúng ta. Bạn có thể chèn trực tiếp các block nội dung này vào Proposal Builder.`,
-        citations: ['Presaleee-Knowledge-Base-v2.4.pdf', 'Master-Tech-Blueprint.docx'],
-      },
-    ]);
-  };
-
-  const filteredAssets = assets.filter((asset) => {
-    const matchCategory = selectedCategory === 'All' || asset.category === selectedCategory;
-    const matchQuery =
-      asset.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      asset.tags.some((t) => t.toLowerCase().includes(searchQuery.toLowerCase()));
-    return matchCategory && matchQuery;
+  const { documents, meta, isLoading, error, reload } = useKnowledgeDirectory({
+    page,
+    limit: PAGE_SIZE,
+    category: category || undefined,
+    domain: domainFilter || undefined,
+    search: search || undefined
   });
 
+  const [detail, setDetail] = useState<KnowledgeDocument | null>(null);
+  const [title, setTitle] = useState('');
+  const [ingestCategory, setIngestCategory] = useState('');
+  const [ingestDomain, setIngestDomain] = useState('');
+  const [content, setContent] = useState('');
+  const [useRagAlias, setUseRagAlias] = useState(false);
+
+  const [tab, setTab] = useState<RagTab>('search');
+  const [queryText, setQueryText] = useState('');
+  const [ragDomain, setRagDomain] = useState('');
+  const [topK, setTopK] = useState('5');
+  const [maxTokens, setMaxTokens] = useState('1500');
+  const [chunks, setChunks] = useState<RagChunk[]>([]);
+  const [askResult, setAskResult] = useState<KnowledgeAskResult | null>(null);
+  const [overview, setOverview] = useState<GenerateProposalOverviewResult | null>(null);
+
+  const [notice, setNotice] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [isWorking, setIsWorking] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setSearch(searchInput.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, category, domainFilter]);
+
+  const openDocument = async (id: string, announce?: string) => {
+    setIsWorking(true);
+    setActionError(null);
+    setConfirmDelete(false);
+    if (announce) setNotice(announce);
+    try {
+      const document = await knowledgeService.getById(id);
+      setDetail(document);
+      navigateTo('vault', { id: document.id });
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Failed to load the document.');
+    } finally {
+      setIsWorking(false);
+    }
+  };
+
+  useEffect(() => {
+    const id = readHashQuery().get('id');
+    if (id) void openDocument(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const ingest = async () => {
+    setIsWorking(true);
+    setActionError(null);
+    try {
+      const payload = {
+        title: title.trim(),
+        content,
+        category: ingestCategory.trim() || undefined,
+        domain: ingestDomain.trim() || undefined
+      };
+      const result = useRagAlias
+        ? await knowledgeService.ingestViaRag(payload)
+        : await knowledgeService.ingest(payload);
+      setNotice(`Indexed ${result.totalChunks} chunk(s). Raw text is not stored on the document row.`);
+      setTitle('');
+      setContent('');
+      reload();
+      await openDocument(result.docId);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Ingest failed.');
+    } finally {
+      setIsWorking(false);
+    }
+  };
+
+  const remove = async () => {
+    if (!detail) return;
+    setIsWorking(true);
+    setActionError(null);
+    try {
+      await knowledgeService.delete(detail.id);
+      setNotice('Document deleted. Chunks and embeddings cascaded.');
+      setDetail(null);
+      setConfirmDelete(false);
+      navigateTo('vault');
+      reload();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Delete failed.');
+    } finally {
+      setIsWorking(false);
+    }
+  };
+
+  const runSearch = async () => {
+    setIsWorking(true);
+    setActionError(null);
+    setAskResult(null);
+    setOverview(null);
+    try {
+      const result = await knowledgeService.search(queryText.trim(), {
+        domain: ragDomain.trim() || undefined,
+        topK: Number(topK)
+      });
+      setChunks(result.chunks);
+      setNotice(`Hybrid search returned ${result.total} chunk(s). chunkIndex is always 0 from the RPC.`);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Search failed.');
+    } finally {
+      setIsWorking(false);
+    }
+  };
+
+  const runAsk = async () => {
+    setIsWorking(true);
+    setActionError(null);
+    setChunks([]);
+    setOverview(null);
+    try {
+      const result = await knowledgeService.ask(queryText.trim(), {
+        domain: ragDomain.trim() || undefined,
+        topK: Number(topK)
+      });
+      setAskResult(result);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Ask failed.');
+    } finally {
+      setIsWorking(false);
+    }
+  };
+
+  const runGenerate = async () => {
+    setIsWorking(true);
+    setActionError(null);
+    setChunks([]);
+    setAskResult(null);
+    try {
+      const result = await knowledgeService.generateProposalOverview(queryText.trim(), {
+        domain: ragDomain.trim() || undefined,
+        maxTokens: Number(maxTokens)
+      });
+      setOverview(result);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Generate failed.');
+    } finally {
+      setIsWorking(false);
+    }
+  };
+
+  const totalPages = meta?.totalPages ?? 1;
+
   return (
-    <div className="min-h-screen bg-[#f8fafc] flex text-slate-900 font-sans">
-      
-      {/* 1. SIDEBAR */}
-      <aside className="w-64 bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 hidden md:flex">
-        <div>
-          <div className="p-5 border-b border-slate-100">
-            <div className="flex items-center gap-2.5 mb-4">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white shadow-sm font-bold font-mono text-base">
-                P
-              </div>
-              <span className="text-xl font-bold tracking-tight text-slate-900">
-                Presaleee
-              </span>
+    <div className="min-h-screen bg-[#f8fafc] px-4 py-8 font-sans text-slate-900 md:px-10">
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <button onClick={onNavigateOverview} className="text-xs font-mono font-bold text-brand-700 hover:underline">
+              &larr; OVERVIEW
+            </button>
+            <h1 className="mt-1 text-2xl font-bold tracking-tight">Knowledge vault</h1>
+            <p className="mt-1 text-sm text-slate-500">
+              Ingest plain text, list metadata, hybrid RAG search, ask with citations, generate a proposal overview. VIEWER can write (no role guard).
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={onNavigateAIWorkspace} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-600">
+              AI workspace
+            </button>
+            <button onClick={() => navigateTo('proposals')} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-600">
+              Proposals
+            </button>
+          </div>
+        </div>
+
+        {!user?.organizationId && (
+          <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            Your account needs an organization before knowledge APIs will accept requests.
+          </p>
+        )}
+        {user?.role === 'VIEWER' && (
+          <p className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+            VIEWER can ingest, delete, search and ask. Vault routes only check authentication plus organization.
+          </p>
+        )}
+
+        {notice && <p className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{notice}</p>}
+        {actionError && <p className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{actionError}</p>}
+        {error && <p className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+
+        <div className="mb-4 grid gap-2 rounded-2xl border border-slate-200 bg-white p-4 sm:grid-cols-2">
+          <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Title (required, max 255)" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={255} />
+          <select className="rounded-lg border border-slate-300 px-3 py-2 text-sm" value={ingestCategory} onChange={(e) => setIngestCategory(e.target.value)}>
+            <option value="">Category omitted → GENERAL</option>
+            {KNOWLEDGE_CATEGORIES.map((value) => (
+              <option key={value} value={value}>{value}</option>
+            ))}
+          </select>
+          <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Domain omitted → GENERAL (empty string is 400)" value={ingestDomain} onChange={(e) => setIngestDomain(e.target.value)} maxLength={100} />
+          <label className="flex items-center gap-2 text-sm text-slate-600">
+            <input type="checkbox" checked={useRagAlias} onChange={(e) => setUseRagAlias(e.target.checked)} />
+            Use POST /rag/ingest alias
+          </label>
+          <textarea
+            className="min-h-[90px] rounded-lg border border-slate-300 px-3 py-2 text-sm sm:col-span-2"
+            placeholder="Plain text content (required). File upload is not implemented. Identical text creates a second document."
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+          />
+          <button onClick={() => void ingest()} disabled={isWorking || !title.trim() || !content.trim()} className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-50 sm:col-span-2">
+            Ingest and embed
+          </button>
+        </div>
+
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <input value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder="Search title (metadata only)" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+          <select value={category} onChange={(e) => setCategory(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
+            <option value="">All categories</option>
+            {KNOWLEDGE_CATEGORIES.map((value) => (
+              <option key={value} value={value}>{value}</option>
+            ))}
+          </select>
+          <input value={domainFilter} onChange={(e) => setDomainFilter(e.target.value)} placeholder="Domain exact match" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" maxLength={100} />
+          <button onClick={reload} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-600">Reload</button>
+        </div>
+
+        <div className="grid gap-6 lg:grid-cols-12">
+          <div className="lg:col-span-5 overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50 text-[10px] font-mono font-bold text-slate-500">
+                <tr>
+                  <th className="px-3 py-2">TITLE</th>
+                  <th className="px-3 py-2">LABELS</th>
+                  <th className="px-3 py-2">CHUNKS</th>
+                </tr>
+              </thead>
+              <tbody>
+                {isLoading ? (
+                  <tr><td className="px-3 py-6 text-slate-400" colSpan={3}>Loading…</td></tr>
+                ) : documents.length === 0 ? (
+                  <tr><td className="px-3 py-6 text-slate-400" colSpan={3}>No documents match these filters.</td></tr>
+                ) : (
+                  documents.map((document) => (
+                    <tr
+                      key={document.id}
+                      className={`cursor-pointer border-t border-slate-100 hover:bg-emerald-50/40 ${detail?.id === document.id ? 'bg-emerald-50/70' : ''}`}
+                      onClick={() => void openDocument(document.id)}
+                    >
+                      <td className="px-3 py-2">
+                        <div className="font-bold text-slate-800">{document.title}</div>
+                        <div className="font-mono text-[10px] text-slate-400">{document.fileType || 'TEXT'} · {formatDateTime(document.updatedAt)}</div>
+                      </td>
+                      <td className="px-3 py-2 font-mono text-[10px] text-slate-500">
+                        {document.category}<br />{document.domain}
+                      </td>
+                      <td className="px-3 py-2 font-mono text-xs">{document.totalChunks}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+            <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-3 py-2 text-xs text-slate-500">
+              <span className="mr-auto font-mono">{meta ? `${meta.total} · page ${meta.page}/${totalPages}` : ''}</span>
+              <button disabled={page <= 1 || isLoading} onClick={() => setPage((p) => Math.max(1, p - 1))} className="rounded border px-2 py-1 disabled:opacity-40">Prev</button>
+              <button disabled={page >= totalPages || isLoading} onClick={() => setPage((p) => p + 1)} className="rounded border px-2 py-1 disabled:opacity-40">Next</button>
+            </div>
+          </div>
+
+          <div className="lg:col-span-7 space-y-4">
+            <div className="rounded-2xl border border-slate-200 bg-white p-5">
+              {!detail ? (
+                <p className="text-sm text-slate-500">Select a document. Detail has metadata and chunk count only — original content is not stored on knowledge_docs.</p>
+              ) : (
+                <>
+                  <h2 className="text-lg font-bold">{detail.title}</h2>
+                  <p className="font-mono text-[10px] text-slate-400">{detail.id}</p>
+                  <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                    <div><span className="text-slate-400">Category</span><div className="font-mono">{detail.category}</div></div>
+                    <div><span className="text-slate-400">Domain</span><div className="font-mono">{detail.domain}</div></div>
+                    <div><span className="text-slate-400">Chunks</span><div className="font-mono">{detail.totalChunks}</div></div>
+                    <div><span className="text-slate-400">Tokens (words)</span><div className="font-mono">{detail.totalTokens}</div></div>
+                    <div><span className="text-slate-400">Uploaded</span><div className="font-mono">{formatDateTime(detail.createdAt)}</div></div>
+                    <div><span className="text-slate-400">File</span><div className="font-mono">{detail.fileType || '—'}</div></div>
+                  </dl>
+                  {confirmDelete ? (
+                    <button onClick={() => void remove()} disabled={isWorking} className="mt-4 w-full rounded-lg bg-rose-600 px-3 py-2 text-xs font-bold text-white">
+                      Confirm delete (chunks cascade)
+                    </button>
+                  ) : (
+                    <button onClick={() => setConfirmDelete(true)} className="mt-4 w-full rounded-lg border border-rose-200 px-3 py-2 text-xs font-bold text-rose-600">
+                      Delete document
+                    </button>
+                  )}
+                </>
+              )}
             </div>
 
-            <WorkspacePill />
-          </div>
-
-          <nav className="p-3 space-y-1">
-            <button
-              onClick={onNavigateOverview}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all"
-            >
-              <LayoutGrid className="w-4 h-4 text-slate-400" />
-              <span>Overview</span>
-            </button>
-
-            <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all">
-              <FileText className="w-4 h-4 text-slate-400" />
-              <span>RFPs &amp; Specs</span>
-            </button>
-
-            <button
-              onClick={onNavigateAIWorkspace}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all"
-            >
-              <Sparkles className="w-4 h-4 text-slate-400" />
-              <span>AI Workspace</span>
-            </button>
-
-            {/* Active Knowledge Vault */}
-            <button className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-semibold bg-brand-500 text-white shadow-sm shadow-brand-500/30 transition-all">
-              <div className="flex items-center gap-3">
-                <BookOpen className="w-4 h-4 text-white" />
-                <span>Knowledge Vault</span>
-              </div>
-              <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-brand-600 text-white">
-                RAG AI
-              </span>
-            </button>
-
-            
-          </nav>
-        </div>
-
-        <div className="p-3 border-t border-slate-100">
-          <UserCard onLogout={onLogout} />
-        </div>
-      </aside>
-
-      {/* 2. MAIN CONTENT (Split: Left Asset Hub + Right AI Chatbot Assistant) */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
-        
-        {/* Top Header */}
-        <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-slate-200 px-6 py-3 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2 text-xs font-mono">
-            <span className="text-slate-500">Presaleee</span>
-            <span className="text-slate-300">/</span>
-            <span className="font-semibold text-brand-700">Knowledge Vault &amp; Asset Hub</span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => toast.info('Tính năng tải tài liệu mới lên Vault đang sẵn sàng', 'Knowledge Vault')}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold shadow-xs"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Upload Presale Asset</span>
-            </button>
-          </div>
-        </header>
-
-        {/* Body Grid */}
-        <div className="p-6 sm:p-8 max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          
-          {/* LEFT: ASSET HUB (7 Cols) */}
-          <div className="lg:col-span-7 space-y-6">
-            
-            <div className="bg-white rounded-3xl border border-slate-200 shadow-card p-6 space-y-5">
-              
-              <div>
-                <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
-                  Asset Hub &amp; Reference Library
-                </h1>
-                <p className="mt-1 text-xs text-slate-500 leading-relaxed">
-                  Thư viện tập trung cho các tài liệu presale có thể tái sử dụng (Proposal, Case Study, Ratecard, Blueprint) giúp đội ngũ không phải tìm kiếm rời rạc qua email hay chat.
-                </p>
-              </div>
-
-              {/* Search & Filter */}
-              <div className="space-y-3">
-                <div className="relative">
-                  <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search by asset title, tag (e.g. Fintech, Kafka, SOC-2)..."
-                    className="w-full pl-10 pr-4 py-2.5 rounded-xl text-xs font-mono bg-slate-50 border border-slate-200 focus:outline-none focus:border-brand-500 focus:bg-white text-slate-800"
-                  />
-                </div>
-
-                {/* Category Pills */}
-                <div className="flex flex-wrap gap-1.5">
-                  {categories.map((cat) => (
-                    <button
-                      key={cat}
-                      onClick={() => setSelectedCategory(cat)}
-                      className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
-                        selectedCategory === cat
-                          ? 'bg-brand-500 text-white font-semibold shadow-xs'
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                      }`}
-                    >
-                      {cat}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Assets Grid */}
-              <div className="space-y-3 pt-2">
-                {filteredAssets.map((asset, idx) => (
-                  <div
-                    key={idx}
-                    className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200 hover:border-brand-300 hover:bg-white transition-all shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+            <div className="rounded-2xl border border-slate-200 bg-white p-5">
+              <div className="mb-3 flex flex-wrap gap-1">
+                {(['search', 'ask', 'generate'] as const).map((value) => (
+                  <button
+                    key={value}
+                    onClick={() => setTab(value)}
+                    className={`rounded-full px-3 py-1 text-[10px] font-bold ${tab === value ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600'}`}
                   >
-                    <div className="space-y-1.5">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-xs sm:text-sm text-slate-900 font-mono">
-                          {asset.title}
-                        </span>
-                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-200 text-slate-700">
-                          {asset.format}
-                        </span>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono text-slate-500">
-                        <span className="text-brand-700 font-semibold">{asset.category}</span>
-                        <span>•</span>
-                        <span>{asset.usage}</span>
-                        <span>•</span>
-                        <span>{asset.updated}</span>
-                      </div>
-
-                      <div className="flex flex-wrap gap-1 pt-0.5">
-                        {asset.tags.map((t, i) => (
-                          <span
-                            key={i}
-                            className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-50 text-brand-700 border border-brand-200"
-                          >
-                            #{t}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
-                      <button 
-                        onClick={() => toast.success(`Đã đính kèm tài liệu "${asset.title}" vào SOW của Proposal`, 'Vault Sync')}
-                        className="px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-700 text-xs font-semibold font-mono"
-                      >
-                        Insert to SOW
-                      </button>
-                    </div>
-                  </div>
+                    {value === 'search' ? 'Hybrid search' : value === 'ask' ? 'Ask vault' : 'Generate overview'}
+                  </button>
                 ))}
               </div>
-
-            </div>
-
-          </div>
-
-          {/* RIGHT: AI CHATBOT ASSISTANT (5 Cols) */}
-          <div className="lg:col-span-5 space-y-6">
-            
-            <div className="bg-white rounded-3xl border border-brand-200 shadow-card p-6 flex flex-col h-[750px] justify-between">
-              
-              <div>
-                {/* Header */}
-                <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-xl bg-brand-500 flex items-center justify-center text-white">
-                      <Bot className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-slate-900 font-mono">
-                        Presaleee Knowledge AI Assistant
-                      </h3>
-                      <p className="text-[11px] text-slate-500">
-                        Hiểu toàn bộ kho tài liệu của công ty với Source Citations
-                      </p>
-                    </div>
-                  </div>
-                  <span className="w-2 h-2 rounded-full bg-brand-500 animate-pulse"></span>
-                </div>
-
-                {/* Sample Prompt Chips from PDF */}
-                <div className="pt-3 pb-2 space-y-1.5">
-                  <div className="text-[10px] font-mono font-bold text-slate-400 uppercase">
-                    CÂU HỎI MẪU TỪ PRESALE:
-                  </div>
-                  <button
-                    onClick={() =>
-                      setChatInput('Chúng ta đã từng làm dự án tương tự cho ngành này chưa?')
-                    }
-                    className="w-full text-left p-2 rounded-lg bg-slate-50 hover:bg-emerald-50 text-[11px] text-slate-700 font-mono border border-slate-200 hover:border-brand-200 transition-colors truncate block"
-                  >
-                    "Chúng ta đã từng làm dự án tương tự cho ngành này chưa?"
-                  </button>
-                  <button
-                    onClick={() =>
-                      setChatInput('Có proposal nào sử dụng architecture tương tự không?')
-                    }
-                    className="w-full text-left p-2 rounded-lg bg-slate-50 hover:bg-emerald-50 text-[11px] text-slate-700 font-mono border border-slate-200 hover:border-brand-200 transition-colors truncate block"
-                  >
-                    "Có proposal nào sử dụng architecture tương tự không?"
-                  </button>
-                </div>
-
-                {/* Chat Scroll Container */}
-                <div className="space-y-3.5 overflow-y-auto max-h-[420px] pr-1 pt-2">
-                  {chatHistory.map((msg, idx) => (
-                    <div
-                      key={idx}
-                      className={`space-y-1.5 ${
-                        msg.sender === 'user' ? 'text-right' : 'text-left'
-                      }`}
-                    >
-                      <div
-                        className={`inline-block p-3 rounded-2xl text-xs font-mono leading-relaxed max-w-[92%] ${
-                          msg.sender === 'user'
-                            ? 'bg-slate-900 text-white rounded-br-none'
-                            : 'bg-slate-50 text-slate-800 border border-slate-200 rounded-bl-none text-left'
-                        }`}
-                      >
-                        <div className="whitespace-pre-line">{msg.text}</div>
-
-                        {/* Source Citations */}
-                        {msg.citations && (
-                          <div className="mt-2.5 pt-2 border-t border-slate-200 space-y-1">
-                            <span className="text-[10px] font-bold text-brand-700 block uppercase">
-                              Source Citations:
-                            </span>
-                            {msg.citations.map((cite, i) => (
-                              <div
-                                key={i}
-                                className="text-[10px] text-slate-600 bg-white p-1 rounded border border-slate-200 font-mono flex items-center gap-1"
-                              >
-                                <FileText className="w-3 h-3 text-brand-600 shrink-0" />
-                                <span className="truncate">{cite}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+              <textarea
+                className="min-h-[100px] w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                placeholder={tab === 'generate' ? 'RFP text (max 20,000). Retrieval topK is fixed at 3.' : 'Query / question (max 20,000). Needs embeddings; ask/generate also need the AI service on :8000.'}
+                value={queryText}
+                onChange={(e) => setQueryText(e.target.value)}
+              />
+              <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="domain (optional)" value={ragDomain} onChange={(e) => setRagDomain(e.target.value)} maxLength={100} />
+                <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder={tab === 'ask' ? 'topK 1–10' : 'topK 1–20'} value={topK} onChange={(e) => setTopK(e.target.value)} disabled={tab === 'generate'} />
+                <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="maxTokens 1–8000" value={maxTokens} onChange={(e) => setMaxTokens(e.target.value)} disabled={tab !== 'generate'} />
               </div>
+              <button
+                onClick={() => void (tab === 'search' ? runSearch() : tab === 'ask' ? runAsk() : runGenerate())}
+                disabled={isWorking || !queryText.trim()}
+                className="mt-2 rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
+              >
+                {tab === 'search' ? 'Search chunks' : tab === 'ask' ? 'Ask' : 'Generate overview'}
+              </button>
 
-              {/* Chat Input Bar */}
-              <form onSubmit={handleSendChat} className="pt-4 border-t border-slate-100 flex gap-2">
-                <input
-                  type="text"
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
-                  placeholder="Hỏi AI về hồ sơ năng lực, ratecard, proposal cũ..."
-                  className="flex-1 px-3.5 py-2.5 rounded-xl text-xs font-mono bg-slate-50 border border-slate-200 focus:outline-none focus:border-brand-500 focus:bg-white text-slate-900"
-                />
-                <button
-                  type="submit"
-                  className="px-4 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-bold shadow-xs transition-all"
-                >
-                  <Send className="w-3.5 h-3.5" />
-                </button>
-              </form>
+              {chunks.length > 0 && (
+                <ul className="mt-3 space-y-2 text-sm">
+                  {chunks.map((chunk) => (
+                    <li key={chunk.id} className="rounded-lg border border-slate-100 px-3 py-2">
+                      <div className="text-[10px] font-mono text-slate-400">
+                        {(typeof chunk.metadata.title === 'string' ? chunk.metadata.title : chunk.docId)} · score {chunk.combinedScore ?? '—'} · semantic {chunk.semanticRank ?? '—'} · fts {chunk.ftsRank ?? '—'} · window {chunk.chunkIndex}
+                      </div>
+                      <p className="mt-1 whitespace-pre-wrap text-slate-700">{chunk.chunkContent.slice(0, 400)}</p>
+                    </li>
+                  ))}
+                </ul>
+              )}
 
+              {askResult && (
+                <div className="mt-3 rounded-xl border border-slate-100 bg-slate-50 p-3 text-sm">
+                  <p className="whitespace-pre-wrap text-slate-800">{askResult.answer}</p>
+                  <ul className="mt-2 space-y-1 text-xs text-slate-500">
+                    {askResult.citations.map((citation) => (
+                      <li key={citation.id}>
+                        {citation.label} {citation.title} · score {citation.score ?? '—'} — {citation.excerpt.slice(0, 160)}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {overview && (
+                <div className="mt-3 rounded-xl border border-slate-100 bg-slate-50 p-3 text-sm">
+                  <p className="whitespace-pre-wrap text-slate-800">{overview.overview}</p>
+                  <div className="mt-2 text-[10px] font-mono font-bold uppercase text-slate-400">Sources ({overview.sources.length})</div>
+                  <ul className="mt-1 space-y-1 text-xs text-slate-500">
+                    {overview.sources.map((source) => (
+                      <li key={source.id}>{(typeof source.metadata.title === 'string' ? source.metadata.title : source.docId)} — {source.chunkContent.slice(0, 120)}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
-
           </div>
-
         </div>
-
       </div>
-
     </div>
   );
 };

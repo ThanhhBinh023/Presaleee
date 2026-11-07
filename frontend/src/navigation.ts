@@ -11,6 +11,8 @@ export type RouteName =
   | 'rate-cards'
   | 'meetings'
   | 'proposals'
+  | 'portal'
+  | 'client-portal'
   | 'ai-workspace'
   | 'vault';
 

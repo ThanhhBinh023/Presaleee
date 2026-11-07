@@ -12,14 +12,11 @@ if (!env.databaseUrl) {
 if (!env.jwtAccessSecret || Buffer.byteLength(env.jwtAccessSecret, 'utf8') < 32) {
   throw new Error('JWT_ACCESS_SECRET must be configured with at least 32 bytes.');
 }
-if (env.authCookieSameSite === 'none' && !env.authCookieSecure) {
-  throw new Error('AUTH_COOKIE_SECURE must be true when AUTH_COOKIE_SAME_SITE is none.');
-}
 
 const app = express();
 
 app.use(cors({ origin: env.frontendUrl, credentials: true }));
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json());
 
 // System healthcheck endpoint
 app.get('/health', (_req: Request, res: Response) => {
@@ -38,21 +35,17 @@ if (env.nodeEnv !== 'production') {
 }
 
 // Presentation API routes
-app.use('/api/v1', createApiRouter(
-  container.ragController,
-  container.proposalController,
-  container.leadIntakeController,
-  container.authController,
-  container.dashboardController,
-  container.knowledgeController,
-  container.meetingController,
-  container.portalController,
-  container.portalRepository,
-  container.clientController,
-  container.rateCardController,
-  container.userController,
-  container.auditController
-));
+app.use(
+  '/api/v1',
+  createApiRouter(
+    container.ragController,
+    container.proposalController,
+    container.leadIntakeController,
+    container.meetingController,
+    container.authController,
+    container.userController
+  )
+);
 
 
 // Centralized error handling middleware
@@ -60,11 +53,10 @@ app.use(errorHandler);
 
 const server = app.listen(env.port, () => {
   console.log(`🚀 Presaleee Backend is running on port ${env.port}`);
+  console.log(`🔐 Auth Endpoints available at: http://localhost:${env.port}/api/v1/auth`);
   console.log(`📡 RAG Endpoints available at: http://localhost:${env.port}/api/v1/rag`);
   console.log(`📋 Proposal Endpoints available at: http://localhost:${env.port}/api/v1/proposals`);
-  if (env.nodeEnv !== 'production') {
-    console.log(`📖 API documentation at: http://localhost:${env.port}/docs`);
-  }
+  console.log(`🤝 Discovery Meeting Endpoints at: http://localhost:${env.port}/api/v1/meetings`);
 });
 
 export { app, server };

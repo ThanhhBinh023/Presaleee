@@ -24,6 +24,7 @@ import { MeetingsWorkspace } from './components/MeetingsWorkspace';
 import { ProposalsStudio } from './components/ProposalsStudio';
 import { RequireAuth } from './components/common/RequireAuth';
 import { AuthProvider, useAuth } from './hooks/useAuth';
+import { ToastProvider } from './components/common/Toast';
 
 type Page =
   | 'home'
@@ -141,6 +142,7 @@ const AppShell: React.FC = () => {
           onNavigateOverview={navigateToOverview}
           onNavigateAIWorkspace={navigateToAIWorkspace}
           onLogout={handleLogout}
+          onNavigateVault={navigateToVault}
         />
       </RequireAuth>
     );
@@ -198,12 +200,8 @@ const AppShell: React.FC = () => {
     );
   }
 
-  if (currentPage === 'audit') {
-    return (
-      <RequireAuth>
-        <AuditLog onBackToOverview={navigateToOverview} />
-      </RequireAuth>
-    );
+  if (currentPage === 'signin') {
+    return <SignIn onBackToHome={navigateToHome} onLoginSuccess={navigateToOverview} />;
   }
 
   if (currentPage === 'members') {
@@ -261,7 +259,9 @@ const AppShell: React.FC = () => {
 
 export const App: React.FC = () => (
   <AuthProvider>
-    <AppShell />
+    <ToastProvider>
+      <AppShell />
+    </ToastProvider>
   </AuthProvider>
 );
 

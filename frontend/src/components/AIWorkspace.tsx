@@ -1,26 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import type { LeadItem } from '../services/leadService';
+import { fetchLeads } from '../services/leadService';
 import { 
   LayoutGrid, 
   FileText, 
   Sparkles, 
   BookOpen, 
-  CreditCard, 
   Search, 
   Bell, 
-  Plus, 
   History, 
   Send, 
   CheckCircle2, 
-  Clock, 
   ShieldCheck, 
   Zap, 
-  Paperclip, 
-  Check, 
-  Layers, 
+  LogOut, 
   Settings, 
   Cpu, 
-  Bot, 
-  GitBranch, 
   ArrowRight,
   Eye,
   Copy,
@@ -28,11 +23,9 @@ import {
   HelpCircle
 } from 'lucide-react';
 import { ClientPortalModal } from './ClientPortalModal';
-import { WorkspacePill } from './workspace/WorkspacePill';
-import { UserCard } from './workspace/UserCard';
-import { useMemberDirectory } from '../hooks/useMemberDirectory';
-import { navigateTo } from '../navigation';
-import { initialsOf } from '../utils/format';
+import { DiscoveryMeetingsTab } from './DiscoveryMeetingsTab';
+import { ProposalStudioTab } from './ProposalStudioTab';
+import { useToast } from './common/Toast';
 
 interface AIWorkspaceProps {
   onNavigateOverview: () => void;
@@ -47,13 +40,32 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
   onNavigateRfps,
   onNavigateVault
 }) => {
-  const [activeTab, setActiveTab] = useState<'Rich Text' | 'Markdown' | 'Diff View'>('Rich Text');
+  const toast = useToast();
+  // Multi-project support (Requirement 3)
+  const [projects, setProjects] = useState<LeadItem[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
+
+  useEffect(() => {
+    async function loadProjects() {
+      try {
+        const list = await fetchLeads();
+        setProjects(list);
+        const savedLeadId = localStorage.getItem('presaleee_active_lead_id');
+        if (savedLeadId && list.some(p => p.id === savedLeadId)) {
+          setSelectedProjectId(savedLeadId);
+        } else if (list.length > 0) {
+          setSelectedProjectId(list[0].id);
+        }
+      } catch (err) {
+        console.error('Failed to load projects:', err);
+      }
+    }
+    loadProjects();
+  }, []);
+
+  const selectedProject = projects.find(p => p.id === selectedProjectId) || projects[0] || null;
+
   const [activeSubnav, setActiveSubnav] = useState('Proposal Builder v2.4');
-  const [suggestionInserted, setSuggestionInserted] = useState(false);
-  const [suggestionDismissed, setSuggestionDismissed] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [attached1, setAttached1] = useState(false);
-  const [attached2, setAttached2] = useState(false);
 
   const {
     members: workspaceMembers,
@@ -67,15 +79,11 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
   // Client Portal preview modal
   const [portalModalOpen, setPortalModalOpen] = useState(false);
 
-  // Discovery Meeting state (PDF Page 2: Open -> Locked -> Inspect -> Reopen)
-  const [meetingLifecycle, setMeetingLifecycle] = useState<'Locked' | 'Inspected' | 'Open'>('Inspected');
-  const [selectedMeeting, setSelectedMeeting] = useState(2);
 
   // Email copy state
   const [emailCopied, setEmailCopied] = useState(false);
 
   // UI Design Brief generated
-  const [briefGenerated, setBriefGenerated] = useState(false);
 
   return (
     <div className="min-h-screen bg-[#f8fafc] flex text-slate-900 font-sans">
@@ -286,7 +294,7 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                 </button>
 
                 <button 
-                  onClick={() => alert('Proposal submitted for Internal Review (Draft -> In Review)')}
+                  onClick={() => toast.info('Proposal submitted for Internal Review (Draft -> In Review)', 'Trình duyệt Proposal')}
                   className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold shadow-sm transition-all"
                 >
                   <Send className="w-3.5 h-3.5" />
@@ -304,15 +312,15 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
 
               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 text-brand-700 border border-brand-200">
                 <span className="w-1.5 h-1.5 rounded-full bg-brand-500"></span>
-                Qualification Score: <strong>94/100</strong>
+                Qualification Score: <strong>{selectedProject?.extracted_metadata?.qualification?.qualification_score || 88}/100</strong>
               </span>
 
               <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                Est. Value: <strong>$1,200,000 ARR</strong>
+                Est. Value: <strong>{selectedProject?.extracted_metadata?.budgetUsd ? `$${selectedProject.extracted_metadata.budgetUsd.toLocaleString()} USD` : '$150,000 USD'}</strong>
               </span>
 
               <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                Target Timeline: <strong>Q3 2025 Go-Live</strong>
+                Target Timeline: <strong>{selectedProject?.extracted_metadata?.timelineWeeks ? `${selectedProject.extracted_metadata.timelineWeeks} Weeks` : '20 Weeks'}</strong>
               </span>
             </div>
 
@@ -320,10 +328,10 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 pt-1">
               <div>
                 <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-                  Project Apollo — FinTech Core Modernization
+                  {selectedProject?.title || 'Dự án AI Presale Workspace'}
                 </h1>
                 <p className="mt-1 text-xs sm:text-sm text-slate-500 max-w-3xl leading-relaxed">
-                  High-throughput distributed ledger migration, zero-downtime event streaming pipeline, and sovereign compliance envelope for 4.2M retail deposit accounts.
+                  {selectedProject?.raw_rfp_content || selectedProject?.extracted_metadata?.businessGoal || 'Chọn hoặc nhập yêu cầu RFP tại khối AI Intake để phân tích dự án.'}
                 </p>
               </div>
 
@@ -399,11 +407,11 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                       Lead Intake Extract &amp; Qualification Assessment
                     </h2>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      Dữ liệu từ AI Intake và kết quả chạy Qualification Engine cho Project Apollo.
+                      Dữ liệu từ AI Intake và kết quả chạy Qualification Engine cho {selectedProject?.title || 'dự án'}.
                     </p>
                   </div>
                   <span className="px-3 py-1 rounded-full text-xs font-mono font-bold bg-emerald-50 text-brand-700 border border-brand-200">
-                    Lead Status: Approved
+                    Lead Status: {selectedProject?.status || 'Approved'}
                   </span>
                 </div>
 
@@ -413,18 +421,34 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                     <h3 className="text-sm font-bold text-slate-900 font-mono">
                       Raw Client Intake Extract
                     </h3>
-                    <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 font-mono text-xs text-slate-700 leading-relaxed italic">
-                      "We need to migrate our legacy payment ledger to an event-driven architecture running on Kubernetes with sub-50ms transaction finality and SOC2 compliance."
+                    <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 font-mono text-xs text-slate-700 leading-relaxed italic max-h-48 overflow-y-auto whitespace-pre-wrap">
+                      "{selectedProject?.raw_rfp_content || 'We need to migrate our legacy payment ledger to an event-driven architecture running on Kubernetes with sub-50ms transaction finality and SOC2 compliance.'}"
                     </div>
 
                     <div className="grid grid-cols-2 gap-3 text-xs font-mono">
                       <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                        <span className="text-slate-400 text-[10px] block">CLIENT TIER</span>
-                        <span className="font-bold text-slate-800">Enterprise Core</span>
+                        <span className="text-slate-400 text-[10px] block">CLIENT TIER / DOMAIN</span>
+                        <span className="font-bold text-slate-800">
+                          {selectedProject?.extracted_metadata?.clientIndustry || 'Enterprise Core'}
+                        </span>
                       </div>
                       <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
                         <span className="text-slate-400 text-[10px] block">EST. VALUE</span>
-                        <span className="font-bold text-brand-700">$1.2M ARR</span>
+                        <span className="font-bold text-brand-700">
+                          ${(selectedProject?.extracted_metadata?.budgetUsd || 1200000).toLocaleString()} ARR
+                        </span>
+                      </div>
+                      <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                        <span className="text-slate-400 text-[10px] block">TARGET SLA</span>
+                        <span className="font-bold text-slate-800">
+                          {selectedProject?.extracted_metadata?.target_sla || '< 50ms Latency'}
+                        </span>
+                      </div>
+                      <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                        <span className="text-slate-400 text-[10px] block">PEAK WORKLOAD</span>
+                        <span className="font-bold text-brand-700">
+                          {selectedProject?.extracted_metadata?.peak_workload || '40,000+ TPS'}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -436,17 +460,22 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                     </h3>
                     <div className="p-4 rounded-2xl bg-emerald-50/70 border border-brand-200 space-y-2.5">
                       <div className="flex justify-between items-center text-xs font-mono">
-                        <span className="font-bold text-brand-900">Score: 94 / 100</span>
-                        <span className="text-brand-700">Readiness: High</span>
+                        <span className="font-bold text-brand-900">
+                          Score: {selectedProject?.extracted_metadata?.qualification?.qualification_score || 94} / 100
+                        </span>
+                        <span className="text-brand-700">
+                          {selectedProject?.extracted_metadata?.qualification?.readiness_level || 'Readiness: High'}
+                        </span>
                       </div>
                       <p className="text-xs text-slate-700 leading-relaxed">
-                        Đội ngũ đã phê duyệt tiếp nhận (Approve). Rủi ro chính là thống nhất lộ trình kiểm thử Dual-Write trong 6 tháng đầu.
+                        {selectedProject?.extracted_metadata?.qualification?.project_brief ||
+                          'Đội ngũ đã phê duyệt tiếp nhận (Approve). Rủi ro chính là thống nhất lộ trình kiểm thử Dual-Write trong 6 tháng đầu.'}
                       </p>
                     </div>
 
                     <button
                       onClick={() => setActiveSubnav('Discovery Meetings')}
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs"
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs cursor-pointer"
                     >
                       <span>Proceed to Discovery Meetings</span>
                       <ArrowRight className="w-3.5 h-3.5" />
@@ -459,147 +488,9 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
 
           {/* TAB 2: DISCOVERY MEETINGS (PDF Page 2) */}
           {activeSubnav === 'Discovery Meetings' && (
-            <div className="space-y-6">
-              <div className="bg-white rounded-3xl border border-slate-200 shadow-card p-6 space-y-6">
-                
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
-                  <div>
-                    <h2 className="text-xl font-bold text-slate-900">
-                      Discovery Meeting Management
-                    </h2>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Lifecycle: Open → Locked → Inspect → Reopen. AI sử dụng toàn bộ lịch sử để các buổi tiếp theo đi sâu hơn.
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold shadow-xs">
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>New Discovery Meeting</span>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                  
-                  {/* Left: Meeting list */}
-                  <div className="lg:col-span-4 space-y-3">
-                    <div className="text-[11px] font-mono font-bold text-slate-400 uppercase">
-                      LỊCH SỬ CÁC BUỔI DISCOVERY:
-                    </div>
-
-                    {[
-                      { id: 1, title: 'Meeting #1: Initial Business Scope', date: 'Sept 14', status: 'Locked' },
-                      { id: 2, title: 'Meeting #2: Cloud Architecture & Compliance', date: 'Sept 19', status: 'Inspected' },
-                      { id: 3, title: 'Meeting #3: Migration Risk & Dual-Write', date: 'Sept 24', status: 'Inspected' },
-                    ].map((m) => (
-                      <div
-                        key={m.id}
-                        onClick={() => setSelectedMeeting(m.id)}
-                        className={`p-3.5 rounded-2xl border cursor-pointer transition-all ${
-                          selectedMeeting === m.id
-                            ? 'bg-emerald-50/70 border-brand-300 shadow-xs'
-                            : 'bg-slate-50/70 border-slate-200 hover:bg-slate-50'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between text-xs font-bold text-slate-900 font-mono mb-1">
-                          <span>{m.title}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-[11px] font-mono text-slate-500">
-                          <span>{m.date}</span>
-                          <span className="px-2 py-0.2 rounded bg-white border border-slate-200 text-brand-700 font-semibold">
-                            {m.status}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Right: Selected Meeting Deep Dive & AI Inspect */}
-                  <div className="lg:col-span-8 p-5 rounded-2xl bg-slate-50/80 border border-slate-200 space-y-5">
-                    
-                    <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-                      <div>
-                        <h3 className="text-sm font-bold text-slate-900 font-mono">
-                          Meeting #{selectedMeeting} // Transcript &amp; Audio Inspect
-                        </h3>
-                        <span className="text-[11px] font-mono text-slate-500">
-                          Recorded 48m 12s • CTO &amp; Lead Systems Architect
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <span className="px-2.5 py-1 rounded-full text-xs font-mono font-bold bg-emerald-100 text-brand-800">
-                          Lifecycle: {meetingLifecycle}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Audio Transcript Snippet */}
-                    <div className="p-4 rounded-xl bg-white border border-slate-200 space-y-2">
-                      <div className="text-[11px] font-mono font-bold text-brand-700">
-                        CTO [Prospect]:
-                      </div>
-                      <p className="text-xs sm:text-sm font-mono text-slate-700 italic">
-                        "Our primary hurdle is zero-downtime database replication during peak retail traffic. Existing database must stay live during phase 1 dual-write validation."
-                      </p>
-                    </div>
-
-                    {/* AI Inspected Output: Suggested Follow-up Questions & Discussion Topics */}
-                    <div className="space-y-3">
-                      <div className="text-xs font-bold text-brand-700 font-mono flex items-center gap-1.5">
-                        <Sparkles className="w-4 h-4 text-brand-600" />
-                        <span>AI INSPECT: SUGGESTED FOLLOW-UP QUESTIONS (DỰA TRÊN LỊCH SỬ DISCOVERY)</span>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-mono">
-                        <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
-                          <span className="font-bold text-slate-800 block">Q1. CDC Replication Strategy:</span>
-                          <span className="text-slate-600">
-                            Cần xác định băng thông dedicated VPC peering cho cụm Debezium CDC để tránh nghẽn mạch giờ cao điểm.
-                          </span>
-                        </div>
-
-                        <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
-                          <span className="font-bold text-slate-800 block">Q2. InfoSec Tenancy Mandate:</span>
-                          <span className="text-slate-600">
-                            Hỏi thêm Security VP về yêu cầu phân vùng tenancy cô lập hoàn toàn hay chấp nhận logic namespace isolation.
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Meeting Lifecycle Controls */}
-                    <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-xs">
-                      <span className="text-slate-500 font-mono">Lifecycle Actions:</span>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => setMeetingLifecycle('Open')}
-                          className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 font-mono text-slate-700"
-                        >
-                          Reopen Meeting
-                        </button>
-                        <button
-                          onClick={() => {
-                            setMeetingLifecycle('Inspected');
-                            alert('AI re-inspected discovery context and updated discussion topics');
-                          }}
-                          className="px-3 py-1.5 rounded-lg bg-brand-500 hover:bg-brand-600 text-white font-mono font-semibold"
-                        >
-                          Re-run AI Inspect
-                        </button>
-                      </div>
-                    </div>
-
-                  </div>
-
-                </div>
-
-              </div>
-            </div>
+            <DiscoveryMeetingsTab />
           )}
 
-          {/* TAB 3: TECHNICAL SESSIONS (PDF Page 3) */}
           {activeSubnav === 'Technical Sessions' && (
             <div className="space-y-6">
               <div className="bg-white rounded-3xl border border-slate-200 shadow-card p-6 space-y-6">
@@ -617,7 +508,7 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                   <button
                     onClick={() => {
                       setActiveSubnav('Proposal Builder v2.4');
-                      alert('Technical Summary synced directly to Proposal Builder!');
+                      toast.success('Technical Summary synced directly to Proposal Builder!', 'Đồng bộ Discovery');
                     }}
                     className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold shadow-xs"
                   >
@@ -701,555 +592,12 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
             </div>
           )}
 
-          {/* TAB 4: PROPOSAL BUILDER V2.4 (The 3-Column Studio + AI UI Design Brief) */}
+          {/* TAB 4: PROPOSAL BUILDER V2.4 (Real Database & AI Synthesis) */}
           {activeSubnav === 'Proposal Builder v2.4' && (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-              
-              {/* COLUMN A (3 cols): Document Outline & Session Stats */}
-              <div className="lg:col-span-3 space-y-5">
-                
-                {/* Document Outline Card */}
-                <div className="bg-white rounded-2xl border border-slate-200/90 shadow-card p-4">
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
-                    <div className="flex items-center gap-2">
-                      <Layers className="w-4 h-4 text-brand-600" />
-                      <h3 className="text-xs font-bold text-slate-900 font-mono uppercase">
-                        Document Outline
-                      </h3>
-                    </div>
-                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-50 text-brand-700 border border-brand-200">
-                      85% Ready
-                    </span>
-                  </div>
-
-                  <div className="space-y-1.5 text-xs">
-                    
-                    {/* Item 1 */}
-                    <div className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-50 text-slate-700">
-                      <div className="flex items-center gap-2">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-brand-600" />
-                        <span>1. Executive Summary</span>
-                      </div>
-                      <span className="text-[10px] font-mono text-slate-400">3m</span>
-                    </div>
-
-                    {/* Item 2 (Active section) */}
-                    <div className="p-2 rounded-xl bg-slate-50 border border-slate-200">
-                      <div className="flex items-center justify-between text-slate-900 font-semibold mb-1.5">
-                        <div className="flex items-center gap-2">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-brand-600" />
-                          <span>2. Architecture &amp; Tech Mesh</span>
-                        </div>
-                        <span className="w-1.5 h-1.5 rounded-full bg-brand-500"></span>
-                      </div>
-
-                      <div className="pl-5 space-y-1 text-[11px] font-mono">
-                        <div className="text-slate-500 hover:text-slate-800 cursor-pointer py-0.5">
-                          2.1 Legacy Decoupling
-                        </div>
-                        <div className="text-slate-500 hover:text-slate-800 cursor-pointer py-0.5">
-                          2.2 Event Streaming Pipeline
-                        </div>
-                        <div className="text-brand-700 font-bold bg-emerald-100/70 px-1.5 py-0.5 rounded border border-brand-200">
-                          2.4 High-Availability Mesh
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Item 3 */}
-                    <div className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-50 text-slate-700">
-                      <div className="flex items-center gap-2">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-brand-600" />
-                        <span>3. Implementation Scope</span>
-                      </div>
-                      <span className="text-[10px] font-mono text-slate-400">12p</span>
-                    </div>
-
-                    {/* Item 4 */}
-                    <div className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-50 text-slate-700">
-                      <div className="flex items-center gap-2">
-                        <Clock className="w-3.5 h-3.5 text-slate-400" />
-                        <span>4. Effort &amp; Timeline</span>
-                      </div>
-                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-emerald-50 text-brand-700 font-semibold">
-                        AI Drafted
-                      </span>
-                    </div>
-
-                    {/* Item 5 */}
-                    <div className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-50 text-slate-700">
-                      <div className="flex items-center gap-2">
-                        <CreditCard className="w-3.5 h-3.5 text-slate-400" />
-                        <span>5. Commercial &amp; Ratecard</span>
-                      </div>
-                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-emerald-50 text-brand-700 font-semibold">
-                        AI Drafted
-                      </span>
-                    </div>
-
-                    {/* Item 6 */}
-                    <div className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-50 text-slate-700">
-                      <div className="flex items-center gap-2">
-                        <Cpu className="w-3.5 h-3.5 text-slate-400" />
-                        <span>6. Interactive Prototype</span>
-                      </div>
-                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-100 text-slate-600">
-                        Live Sandbox
-                      </span>
-                    </div>
-
-                  </div>
-
-                  {/* Add SOW Clause Button */}
-                  <button className="mt-4 w-full py-2 rounded-xl border border-dashed border-slate-300 hover:border-brand-400 text-xs font-semibold text-slate-600 hover:text-brand-600 flex items-center justify-center gap-1.5 transition-colors">
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Add SOW Clause</span>
-                  </button>
-
-                </div>
-
-                {/* AI UI Design Brief Card (PDF Page 5) */}
-                <div className="bg-white rounded-2xl border border-brand-200 shadow-card p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-mono font-bold tracking-wider text-brand-700 uppercase flex items-center gap-1">
-                      <Sparkles className="w-3 h-3 text-brand-600" />
-                      AI UI DESIGN BRIEF
-                    </span>
-                    <span className="text-[10px] font-mono bg-emerald-100 text-brand-800 px-1.5 py-0.2 rounded">
-                      PDF Page 5
-                    </span>
-                  </div>
-
-                  <p className="text-[11px] text-slate-600 leading-relaxed">
-                    Tạo brief mô tả UI/UX dựa trên context dự án, đưa sang design tool để tạo prototype attach vào Proposal.
-                  </p>
-
-                  <button
-                    onClick={() => {
-                      setBriefGenerated(true);
-                      alert('AI UI Design Brief Generated & attached to Proposal Prototype Section!');
-                    }}
-                    className="w-full py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-brand-700 border border-brand-200 text-xs font-mono font-semibold flex items-center justify-center gap-1.5 transition-colors"
-                  >
-                    <Zap className="w-3 h-3 text-brand-600" />
-                    <span>{briefGenerated ? 'UI Brief Generated ✓' : 'Generate UI Design Brief'}</span>
-                  </button>
-                </div>
-
-                {/* Active Session Stats Card */}
-                <div className="bg-white rounded-2xl border border-slate-200/90 shadow-card p-4 space-y-3">
-                  <div className="text-[10px] font-mono font-bold tracking-wider text-slate-400 uppercase">
-                    ACTIVE SESSION STATS
-                  </div>
-
-                  <div className="space-y-2 text-xs font-mono">
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Last Saved:</span>
-                      <span className="font-semibold text-slate-800">2 min ago (Sync OK)</span>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Target Read Time:</span>
-                      <span className="font-semibold text-slate-800">18 mins</span>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-400">Client Access:</span>
-                      <span className="font-semibold text-brand-700">Protected NDA Token</span>
-                    </div>
-                  </div>
-                </div>
-
-              </div>
-
-              {/* COLUMN B (6 cols): Document Editor Canvas */}
-              <div className="lg:col-span-6 space-y-5">
-                
-                <div className="bg-white rounded-2xl border border-slate-200/90 shadow-card p-6 sm:p-7 space-y-6">
-                  
-                  {/* Editor Header: Section Pill & View Toggles */}
-                  <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-100">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700">
-                        Section 2.4
-                      </span>
-                      <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-emerald-50 text-brand-700 border border-brand-200">
-                        Drafting v2.4
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg text-xs font-mono">
-                      {(['Rich Text', 'Markdown', 'Diff View'] as const).map((mode) => (
-                        <button
-                          key={mode}
-                          onClick={() => setActiveTab(mode)}
-                          className={`px-2.5 py-1 rounded-md transition-all ${
-                            activeTab === mode
-                              ? 'bg-white text-slate-900 font-bold shadow-xs'
-                              : 'text-slate-500 hover:text-slate-800'
-                          }`}
-                        >
-                          {mode}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Section Content */}
-                  <div className="space-y-4">
-                    <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
-                      Solution Architecture &amp; High-Availability Event Mesh
-                    </h2>
-
-                    <p className="text-xs sm:text-sm text-slate-700 leading-relaxed">
-                      The target runtime topology decouples core transaction ledger from legacy synchronous REST gateways. By establishing an <span className="font-mono px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 font-semibold text-brand-700">Apache Kafka</span> event spine backed by high-throughput clustering, ledger updates maintain an uncompromising sub-second settlement cadence while eliminating hard lockups across batch reconciliation intervals.
-                    </p>
-
-                    <h3 className="text-base font-bold text-slate-900 pt-2 font-mono">
-                      2.4.1 Zero-Trust Ledger Replication Strategy
-                    </h3>
-
-                    <p className="text-xs sm:text-sm text-slate-700 leading-relaxed">
-                      All transactional payloads pass through hardware-accelerated payload signing modules. Synchronous ingress traffic triggers distributed consensus validations before persisting state entries to regional Aurora PostgreSQL active-active clusters.
-                    </p>
-
-                    {/* Inserted Copilot Suggestion Clause if active */}
-                    {suggestionInserted && (
-                      <div className="p-3.5 rounded-xl bg-emerald-50 border border-brand-300 font-mono text-xs text-brand-900 leading-relaxed shadow-xs">
-                        <div className="text-[10px] font-bold text-brand-700 uppercase mb-1 flex items-center gap-1.5">
-                          <Sparkles className="w-3 h-3 text-brand-600" />
-                          INSERTED: TIER-4 MISSION-CRITICAL CLAUSE
-                        </div>
-                        "Provider commits to a 99.999% SLA availability threshold for distributed event clustering. In the event of failover exceeding 5.0 seconds, financial remediation clauses apply subject to Section 8.2 terms."
-                      </div>
-                    )}
-
-                    {/* Verified Decisions Callout */}
-                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-xs font-mono font-bold text-brand-700">
-                          <CheckCircle2 className="w-4 h-4 text-brand-600" />
-                          <span>VERIFIED TECHNICAL DECISIONS FROM DISCOVERY #2</span>
-                        </div>
-                        <span className="text-[10px] font-mono text-slate-400">Ref: TECH-DISC-094</span>
-                      </div>
-
-                      <div className="space-y-2 text-xs text-slate-700">
-                        <div className="flex items-start gap-2">
-                          <Check className="w-3.5 h-3.5 text-brand-600 shrink-0 mt-0.5" />
-                          <span><strong>Event Mesh Throughput:</strong> p99 latency &lt; 10ms over 48,000 peak TPS using Kafka + tiered Redis cache.</span>
-                        </div>
-
-                        <div className="flex items-start gap-2">
-                          <Check className="w-3.5 h-3.5 text-brand-600 shrink-0 mt-0.5" />
-                          <span><strong>Envelope Security:</strong> TLS 1.3 zero-trust mutual authentication with ephemeral mTLS certificate rotations.</span>
-                        </div>
-
-                        <div className="flex items-start gap-2">
-                          <Check className="w-3.5 h-3.5 text-brand-600 shrink-0 mt-0.5" />
-                          <span><strong>Disaster Recovery RTO/RPO:</strong> Multi-region active-active failover with &lt;3s RTO and mathematical RPO = 0.</span>
-                        </div>
-
-                        <div className="flex items-start gap-2">
-                          <Check className="w-3.5 h-3.5 text-brand-600 shrink-0 mt-0.5" />
-                          <span><strong>Credential Safeguards:</strong> Integrated FIDO2 WebAuthn biometric approval layer on ledger administration triggers.</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Engineering Allocation Matrix Table */}
-                    <div className="pt-2">
-                      <div className="flex items-center justify-between mb-2">
-                        <h4 className="text-xs font-bold font-mono text-slate-800">
-                          Engineering Allocation Matrix
-                        </h4>
-                        <span className="text-[10px] font-mono text-slate-400">
-                          Sprint Sizing Model
-                        </span>
-                      </div>
-
-                      <div className="overflow-x-auto rounded-xl border border-slate-200">
-                        <table className="w-full text-left border-collapse text-xs">
-                          <thead>
-                            <tr className="bg-slate-50 text-[11px] font-mono text-slate-400 border-b border-slate-200">
-                              <th className="py-2 px-3 font-semibold">Workstream</th>
-                              <th className="py-2 px-3 font-semibold">Engineering Hrs</th>
-                              <th className="py-2 px-3 font-semibold">Complexity</th>
-                              <th className="py-2 px-3 font-semibold">Target Sprint</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
-                            <tr>
-                              <td className="py-2.5 px-3 font-medium text-slate-800">Event Mesh Connector (Kafka/Cloud)</td>
-                              <td className="py-2.5 px-3 text-slate-600">180 hrs</td>
-                              <td className="py-2.5 px-3">
-                                <span className="px-1.5 py-0.2 rounded bg-rose-50 text-rose-700 border border-rose-200 font-bold">
-                                  High
-                                </span>
-                              </td>
-                              <td className="py-2.5 px-3 text-slate-600">Sprint 1 - 3</td>
-                            </tr>
-
-                            <tr>
-                              <td className="py-2.5 px-3 font-medium text-slate-800">Multi-Region Aurora Sharding</td>
-                              <td className="py-2.5 px-3 text-slate-600">120 hrs</td>
-                              <td className="py-2.5 px-3">
-                                <span className="px-1.5 py-0.2 rounded bg-emerald-50 text-brand-700 border border-brand-200 font-bold">
-                                  Medium
-                                </span>
-                              </td>
-                              <td className="py-2.5 px-3 text-slate-600">Sprint 2 - 4</td>
-                            </tr>
-
-                            <tr>
-                              <td className="py-2.5 px-3 font-medium text-slate-800">FIDO2 Regulatory Key Vault</td>
-                              <td className="py-2.5 px-3 text-slate-600">60 hrs</td>
-                              <td className="py-2.5 px-3">
-                                <span className="px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 border border-slate-200 font-bold">
-                                  Low
-                                </span>
-                              </td>
-                              <td className="py-2.5 px-3 text-slate-600">Sprint 4</td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-
-                  </div>
-
-                  {/* Bottom Canvas Toolbar */}
-                  <div className="pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <button 
-                        onClick={() => alert('Vault Block inserted')}
-                        className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-mono font-medium text-slate-700 hover:bg-slate-50 transition-colors"
-                      >
-                        Insert Vault Block
-                      </button>
-                      <button 
-                        onClick={() => alert('AI regenerated Section 2.4 based on Discovery context')}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-mono font-medium text-brand-700 bg-emerald-50 hover:bg-emerald-100/70 border-brand-200 transition-colors"
-                      >
-                        <Zap className="w-3 h-3 text-brand-600" />
-                        <span>Regenerate with AI</span>
-                      </button>
-                      <button className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-mono font-medium text-slate-700 hover:bg-slate-50 transition-colors">
-                        Compare v2.3
-                      </button>
-                    </div>
-
-                    <button
-                      onClick={() => setSaved(true)}
-                      className="px-4 py-1.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold shadow-sm transition-all"
-                    >
-                      {saved ? 'Saved ✓' : 'Save Section'}
-                    </button>
-                  </div>
-
-                </div>
-
-              </div>
-
-              {/* COLUMN C (3 cols): Presale AI Copilot, Vault Assets & Buying Committee */}
-              <div className="lg:col-span-3 space-y-5">
-                
-                {/* Card 1: Presale AI Copilot */}
-                <div className="bg-white rounded-2xl border border-slate-200/90 shadow-card p-4 space-y-3.5">
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                    <div className="flex items-center gap-2">
-                      <Bot className="w-4 h-4 text-brand-600" />
-                      <h3 className="text-xs font-bold text-slate-900 font-mono">
-                        Presale AI Copilot
-                      </h3>
-                    </div>
-                    <span className="w-2 h-2 rounded-full bg-brand-500 animate-pulse"></span>
-                  </div>
-
-                  {/* Context badge */}
-                  <div className="text-[11px] font-mono text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-200">
-                    Context: Discovery Synthesis
-                  </div>
-
-                  {/* Quick action prompt chips */}
-                  <div className="space-y-1.5">
-                    <button className="w-full text-left px-2.5 py-1.5 rounded-lg text-[11px] font-mono bg-slate-50 hover:bg-emerald-50 text-slate-700 hover:text-brand-800 border border-slate-200 hover:border-brand-200 transition-all flex items-center gap-1.5">
-                      <Zap className="w-3 h-3 text-brand-500" />
-                      <span>Review SLA penalties</span>
-                    </button>
-
-                    <button className="w-full text-left px-2.5 py-1.5 rounded-lg text-[11px] font-mono bg-slate-50 hover:bg-emerald-50 text-slate-700 hover:text-brand-800 border border-slate-200 hover:border-brand-200 transition-all flex items-center gap-1.5">
-                      <Zap className="w-3 h-3 text-brand-500" />
-                      <span>Check regulatory compliance</span>
-                    </button>
-
-                    <button className="w-full text-left px-2.5 py-1.5 rounded-lg text-[11px] font-mono bg-slate-50 hover:bg-emerald-50 text-slate-700 hover:text-brand-800 border border-slate-200 hover:border-brand-200 transition-all flex items-center gap-1.5">
-                      <Zap className="w-3 h-3 text-brand-500" />
-                      <span>Tighten pricing phrasing</span>
-                    </button>
-                  </div>
-
-                  {/* Copilot Suggestion Box */}
-                  {!suggestionDismissed && (
-                    <div className="p-3 rounded-xl bg-gradient-to-b from-emerald-50/80 to-slate-50 border border-brand-200 space-y-2.5">
-                      <div className="flex items-center justify-between text-[10px] font-mono">
-                        <span className="font-bold text-brand-700 flex items-center gap-1">
-                          <Sparkles className="w-3 h-3" />
-                          Copilot Suggestion
-                        </span>
-                        <span className="text-slate-400">Just now</span>
-                      </div>
-
-                      <p className="text-[11px] text-slate-700 font-mono leading-relaxed">
-                        "In Section 2.4, client requested explicit language for financial penalties if event cluster failover exceeds 5.0 seconds. I recommend embedding our standard <strong>Tier-4 Mission-Critical Clause</strong> to protect delivery margins while providing a 99.999% SLA commitment."
-                      </p>
-
-                      <div className="flex items-center gap-2 pt-1">
-                        <button
-                          onClick={() => setSuggestionInserted(true)}
-                          className="flex-1 py-1 rounded-lg bg-brand-500 hover:bg-brand-600 text-white text-[10px] font-mono font-bold transition-all shadow-xs"
-                        >
-                          {suggestionInserted ? 'Inserted ✓' : 'Insert into Draft'}
-                        </button>
-                        <button
-                          onClick={() => setSuggestionDismissed(true)}
-                          className="px-2 py-1 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-100 text-[10px] font-mono"
-                        >
-                          Dismiss
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Bottom query bar */}
-                  <div className="pt-1">
-                    <div className="relative">
-                      <input
-                        type="text"
-                        placeholder="Ask Copilot about SOW..."
-                        className="w-full pl-3 pr-8 py-1.5 rounded-lg text-xs font-mono bg-slate-50 border border-slate-200 focus:outline-none focus:border-brand-500 focus:bg-white text-slate-800 placeholder:text-slate-400"
-                      />
-                      <button className="absolute right-2 top-1/2 -translate-y-1/2 text-brand-600 hover:text-brand-700">
-                        <ArrowRight className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-
-                </div>
-
-                {/* Card 2: Linked Vault Assets */}
-                <div className="bg-white rounded-2xl border border-slate-200/90 shadow-card p-4 space-y-3">
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                    <div className="flex items-center gap-1.5">
-                      <BookOpen className="w-3.5 h-3.5 text-slate-500" />
-                      <h3 className="text-xs font-bold text-slate-900 font-mono">
-                        Linked Vault Assets
-                      </h3>
-                    </div>
-                    <span className="text-[11px] font-mono text-brand-600">
-                      Auto-Linked
-                    </span>
-                  </div>
-
-                  <div className="space-y-3">
-                    
-                    {/* Asset 1 */}
-                    <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
-                          <GitBranch className="w-3.5 h-3.5 text-brand-600" />
-                          <span className="truncate">Tier-1 FinTech Event Mesh</span>
-                        </div>
-                        <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-emerald-50 text-brand-700 border border-brand-200">
-                          98% Match
-                        </span>
-                      </div>
-                      <div className="text-[10px] font-mono text-slate-400">
-                        Architecture Blueprint • PDF
-                      </div>
-                      <p className="text-[11px] text-slate-600 line-clamp-2">
-                        Pre-audited high-availability reference spec deployed...
-                      </p>
-                      <button
-                        onClick={() => setAttached1(!attached1)}
-                        className="w-full py-1 text-[11px] font-mono font-semibold rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-700 flex items-center justify-center gap-1 transition-colors"
-                      >
-                        <Paperclip className="w-3 h-3 text-slate-400" />
-                        <span>{attached1 ? 'Attached ✓' : 'Attach to Proposal'}</span>
-                      </button>
-                    </div>
-
-                    {/* Asset 2 */}
-                    <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
-                          <ShieldCheck className="w-3.5 h-3.5 text-brand-600" />
-                          <span className="truncate">FinTech SOC-2 Addendum</span>
-                        </div>
-                        <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-emerald-50 text-brand-700 border border-brand-200">
-                          Approved
-                        </span>
-                      </div>
-                      <div className="text-[10px] font-mono text-slate-400">
-                        Legal &amp; Audit Annex • Approved
-                      </div>
-                      <p className="text-[11px] text-slate-600 line-clamp-2">
-                        Standard contractual liability annex covering real-time...
-                      </p>
-                      <button
-                        onClick={() => setAttached2(!attached2)}
-                        className="w-full py-1 text-[11px] font-mono font-semibold rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-700 flex items-center justify-center gap-1 transition-colors"
-                      >
-                        <Paperclip className="w-3 h-3 text-slate-400" />
-                        <span>{attached2 ? 'Attached ✓' : 'Attach to Proposal'}</span>
-                      </button>
-                    </div>
-
-                  </div>
-                </div>
-
-                {/* Card 3: Buying Committee */}
-                <div className="bg-white rounded-2xl border border-slate-200/90 shadow-card p-4 space-y-3">
-                  <div className="text-[10px] font-mono font-bold tracking-wider text-slate-400 uppercase pb-2 border-b border-slate-100">
-                    BUYING COMMITTEE
-                  </div>
-
-                  <div className="space-y-2.5 text-xs">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-700 text-[10px]">
-                          ES
-                        </div>
-                        <div>
-                          <div className="font-bold text-slate-800">Evelyn Shaw</div>
-                          <div className="text-[10px] text-slate-400">Chief Technology Officer</div>
-                        </div>
-                      </div>
-                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-50 text-brand-700 border border-brand-200">
-                        Sponsor
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-700 text-[10px]">
-                          MV
-                        </div>
-                        <div>
-                          <div className="font-bold text-slate-800">Marcus Vance</div>
-                          <div className="text-[10px] text-slate-400">VP of Infrastructure</div>
-                        </div>
-                      </div>
-                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
-                        Reviewer
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-              </div>
-
-            </div>
+            <ProposalStudioTab 
+              leadId={selectedProjectId} 
+              activeProject={selectedProject} 
+            />
           )}
 
           {/* TAB 5: CLIENT INTELLIGENCE (PDF Page 6 & 7) */}

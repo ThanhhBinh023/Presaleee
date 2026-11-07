@@ -17,5 +17,11 @@ export function createLeadIntakeRouter(controller: LeadIntakeController): Router
   // Get single lead
   router.get('/:id', optionalAuth, controller.getLeadById);
 
+  // Update lead
+  router.put('/:id', optionalAuth, controller.updateLead);
+
+  // Delete lead
+  router.delete('/:id', optionalAuth, controller.deleteLead);
+
   return router;
 }

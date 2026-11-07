@@ -5,6 +5,7 @@ import { PostgresMeetingRepository } from './infrastructure/database/repositorie
 import { PostgresAuthRepository } from './infrastructure/database/repositories/PostgresAuthRepository.js';
 import { PostgresUserRepository } from './infrastructure/database/repositories/PostgresUserRepository.js';
 import { PostgresAuditRepository } from './infrastructure/database/repositories/PostgresAuditRepository.js';
+import { PostgresDashboardRepository } from './infrastructure/database/repositories/PostgresDashboardRepository.js';
 
 import { GeminiEmbeddingGateway } from './infrastructure/ai/GeminiEmbeddingGateway.js';
 import { FastAPILMGateway } from './infrastructure/ai/FastAPILMGateway.js';
@@ -291,6 +292,12 @@ export function createContainer(): ServiceContainer {
     new UpdateOwnProfileUseCase(authRepository, userRepository, auditRepository)
   );
   const auditController = new AuditController(new ListAuditLogsUseCase(auditRepository));
+
+  const dashboardController = new DashboardController(
+    getDashboardOverviewUseCase,
+    listDashboardLeadsUseCase,
+    listDashboardActivityUseCase
+  );
 
   return {
     knowledgeRepository,

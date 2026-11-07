@@ -182,12 +182,21 @@ Yêu cầu trả về định dạng JSON thuần túy (không markdown) với c
       const orgId = req.auth?.organizationId || (req.headers['x-organization-id'] as string) || (req.query.organizationId as string);
       const userId = req.auth?.sub;
 
+      if (!orgId && !userId) {
+        // Multi-tenant security: Unauthenticated or unscoped request must NEVER leak leads across organizations
+        res.status(200).json({
+          success: true,
+          data: []
+        });
+        return;
+      }
+
       let query = 'SELECT id, title, source, status, raw_rfp_content, extracted_metadata, organization_id, created_by, created_at FROM leads';
       const params: any[] = [];
       if (orgId) {
         params.push(orgId);
         query += ` WHERE organization_id = $${params.length}`;
-      } else if (userId) {
+      } else {
         params.push(userId);
         query += ` WHERE created_by = $${params.length}`;
       }

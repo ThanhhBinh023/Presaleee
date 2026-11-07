@@ -75,4 +75,62 @@ export async function apiRequestWithMeta<T>(
   return { data: payload.data as T, meta: payload.meta ?? null };
 }
 
+function filenameFromDisposition(header: string | null, fallback: string): string {
+  if (!header) return fallback;
+  const utf = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (utf?.[1]) {
+    try {
+      return decodeURIComponent(utf[1]);
+    } catch {
+      return utf[1];
+    }
+  }
+  const ascii = /filename="?([^";]+)"?/i.exec(header);
+  return ascii?.[1] ?? fallback;
+}
+
+/** Binary downloads (Excel / PDF) are not JSON envelopes. */
+export async function apiDownload(path: string, fallbackName: string, timeoutMs = 30_000): Promise<void> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      method: 'GET',
+      credentials: 'include',
+      signal: controller.signal
+    });
+  } catch {
+    clearTimeout(timer);
+    if (controller.signal.aborted) {
+      throw new ApiError(0, `Download timed out after ${timeoutMs / 1000}s.`);
+    }
+    throw new ApiError(0, `Cannot reach the API at ${API_BASE_URL}.`);
+  }
+  clearTimeout(timer);
+
+  if (!response.ok) {
+    const text = await response.text();
+    let message = `Download failed with status ${response.status}`;
+    try {
+      const payload = JSON.parse(text) as { error?: string };
+      if (payload.error) message = payload.error;
+    } catch {
+      if (text.trim()) message = text.slice(0, 200);
+    }
+    throw new ApiError(response.status, message);
+  }
+
+  const blob = await response.blob();
+  const filename = filenameFromDisposition(response.headers.get('Content-Disposition'), fallbackName);
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 export { API_BASE_URL };

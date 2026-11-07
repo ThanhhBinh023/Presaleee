@@ -38,6 +38,8 @@ interface OverviewProps {
   onNavigateAudit?: () => void;
   onNavigateLeads?: () => void;
   onNavigateRateCards?: () => void;
+  onNavigateMeetings?: () => void;
+  onNavigateProposals?: () => void;
 }
 
 export const Overview: React.FC<OverviewProps> = ({ 
@@ -49,7 +51,9 @@ export const Overview: React.FC<OverviewProps> = ({
   onNavigateClients,
   onNavigateAudit,
   onNavigateLeads,
-  onNavigateRateCards
+  onNavigateRateCards,
+  onNavigateMeetings,
+  onNavigateProposals
 }) => {
   const [activeNav, setActiveNav] = useState('Overview');
   const [recommendationDismissed, setRecommendationDismissed] = useState(false);
@@ -222,6 +226,8 @@ export const Overview: React.FC<OverviewProps> = ({
               { name: 'Overview', icon: LayoutGrid },
               { name: 'RFPs & Specs', icon: FileText },
               { name: 'Leads', icon: Zap },
+              { name: 'Meetings', icon: Calendar },
+              { name: 'Proposals', icon: FileText },
               { name: 'Rate cards', icon: CreditCard },
               { name: 'AI Workspace', icon: Sparkles, badge: 'New' },
               { name: 'Knowledge Vault', icon: BookOpen },
@@ -251,6 +257,10 @@ export const Overview: React.FC<OverviewProps> = ({
                       onNavigateLeads();
                     } else if (item.name === 'Rate cards' && onNavigateRateCards) {
                       onNavigateRateCards();
+                    } else if (item.name === 'Meetings' && onNavigateMeetings) {
+                      onNavigateMeetings();
+                    } else if (item.name === 'Proposals' && onNavigateProposals) {
+                      onNavigateProposals();
                     } else {
                       setActiveNav(item.name);
                     }

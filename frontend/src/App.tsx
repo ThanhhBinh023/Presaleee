@@ -20,6 +20,8 @@ import { ClientsDirectory } from './components/ClientsDirectory';
 import { AuditLog } from './components/AuditLog';
 import { LeadsDirectory } from './components/LeadsDirectory';
 import { RateCardsDirectory } from './components/RateCardsDirectory';
+import { MeetingsWorkspace } from './components/MeetingsWorkspace';
+import { ProposalsStudio } from './components/ProposalsStudio';
 import { RequireAuth } from './components/common/RequireAuth';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { ToastProvider } from './components/common/Toast';
@@ -37,7 +39,9 @@ type Page =
   | 'clients'
   | 'audit'
   | 'leads'
-  | 'rate-cards';
+  | 'rate-cards'
+  | 'meetings'
+  | 'proposals';
 
 function pageFromHash(hash: string): Page {
   const route = hash.split('?')[0];
@@ -53,6 +57,8 @@ function pageFromHash(hash: string): Page {
   if (route === '#audit') return 'audit';
   if (route === '#leads') return 'leads';
   if (route === '#rate-cards') return 'rate-cards';
+  if (route === '#meetings') return 'meetings';
+  if (route === '#proposals') return 'proposals';
   return 'home';
 }
 
@@ -83,6 +89,8 @@ const AppShell: React.FC = () => {
   const navigateToAudit = () => goTo('audit');
   const navigateToLeads = () => goTo('leads');
   const navigateToRateCards = () => goTo('rate-cards');
+  const navigateToMeetings = () => goTo('meetings');
+  const navigateToProposals = () => goTo('proposals');
 
   const handleLogout = async () => {
     try {
@@ -120,6 +128,8 @@ const AppShell: React.FC = () => {
           onNavigateAudit={navigateToAudit}
           onNavigateLeads={navigateToLeads}
           onNavigateRateCards={navigateToRateCards}
+          onNavigateMeetings={navigateToMeetings}
+          onNavigateProposals={navigateToProposals}
         />
       </RequireAuth>
     );
@@ -162,6 +172,22 @@ const AppShell: React.FC = () => {
     return (
       <RequireAuth>
         <RateCardsDirectory onBackToOverview={navigateToOverview} />
+      </RequireAuth>
+    );
+  }
+
+  if (currentPage === 'meetings') {
+    return (
+      <RequireAuth>
+        <MeetingsWorkspace onBackToOverview={navigateToOverview} />
+      </RequireAuth>
+    );
+  }
+
+  if (currentPage === 'proposals') {
+    return (
+      <RequireAuth>
+        <ProposalsStudio onBackToOverview={navigateToOverview} />
       </RequireAuth>
     );
   }

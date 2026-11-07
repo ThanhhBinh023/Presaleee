@@ -11,9 +11,7 @@ import {
   FileText, 
   Sparkles, 
   BookOpen, 
-  CreditCard, 
   Search, 
-  SlidersHorizontal, 
   Plus, 
   ArrowRight, 
   Clock, 
@@ -62,6 +60,7 @@ export const Overview: React.FC<OverviewProps> = ({
   onNavigateProposals,
   onNavigatePortal
 }) => {
+  const { user } = useAuth();
   const [activeNav, setActiveNav] = useState('Overview');
   const [searchTerm, setSearchTerm] = useState('');
   const [leadLimit, setLeadLimit] = useState(8);
@@ -82,7 +81,7 @@ export const Overview: React.FC<OverviewProps> = ({
       <aside className="w-64 bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 hidden md:flex">
         
         <div>
-          {/* Logo & Demo Workspace Pill */}
+          {/* Logo & User Organization Pill */}
           <div className="p-5 border-b border-slate-100">
             <div className="flex items-center gap-2.5 mb-4">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white shadow-sm font-bold font-mono text-base">
@@ -165,7 +164,7 @@ export const Overview: React.FC<OverviewProps> = ({
           </nav>
         </div>
 
-        {/* User Profile & Logout at Bottom of Sidebar */}
+        {/* Real User Profile & Logout at Bottom of Sidebar */}
         <div className="p-3 border-t border-slate-100">
           <UserCard onLogout={onLogout} logoutTitle="Sign out to Home" />
         </div>
@@ -178,7 +177,7 @@ export const Overview: React.FC<OverviewProps> = ({
         {/* Top Header Bar */}
         <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-slate-200 px-6 py-3.5 flex items-center justify-between gap-4">
           
-          {/* Breadcrumb */}
+          {/* Breadcrumb with User Role */}
           <div className="flex items-center gap-2 text-xs font-mono">
             <span className="text-slate-400">Workspace</span>
             <ChevronRight className="w-3.5 h-3.5 text-slate-300" />
@@ -187,29 +186,32 @@ export const Overview: React.FC<OverviewProps> = ({
             </span>
           </div>
 
-          {/* Quick search & actions */}
+          {/* Quick search & user actions */}
           <div className="flex items-center gap-3">
             <div className="relative hidden sm:block w-72">
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                placeholder="Quick search schemas & RFPs..."
-                className="w-full pl-8 pr-12 py-1.5 rounded-lg text-xs font-mono bg-slate-50 border border-slate-200 focus:outline-none focus:border-brand-500 focus:bg-white text-slate-800 placeholder:text-slate-400 transition-all"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Tìm kiếm dự án & RFPs..."
+                className="w-full pl-8 pr-4 py-1.5 rounded-lg text-xs font-mono bg-slate-50 border border-slate-200 focus:outline-none focus:border-brand-500 focus:bg-white text-slate-800 placeholder:text-slate-400 transition-all"
               />
-              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-mono text-slate-400 border border-slate-200 bg-white px-1.5 py-0.5 rounded">
-                ⌘K
-              </span>
             </div>
 
-            <button className="hidden sm:inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-brand-500 hover:bg-brand-600 text-white shadow-sm transition-all">
-              <span>Contact sales</span>
+            <button 
+              onClick={onNavigateRfps}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-brand-500 hover:bg-brand-600 text-white shadow-sm transition-all"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Thêm Yêu Cầu RFP</span>
             </button>
 
             <button 
               onClick={onLogout}
               className="text-xs font-semibold text-slate-600 hover:text-slate-900 border border-slate-200 px-2.5 py-1.5 rounded-lg hover:bg-slate-50 sm:hidden"
             >
-              Sign out
+              Đăng xuất
             </button>
           </div>
 
@@ -230,11 +232,11 @@ export const Overview: React.FC<OverviewProps> = ({
               <div>
                 <div className="flex items-center gap-3 mb-2">
                   <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-                    Workspace Overview
+                    Chào mừng, {user?.fullName || 'Presale Architect'}!
                   </h1>
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono font-bold bg-emerald-50 text-brand-700 border border-brand-200">
                     <span className="w-1.5 h-1.5 rounded-full bg-brand-500 animate-pulse"></span>
-                    TELEMETRY LIVE
+                    USER ACTIVE
                   </span>
                 </div>
                 <p className="text-xs sm:text-sm text-slate-500 max-w-xl">
@@ -302,7 +304,6 @@ export const Overview: React.FC<OverviewProps> = ({
                   Reload
                 </button>
               </div>
-
             </div>
 
           </div>
@@ -342,13 +343,12 @@ export const Overview: React.FC<OverviewProps> = ({
             </div>
           </div>
 
-          {/* Split Content: Left (My Active Leads + 2 KPI Cards) & Right (Asset Hub & Copilot) */}
+          {/* Split Content: Left (Real Active Leads Table) & Right (Copilot & Capabilities) */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
             
-            {/* LEFT COLUMN (8 cols): Active Leads Table & Quality Cards */}
+            {/* LEFT COLUMN (8 cols): Real Active Leads Table */}
             <div className="lg:col-span-8 space-y-6">
               
-              {/* My Active Leads Table Card */}
               <div className="bg-white rounded-3xl border border-slate-200/90 shadow-card overflow-hidden">
                 
                 {/* Table Header Action */}
@@ -442,7 +442,7 @@ export const Overview: React.FC<OverviewProps> = ({
 
             </div>
 
-            {/* RIGHT COLUMN (4 cols): Recent Asset Hub Activity & Copilot Box */}
+            {/* RIGHT COLUMN (4 cols): Copilot Recommendation & Features */}
             <div className="lg:col-span-4 space-y-6">
               
               <div className="bg-white rounded-3xl border border-slate-200/90 shadow-card p-5 sm:p-6">

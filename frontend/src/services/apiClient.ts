@@ -19,6 +19,9 @@ interface RequestOptions {
   body?: unknown;
   /** Override the default 10s timeout. AI intake and BANT scoring routinely exceed it. */
   timeoutMs?: number;
+  /** Opaque client-portal token. Staff cookies must not be sent with these calls. */
+  bearerToken?: string;
+  credentials?: RequestCredentials;
 }
 
 async function send<T>(path: string, options: RequestOptions): Promise<ApiEnvelope<T>> {
@@ -28,10 +31,13 @@ async function send<T>(path: string, options: RequestOptions): Promise<ApiEnvelo
 
   let response: Response;
   try {
+    const headers: Record<string, string> = {};
+    if (options.body !== undefined) headers['Content-Type'] = 'application/json';
+    if (options.bearerToken) headers.Authorization = `Bearer ${options.bearerToken}`;
     response = await fetch(`${API_BASE_URL}${path}`, {
       method: options.method || 'GET',
-      credentials: 'include',
-      headers: options.body === undefined ? undefined : { 'Content-Type': 'application/json' },
+      credentials: options.credentials ?? (options.bearerToken ? 'omit' : 'include'),
+      headers: Object.keys(headers).length > 0 ? headers : undefined,
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
       signal: controller.signal
     });
@@ -90,14 +96,20 @@ function filenameFromDisposition(header: string | null, fallback: string): strin
 }
 
 /** Binary downloads (Excel / PDF) are not JSON envelopes. */
-export async function apiDownload(path: string, fallbackName: string, timeoutMs = 30_000): Promise<void> {
+export async function apiDownload(
+  path: string,
+  fallbackName: string,
+  timeoutMs = 30_000,
+  extra: { bearerToken?: string } = {}
+): Promise<void> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   let response: Response;
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
       method: 'GET',
-      credentials: 'include',
+      credentials: extra.bearerToken ? 'omit' : 'include',
+      headers: extra.bearerToken ? { Authorization: `Bearer ${extra.bearerToken}` } : undefined,
       signal: controller.signal
     });
   } catch {

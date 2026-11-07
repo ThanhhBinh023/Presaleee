@@ -290,6 +290,9 @@ export const ProposalsStudio: React.FC<ProposalsStudioProps> = ({ onBackToOvervi
             <button onClick={() => navigateTo('rate-cards')} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-600">
               Rate cards
             </button>
+            <button onClick={() => navigateTo('portal')} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-600">
+              Client portal
+            </button>
           </div>
         </div>
 
@@ -388,6 +391,14 @@ export const ProposalsStudio: React.FC<ProposalsStudioProps> = ({ onBackToOvervi
                   </div>
                   <span className={`rounded px-2 py-0.5 text-[10px] font-mono font-bold ${statusClass(detail.status)}`}>{detail.status}</span>
                 </div>
+                {(detail.status === 'APPROVED' || detail.status === 'SENT_TO_CLIENT' || detail.status === 'ACCEPTED') && (
+                  <button
+                    onClick={() => navigateTo('portal', { proposalId: detail.id })}
+                    className="rounded-lg border border-brand-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-brand-700"
+                  >
+                    Share in client portal
+                  </button>
+                )}
 
                 <div className="grid gap-2 sm:grid-cols-3">
                   <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" value={title} onChange={(e) => setTitle(e.target.value)} disabled={!isDraft} />

@@ -22,6 +22,8 @@ import { LeadsDirectory } from './components/LeadsDirectory';
 import { RateCardsDirectory } from './components/RateCardsDirectory';
 import { MeetingsWorkspace } from './components/MeetingsWorkspace';
 import { ProposalsStudio } from './components/ProposalsStudio';
+import { PortalDesk } from './components/PortalDesk';
+import { ClientPortalPage } from './components/ClientPortalPage';
 import { RequireAuth } from './components/common/RequireAuth';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 
@@ -40,7 +42,9 @@ type Page =
   | 'leads'
   | 'rate-cards'
   | 'meetings'
-  | 'proposals';
+  | 'proposals'
+  | 'portal'
+  | 'client-portal';
 
 function pageFromHash(hash: string): Page {
   const route = hash.split('?')[0];
@@ -58,6 +62,8 @@ function pageFromHash(hash: string): Page {
   if (route === '#rate-cards') return 'rate-cards';
   if (route === '#meetings') return 'meetings';
   if (route === '#proposals') return 'proposals';
+  if (route === '#portal') return 'portal';
+  if (route === '#client-portal') return 'client-portal';
   return 'home';
 }
 
@@ -90,6 +96,7 @@ const AppShell: React.FC = () => {
   const navigateToRateCards = () => goTo('rate-cards');
   const navigateToMeetings = () => goTo('meetings');
   const navigateToProposals = () => goTo('proposals');
+  const navigateToPortal = () => goTo('portal');
 
   const handleLogout = async () => {
     try {
@@ -129,6 +136,7 @@ const AppShell: React.FC = () => {
           onNavigateRateCards={navigateToRateCards}
           onNavigateMeetings={navigateToMeetings}
           onNavigateProposals={navigateToProposals}
+          onNavigatePortal={navigateToPortal}
         />
       </RequireAuth>
     );
@@ -188,6 +196,18 @@ const AppShell: React.FC = () => {
         <ProposalsStudio onBackToOverview={navigateToOverview} />
       </RequireAuth>
     );
+  }
+
+  if (currentPage === 'portal') {
+    return (
+      <RequireAuth>
+        <PortalDesk onBackToOverview={navigateToOverview} />
+      </RequireAuth>
+    );
+  }
+
+  if (currentPage === 'client-portal') {
+    return <ClientPortalPage />;
   }
 
   if (currentPage === 'clients') {

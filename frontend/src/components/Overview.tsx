@@ -1,7 +1,11 @@
 import React, { useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { useDashboardOverview } from '../hooks/useDashboard';
 import { WorkspacePill } from './workspace/WorkspacePill';
 import { UserCard } from './workspace/UserCard';
+import { navigateTo } from '../navigation';
+import { formatDateTime, formatMoney } from '../utils/format';
+import type { CurrencyAmount } from '../types/dashboard';
 import { 
   LayoutGrid, 
   FileText, 
@@ -11,23 +15,23 @@ import {
   Search, 
   SlidersHorizontal, 
   Plus, 
-  Download, 
-  CheckCircle2, 
   ArrowRight, 
   Clock, 
   DollarSign, 
   TrendingUp, 
   ShieldCheck, 
-  Cpu, 
-  Bot, 
   Globe, 
   Building2, 
   Calendar, 
   Zap, 
-  ArrowUpRight, 
   ChevronRight,
   Users
 } from 'lucide-react';
+
+function formatCurrencies(values: CurrencyAmount[]): string {
+  if (!values.length) return '—';
+  return values.map((row) => formatMoney(row.amount, row.currency)).join(' · ');
+}
 
 interface OverviewProps {
   onLogout: () => void;
@@ -59,148 +63,17 @@ export const Overview: React.FC<OverviewProps> = ({
   onNavigatePortal
 }) => {
   const [activeNav, setActiveNav] = useState('Overview');
-  const [recommendationDismissed, setRecommendationDismissed] = useState(false);
-  const [synthesized, setSynthesized] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [leadLimit, setLeadLimit] = useState(8);
   const { user } = useAuth();
-
-  // 6 Pipeline stages
-  const pipelineStages = [
-    {
-      name: 'INQUIRY',
-      dealsCount: '14 deals',
-      bigNumber: '14',
-      value: '$680K Est.',
-      health: '94%',
-      tag: '+3 this wk',
-      tagColor: 'text-brand-700 bg-emerald-50',
-    },
-    {
-      name: 'QUALIFICATION',
-      dealsCount: '9 deals',
-      bigNumber: '9',
-      value: '$1.15M Est.',
-      health: '89%',
-      tag: '+1 this wk',
-      tagColor: 'text-brand-700 bg-emerald-50',
-    },
-    {
-      name: 'DISCOVERY',
-      dealsCount: '6 deals',
-      bigNumber: '6',
-      value: '$890K Est.',
-      health: '91%',
-      tag: 'On Track',
-      tagColor: 'text-brand-700 bg-emerald-50',
-    },
-    {
-      name: 'TECH DEEP DIVE',
-      dealsCount: '5 deals',
-      bigNumber: '5',
-      value: '$920K Est.',
-      health: '98%',
-      tag: 'High Intent',
-      tagColor: 'text-brand-700 bg-emerald-50',
-    },
-    {
-      name: 'PROPOSAL REVIEW',
-      dealsCount: '4 deals',
-      bigNumber: '4',
-      value: '$440K Est.',
-      health: '78%',
-      tag: 'Pending Legal',
-      tagColor: 'text-amber-700 bg-amber-50',
-    },
-    {
-      name: 'CLIENT PORTAL',
-      dealsCount: '8 deals',
-      bigNumber: '8',
-      value: '$1.20M Est.',
-      health: '96%',
-      tag: 'Self-Servicing',
-      tagColor: 'text-brand-700 bg-emerald-50',
-    },
-  ];
-
-  // Active leads data
-  const leads = [
-    {
-      title: 'Project Apollo - FinTech Solution',
-      verified: true,
-      client: 'Global Core Banking • $1.4M ARR',
-      stage: 'TECH DEEP DIVE',
-      matchScore: '96',
-      matchStatus: 'High Fit',
-      nextAction: 'Trigger Discovery SOW',
-      actionIcon: Zap,
-    },
-    {
-      title: 'Cloud Migration Wave 2',
-      verified: false,
-      client: 'Global Retail Corp • $750K ARR',
-      stage: 'PROPOSAL REVIEW',
-      matchScore: '88',
-      matchStatus: 'Optimal Arch',
-      nextAction: 'Review Cloud SLA Addendum',
-      actionIcon: CheckCircle2,
-    },
-    {
-      title: 'Omnichannel AI Assistant',
-      verified: false,
-      client: 'HealthFirst Systems • $920K ARR',
-      stage: 'DISCOVERY',
-      matchScore: '72',
-      matchStatus: 'Moderate HIPAA',
-      nextAction: 'Send architecture questionnaire',
-      actionIcon: ArrowUpRight,
-    },
-    {
-      title: 'Edge Real-Time Pipeline',
-      verified: false,
-      client: 'Automotive Dynamics • $520K ARR',
-      stage: 'QUALIFICATION',
-      matchScore: '91',
-      matchStatus: 'Strong IoT Matrix',
-      nextAction: 'Deploy synthetic PoC benchmark',
-      actionIcon: Cpu,
-    },
-  ];
-
-  // Asset Hub activity
-  const assetItems = [
-    {
-      title: 'FinTech Architecture',
-      badge: 'AI SYNCED',
-      badgeStyle: 'text-brand-700 bg-emerald-50 border-brand-200',
-      desc: 'Multi-region active-active topology',
-      meta: 'Updated by Sarah K. • Used in 4 Proposals',
-      icon: FileText,
-    },
-    {
-      title: 'SOC-2 Compliance',
-      badge: 'APPROVED',
-      badgeStyle: 'text-brand-700 bg-emerald-50 border-brand-200',
-      desc: 'Type II 2024 Audit Matrix & Controls',
-      meta: 'Audited by Compliance Lead • Used in 11 RFPs',
-      icon: ShieldCheck,
-    },
-    {
-      title: 'Kubernetes Sizing Engine',
-      badge: 'TOOL V1.9',
-      badgeStyle: 'text-slate-600 bg-slate-100 border-slate-200',
-      desc: 'Autoscale node & memory cost engine',
-      meta: 'DevOps Presale SIG • Used in 6 Tech Reviews',
-      icon: Cpu,
-    },
-    {
-      title: 'AI Presale Copilot Prompts',
-      badge: 'AI SYNCED',
-      badgeStyle: 'text-brand-700 bg-emerald-50 border-brand-200',
-      desc: 'Security-cleared prompt chaining library',
-      meta: 'Auto-Indexed 40m ago • Global Scope',
-      icon: Bot,
-    },
-  ];
+  const { overview, activity, isLoading, error, reload } = useDashboardOverview(leadLimit);
+  const kpis = overview?.kpis;
+  const pipeline = overview?.pipeline ?? [];
+  const visibleLeads = (overview?.activeLeads ?? []).filter((lead) => {
+    const needle = searchTerm.trim().toLowerCase();
+    if (!needle) return true;
+    return `${lead.title} ${lead.clientName ?? ''} ${lead.status}`.toLowerCase().includes(needle);
+  });
 
   return (
     <div className="min-h-screen bg-[#f8fafc] flex text-slate-900 font-sans">
@@ -343,6 +216,9 @@ export const Overview: React.FC<OverviewProps> = ({
         </header>
 
         {/* Dashboard Body */}
+        {error && (
+          <div className="mx-6 mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div>
+        )}
         <div className="p-6 sm:p-8 space-y-8 max-w-7xl mx-auto w-full">
           
           {/* Top Hero Overview Banner */}
@@ -362,46 +238,35 @@ export const Overview: React.FC<OverviewProps> = ({
                   </span>
                 </div>
                 <p className="text-xs sm:text-sm text-slate-500 max-w-xl">
-                  Real-time Presale pipeline acceleration, AI response quality scores, and multi-tenant solution architectures.
+                  Organization-scoped KPIs from GET /dashboard/overview. Currencies are never mixed. VIEWER can read this surface.
                 </p>
+                {overview && (
+                  <p className="mt-1 font-mono text-[10px] text-slate-400">generated {formatDateTime(overview.generatedAt)}</p>
+                )}
               </div>
 
-              {/* 3 Quick Stat Cards */}
               <div className="flex flex-wrap sm:flex-nowrap items-center gap-3">
-                
-                {/* ACTIVE DEALS */}
                 <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 sm:p-4 min-w-[130px]">
-                  <div className="text-[11px] font-mono text-slate-400 uppercase font-semibold">
-                    ACTIVE DEALS
-                  </div>
+                  <div className="text-[11px] font-mono text-slate-400 uppercase font-semibold">TOTAL LEADS</div>
                   <div className="flex items-center gap-2 mt-1">
                     <span className="w-2 h-2 rounded-full bg-brand-500"></span>
-                    <span className="text-xl sm:text-2xl font-bold font-mono text-slate-900">24</span>
+                    <span className="text-xl sm:text-2xl font-bold font-mono text-slate-900">{isLoading ? '…' : kpis?.totalLeads ?? 0}</span>
                   </div>
                 </div>
-
-                {/* PIPELINE VALUE */}
-                <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 sm:p-4 min-w-[140px]">
-                  <div className="text-[11px] font-mono text-slate-400 uppercase font-semibold">
-                    PIPELINE VALUE
-                  </div>
-                  <div className="flex items-center gap-1.5 mt-1 text-brand-700 font-bold font-mono text-xl sm:text-2xl">
-                    <DollarSign className="w-4 h-4 text-brand-500" />
-                    <span>$4.2M</span>
-                  </div>
-                </div>
-
-                {/* AVG TURNAROUND */}
                 <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 sm:p-4 min-w-[130px]">
-                  <div className="text-[11px] font-mono text-slate-400 uppercase font-semibold">
-                    AVG TURNAROUND
-                  </div>
-                  <div className="flex items-center gap-1.5 mt-1 text-slate-900 font-bold font-mono text-xl sm:text-2xl">
-                    <Clock className="w-4 h-4 text-slate-400" />
-                    <span>3.2 <span className="text-xs font-normal text-slate-500">days</span></span>
+                  <div className="text-[11px] font-mono text-slate-400 uppercase font-semibold">ACTIVE LEADS</div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="w-2 h-2 rounded-full bg-brand-500"></span>
+                    <span className="text-xl sm:text-2xl font-bold font-mono text-slate-900">{isLoading ? '…' : kpis?.activeLeads ?? 0}</span>
                   </div>
                 </div>
-
+                <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 sm:p-4 min-w-[140px]">
+                  <div className="text-[11px] font-mono text-slate-400 uppercase font-semibold">ESTIMATED VALUE</div>
+                  <div className="flex items-center gap-1.5 mt-1 text-brand-700 font-bold font-mono text-sm sm:text-base">
+                    <DollarSign className="w-4 h-4 text-brand-500 shrink-0" />
+                    <span>{isLoading ? '…' : formatCurrencies(kpis?.estimatedValueByCurrency ?? [])}</span>
+                  </div>
+                </div>
               </div>
 
             </div>
@@ -414,29 +279,27 @@ export const Overview: React.FC<OverviewProps> = ({
                   type="text"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Search Leads, RFPs, Tech Stacks, or Assets... [⌘K]"
+                  placeholder="Filter the active-lead panel by title, client, or status"
                   className="w-full pl-9 pr-4 py-2 rounded-xl text-xs font-mono bg-slate-50 border border-slate-200 focus:outline-none focus:border-brand-500 focus:bg-white text-slate-800 placeholder:text-slate-400"
                 />
               </div>
 
               <div className="flex items-center gap-2 flex-wrap">
-                <button className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-white border border-slate-200 text-slate-700 hover:bg-slate-50">
-                  <Globe className="w-3.5 h-3.5 text-slate-400" />
-                  <span>All Regions ▾</span>
-                </button>
-
-                <button className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-white border border-slate-200 text-slate-700 hover:bg-slate-50">
-                  <Building2 className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Enterprise Tier ▾</span>
-                </button>
-
-                <button className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-white border border-slate-200 text-slate-700 hover:bg-slate-50">
-                  <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Q3 Deals ▾</span>
-                </button>
-
-                <button className="p-2 rounded-xl text-slate-600 bg-white border border-slate-200 hover:bg-slate-50">
-                  <SlidersHorizontal className="w-4 h-4" />
+                <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-white border border-slate-200 text-slate-700">
+                  <SlidersHorizontal className="w-3.5 h-3.5 text-slate-400" />
+                  leadLimit
+                  <select
+                    value={leadLimit}
+                    onChange={(e) => setLeadLimit(Number(e.target.value))}
+                    className="bg-transparent font-mono"
+                  >
+                    {[8, 20, 50].map((value) => (
+                      <option key={value} value={value}>{value}</option>
+                    ))}
+                  </select>
+                </label>
+                <button onClick={reload} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-white border border-slate-200 text-slate-700 hover:bg-slate-50">
+                  Reload
                 </button>
               </div>
 
@@ -444,66 +307,39 @@ export const Overview: React.FC<OverviewProps> = ({
 
           </div>
 
-          {/* Presale Pipeline Status (6 Stages In-Flight) */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight">
-                  Presale Pipeline Status
+                  Presale pipeline
                 </h2>
                 <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-semibold bg-emerald-50 text-brand-700 border border-brand-200">
-                  6 Stages In-Flight
+                  9 lead statuses
                 </span>
               </div>
-
-              <a
-                href="#velocity"
+              <button
+                onClick={() => onNavigateLeads?.()}
                 className="text-xs font-semibold text-slate-500 hover:text-brand-600 transition-colors flex items-center gap-1"
               >
-                <span>Stage Velocity Config</span>
+                <span>Open leads</span>
                 <ChevronRight className="w-3.5 h-3.5" />
-              </a>
+              </button>
             </div>
 
-            {/* 6 Stage Cards Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
-              {pipelineStages.map((stage, idx) => (
-                <div
-                  key={idx}
-                  className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 flex flex-col justify-between hover:border-brand-300 hover:shadow-sm transition-all"
+            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-9 gap-3.5">
+              {pipeline.map((stage) => (
+                <button
+                  key={stage.status}
+                  type="button"
+                  onClick={() => onNavigateLeads?.()}
+                  className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 text-left hover:border-brand-300 hover:shadow-sm transition-all"
                 >
-                  <div>
-                    <div className="flex items-center justify-between text-[10px] font-mono font-bold text-slate-400 mb-1">
-                      <span className="truncate">{stage.name}</span>
-                      <span>{stage.dealsCount.split(' ')[0]}</span>
-                    </div>
-
-                    <div className="text-2xl font-bold font-mono text-slate-900">
-                      {stage.bigNumber}
-                    </div>
-                    <div className="text-xs font-mono text-slate-500 mt-0.5">
-                      {stage.value}
-                    </div>
-
-                    {/* Progress bar */}
-                    <div className="w-full h-1.5 rounded-full bg-slate-100 overflow-hidden my-3">
-                      <div
-                        className="h-full bg-brand-500 rounded-full"
-                        style={{ width: stage.health }}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between text-[11px] font-mono pt-1">
-                    <span className="text-slate-400">Health {stage.health}</span>
-                    <span className={`px-1.5 py-0.2 rounded font-semibold ${stage.tagColor}`}>
-                      {stage.tag}
-                    </span>
-                  </div>
-                </div>
+                  <div className="text-[10px] font-mono font-bold text-slate-400 truncate">{stage.status}</div>
+                  <div className="mt-1 text-2xl font-bold font-mono text-slate-900">{stage.count}</div>
+                  <div className="mt-0.5 text-[10px] font-mono text-slate-500">{formatCurrencies(stage.estimatedValueByCurrency)}</div>
+                </button>
               ))}
             </div>
-
           </div>
 
           {/* Split Content: Left (My Active Leads + 2 KPI Cards) & Right (Asset Hub & Copilot) */}
@@ -519,132 +355,89 @@ export const Overview: React.FC<OverviewProps> = ({
                 <div className="p-5 sm:p-6 border-b border-slate-100 flex items-center justify-between flex-wrap gap-3">
                   <div className="flex items-center gap-2.5">
                     <h3 className="text-base font-bold text-slate-900">
-                      My Active Leads
+                      Active leads
                     </h3>
                     <span className="px-2 py-0.5 rounded-md text-xs font-mono font-bold bg-slate-100 text-slate-700">
-                      6 Priority
+                      {overview?.activeLeads.length ?? 0} of leadLimit {leadLimit}
                     </span>
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-brand-500 hover:bg-brand-600 text-white shadow-sm transition-all">
+                    <button
+                      onClick={() => onNavigateRfps?.()}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-brand-500 hover:bg-brand-600 text-white shadow-sm transition-all"
+                    >
                       <Plus className="w-3.5 h-3.5" />
-                      <span>New RFP Deal</span>
-                    </button>
-                    <button className="p-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600">
-                      <Download className="w-3.5 h-3.5" />
+                      <span>New RFP</span>
                     </button>
                   </div>
                 </div>
 
-                {/* Table Content */}
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse text-xs">
                     <thead>
                       <tr className="border-b border-slate-100 bg-slate-50/70 text-[11px] font-mono font-bold text-slate-400 uppercase tracking-wider">
                         <th className="py-3 px-5">LEAD &amp; CLIENT</th>
-                        <th className="py-3 px-4">STAGE</th>
-                        <th className="py-3 px-4">AI MATCH</th>
-                        <th className="py-3 px-5 text-right">NEXT BEST ACTION</th>
+                        <th className="py-3 px-4">STATUS</th>
+                        <th className="py-3 px-4">BANT</th>
+                        <th className="py-3 px-5 text-right">UPDATED</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {leads.map((lead, idx) => {
-                        const ActionIcon = lead.actionIcon;
-                        return (
-                          <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
-                            {/* Lead & Client */}
+                      {isLoading ? (
+                        <tr><td className="py-6 px-5 text-slate-400" colSpan={4}>Loading dashboard…</td></tr>
+                      ) : visibleLeads.length === 0 ? (
+                        <tr><td className="py-6 px-5 text-slate-400" colSpan={4}>No active leads in this panel.</td></tr>
+                      ) : (
+                        visibleLeads.map((lead) => (
+                          <tr
+                            key={lead.id}
+                            className="hover:bg-slate-50/80 transition-colors cursor-pointer"
+                            onClick={() => navigateTo('leads', { id: lead.id })}
+                          >
                             <td className="py-4 px-5">
-                              <div className="flex items-center gap-2">
-                                <span className="font-bold text-slate-900 text-xs sm:text-sm">
-                                  {lead.title}
-                                </span>
-                                {lead.verified && (
-                                  <CheckCircle2 className="w-3.5 h-3.5 text-brand-600 shrink-0" />
-                                )}
-                              </div>
-                              <div className="text-[11px] font-mono text-slate-500 mt-0.5">
-                                {lead.client}
-                              </div>
+                              <div className="font-bold text-slate-900 text-xs sm:text-sm">{lead.title}</div>
+                              <div className="text-[11px] font-mono text-slate-500 mt-0.5">{lead.clientName || 'No client'} · {lead.source}</div>
                             </td>
-
-                            {/* Stage Badge */}
                             <td className="py-4 px-4 whitespace-nowrap">
                               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-mono font-semibold bg-slate-100 text-slate-700 border border-slate-200">
                                 <span className="w-1.5 h-1.5 rounded-full bg-brand-500"></span>
-                                {lead.stage}
+                                {lead.status}
                               </span>
                             </td>
-
-                            {/* AI Match */}
-                            <td className="py-4 px-4 whitespace-nowrap">
-                              <div className="flex items-center gap-2">
-                                <span className="w-7 h-7 rounded-lg bg-emerald-50 border border-brand-200 text-brand-800 font-bold font-mono text-xs flex items-center justify-center">
-                                  {lead.matchScore}
-                                </span>
-                                <div className="text-[11px] font-mono">
-                                  <span className="font-semibold text-brand-700 block">Green</span>
-                                  <span className="text-slate-400">{lead.matchStatus}</span>
-                                </div>
-                              </div>
-                            </td>
-
-                            {/* Next Best Action Button */}
-                            <td className="py-4 px-5 text-right whitespace-nowrap">
-                              <button 
-                                onClick={() => {
-                                  if (idx === 0 && onNavigateAIWorkspace) {
-                                    onNavigateAIWorkspace();
-                                  }
-                                }}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-medium text-slate-700 hover:text-brand-700 bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-brand-200 transition-all"
-                              >
-                                <ActionIcon className="w-3 h-3 text-brand-600" />
-                                <span>{lead.nextAction}</span>
-                              </button>
-                            </td>
+                            <td className="py-4 px-4 whitespace-nowrap font-mono">{lead.bantScore ?? '—'}</td>
+                            <td className="py-4 px-5 text-right whitespace-nowrap font-mono text-slate-500">{formatDateTime(lead.updatedAt)}</td>
                           </tr>
-                        );
-                      })}
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>
-
               </div>
 
-              {/* 2 Bottom Metric Quality Cards */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                
-                {/* 94.8% AI Response Accuracy */}
                 <div className="p-5 rounded-2xl bg-white border border-slate-200/90 shadow-sm flex items-start gap-4">
                   <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-brand-200 flex items-center justify-center text-brand-600 shrink-0">
                     <TrendingUp className="w-5 h-5" />
                   </div>
                   <div>
-                    <div className="text-xl font-bold font-mono text-slate-900">
-                      94.8% AI Response Accuracy
-                    </div>
+                    <div className="text-xl font-bold font-mono text-slate-900">{kpis?.qualifiedLeads ?? 0} qualified</div>
                     <p className="mt-1 text-xs text-slate-500 leading-relaxed">
-                      Validated against 1,280 approved security &amp; RFP clauses.
+                      QUALIFIED + PROPOSAL_DRAFTING + APPROVED.
                     </p>
                   </div>
                 </div>
-
-                {/* 18 Deals In Sandbox */}
                 <div className="p-5 rounded-2xl bg-white border border-slate-200/90 shadow-sm flex items-start gap-4">
                   <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-brand-200 flex items-center justify-center text-brand-600 shrink-0">
-                    <Cpu className="w-5 h-5" />
+                    <Clock className="w-5 h-5" />
                   </div>
                   <div>
-                    <div className="text-xl font-bold font-mono text-slate-900">
-                      18 Deals In Sandbox
-                    </div>
+                    <div className="text-xl font-bold font-mono text-slate-900">{kpis?.proposalsInProgress ?? 0} in progress</div>
                     <p className="mt-1 text-xs text-slate-500 leading-relaxed">
-                      Customers running test queries in dedicated interactive portals.
+                      Proposals in DRAFT or IN_REVIEW.
                     </p>
                   </div>
                 </div>
-
               </div>
 
             </div>
@@ -652,89 +445,61 @@ export const Overview: React.FC<OverviewProps> = ({
             {/* RIGHT COLUMN (4 cols): Recent Asset Hub Activity & Copilot Box */}
             <div className="lg:col-span-4 space-y-6">
               
-              {/* Recent Asset Hub Activity */}
               <div className="bg-white rounded-3xl border border-slate-200/90 shadow-card p-5 sm:p-6">
-                
                 <div className="flex items-center justify-between pb-4 border-b border-slate-100">
                   <h3 className="text-sm font-bold text-slate-900 font-mono">
-                    Recent Asset Hub Activity
+                    Entity activity
                   </h3>
-                  <a
-                    href="#hub"
+                  <button
+                    onClick={() => onNavigateAudit?.()}
                     className="text-xs font-semibold text-brand-600 hover:text-brand-700 flex items-center gap-1"
                   >
-                    <span>View Hub</span>
+                    <span>Audit trail</span>
                     <ArrowRight className="w-3 h-3" />
-                  </a>
+                  </button>
                 </div>
-
-                {/* Asset list */}
-                <div className="mt-4 space-y-4">
-                  {assetItems.map((asset, idx) => {
-                    const AssetIcon = asset.icon;
-                    return (
-                      <div key={idx} className="p-3 rounded-xl bg-slate-50/70 border border-slate-200/70 hover:bg-slate-50 transition-colors">
-                        <div className="flex items-center justify-between mb-1.5">
-                          <div className="flex items-center gap-2">
-                            <AssetIcon className="w-3.5 h-3.5 text-brand-600" />
-                            <span className="text-xs font-bold text-slate-900 font-mono">
-                              {asset.title}
-                            </span>
-                          </div>
-                          <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border ${asset.badgeStyle}`}>
-                            {asset.badge}
-                          </span>
+                <p className="mt-2 text-[10px] text-slate-400">
+                  Synthesized from lead/proposal timestamps, not audit_logs. At most two rows per entity.
+                </p>
+                <div className="mt-4 space-y-3">
+                  {activity.length === 0 ? (
+                    <p className="text-xs text-slate-400">No recent entity timestamps.</p>
+                  ) : (
+                    activity.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => navigateTo(item.type.startsWith('LEAD') ? 'leads' : 'proposals', { id: item.entityId })}
+                        className="w-full p-3 rounded-xl bg-slate-50/70 border border-slate-200/70 hover:bg-slate-50 text-left"
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] font-mono font-bold text-brand-700">{item.type}</span>
+                          <span className="text-[10px] font-mono text-slate-400">{formatDateTime(item.occurredAt)}</span>
                         </div>
-                        <p className="text-[11px] text-slate-600 mb-1.5 font-mono">
-                          {asset.desc}
-                        </p>
-                        <div className="text-[10px] text-slate-400 font-mono">
-                          {asset.meta}
-                        </div>
-                      </div>
-                    );
-                  })}
+                        <div className="text-xs font-bold text-slate-900">{item.title}</div>
+                        <div className="text-[10px] font-mono text-slate-500">{item.status}</div>
+                      </button>
+                    ))
+                  )}
                 </div>
-
               </div>
 
-              {/* Copilot Recommendation Box */}
-              {!recommendationDismissed && (
-                <div className="rounded-3xl border border-brand-200 bg-gradient-to-b from-emerald-50/90 via-white to-slate-50 p-5 shadow-card relative">
-                  
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-brand-600" />
-                      <span className="text-xs font-bold text-slate-900 font-mono">
-                        Copilot Recommendation
-                      </span>
-                    </div>
-                    <span className="w-2 h-2 rounded-full bg-brand-500 animate-ping"></span>
-                  </div>
-
-                  <p className="text-xs text-slate-600 leading-relaxed font-mono mb-4">
-                    Client expanded inquiry to include multi-region disaster recovery. Auto-synthesize multi-cloud failover proof from indexed assets?
-                  </p>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setSynthesized(true)}
-                      className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-brand-500 hover:bg-brand-600 text-white shadow-sm transition-all"
-                    >
-                      <Zap className="w-3.5 h-3.5" />
-                      <span>{synthesized ? 'Synthesized ✓' : 'Synthesize Artifact'}</span>
-                    </button>
-
-                    <button
-                      onClick={() => setRecommendationDismissed(true)}
-                      className="px-3 py-2 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-100 border border-slate-200 transition-colors"
-                    >
-                      Dismiss
-                    </button>
-                  </div>
-
+              <div className="rounded-3xl border border-brand-200 bg-gradient-to-b from-emerald-50/90 via-white to-slate-50 p-5 shadow-card">
+                <div className="flex items-center gap-2 mb-3">
+                  <Sparkles className="w-4 h-4 text-brand-600" />
+                  <span className="text-xs font-bold text-slate-900 font-mono">How this differs from audit</span>
                 </div>
-              )}
+                <p className="text-xs text-slate-600 leading-relaxed mb-4">
+                  Sheet writes, portal sessions, pricing apply and deletes do not appear here. ADMIN / PRESALE_LEAD can open the immutable audit trail.
+                </p>
+                <button
+                  onClick={() => onNavigateAudit?.()}
+                  className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-brand-500 hover:bg-brand-600 text-white"
+                >
+                  <Zap className="w-3.5 h-3.5" />
+                  Open audit trail
+                </button>
+              </div>
 
             </div>
 

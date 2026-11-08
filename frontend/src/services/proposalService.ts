@@ -99,6 +99,10 @@ export function getProposalExcelDownloadUrl(proposalId: string): string {
   return `${PREFIX}/${encodeURIComponent(proposalId)}/export-excel`;
 }
 
+export function getProposalPdfDownloadUrl(proposalId: string): string {
+  return `${PREFIX}/${encodeURIComponent(proposalId)}/export-pdf`;
+}
+
 export interface ProposalListQuery {
   page?: number;
   limit?: number;

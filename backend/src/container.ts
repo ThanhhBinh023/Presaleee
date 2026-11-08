@@ -169,6 +169,7 @@ export function createContainer(): ServiceContainer {
   const ingestDocumentUseCase = new IngestDocumentUseCase(knowledgeRepository, embeddingGateway);
   const generateProposalUseCase = new GenerateProposalUseCase(searchHybridRAGUseCase, llmGateway);
   const analyzeLeadIntakeUseCase = new AnalyzeLeadIntakeUseCase(llmGateway);
+  const createLeadUseCase = new CreateLeadUseCase(leadRepository, referenceValidator, auditRepository);
   const loginUseCase = new LoginUseCase(authRepository);
   const refreshSessionUseCase = new RefreshSessionUseCase(authRepository);
   const logoutUseCase = new LogoutUseCase(authRepository);
@@ -211,7 +212,7 @@ export function createContainer(): ServiceContainer {
     exportProposalToPdfUseCase,
     submitProposalForReviewUseCase
   );
-  const leadIntakeController = new LeadIntakeController(analyzeLeadIntakeUseCase, dbPool, llmGateway);
+  const leadIntakeController = new LeadIntakeController(analyzeLeadIntakeUseCase, dbPool, llmGateway, createLeadUseCase);
   const authController = new AuthController(
     loginUseCase,
     refreshSessionUseCase,

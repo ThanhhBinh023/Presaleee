@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { LeadIntakeController } from '../controllers/LeadIntakeController.js';
-import { optionalAuth } from '../middlewares/requireAuth.js';
+import { optionalAuth, requireAuth, requireOrganization } from '../middlewares/requireAuth.js';
 
 export function createLeadIntakeRouter(controller: LeadIntakeController): Router {
   const router = Router();
@@ -8,7 +8,10 @@ export function createLeadIntakeRouter(controller: LeadIntakeController): Router
   // List existing leads (filtered by user/org if authenticated)
   router.get('/', optionalAuth, controller.listLeads);
 
-  // Analyze RFP text and persist as a lead
+  // Create a lead from the reviewed intake draft — the only writer of new leads
+  router.post('/', requireAuth, requireOrganization, controller.createLead);
+
+  // Analyze RFP text and return an unsaved draft; saving happens on POST /
   router.post('/intake/analyze', optionalAuth, controller.analyze);
 
   // Qualify lead with AI BANT evaluation

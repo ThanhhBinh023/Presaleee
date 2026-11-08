@@ -3,13 +3,51 @@ import { Pool } from 'pg';
 import { AnalyzeLeadIntakeUseCase } from '../../application/use-cases/AnalyzeLeadIntakeUseCase.js';
 import { AnalyzeLeadIntakeInputDTO } from '../../application/dtos/AnalyzeLeadIntakeDTO.js';
 import { ILLMGateway, LLMTaskMode } from '../../domain/repositories/ILLMGateway.js';
+import { CreateLeadUseCase } from '../../application/use-cases/LeadUseCases.js';
+import { AuthenticatedLeadScope, LeadWriteInput } from '../../application/dtos/LeadDTO.js';
+import { UnauthorizedError, ValidationError } from '../../domain/errors/AppError.js';
 
 export class LeadIntakeController {
   constructor(
     private readonly analyzeUseCase: AnalyzeLeadIntakeUseCase,
     private readonly dbPool?: Pool,
-    private readonly llmGateway?: ILLMGateway
+    private readonly llmGateway?: ILLMGateway,
+    private readonly createLeadUseCase: CreateLeadUseCase
   ) {}
+
+  private leadScope(req: Request): AuthenticatedLeadScope {
+    if (!req.auth?.sub) throw new UnauthorizedError('Authentication required.');
+    if (!req.auth.organizationId) throw new ValidationError('An authenticated organization is required.');
+    return {
+      organizationId: req.auth.organizationId,
+      userId: req.auth.sub,
+      claims: req.auth,
+      ipAddress: req.socket.remoteAddress
+    };
+  }
+
+  createLead = async (
+    req: Request<unknown, unknown, LeadWriteInput>,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const body = req.body ?? ({} as LeadWriteInput);
+      const lead = await this.createLeadUseCase.execute({
+        ...this.leadScope(req),
+        title: body.title,
+        source: body.source,
+        rawRfpContent: body.rawRfpContent,
+        extractedMetadata: body.extractedMetadata,
+        clientId: body.clientId,
+        assignedTo: body.assignedTo
+      });
+      res.status(201).location(`/api/v1/leads/${lead.id}`).json({ success: true, data: lead });
+    } catch (error) {
+      console.error('[LeadIntakeController.createLead] Error:', error);
+      next(error);
+    }
+  };
 
   analyze = async (
     req: Request<unknown, unknown, AnalyzeLeadIntakeInputDTO & { persist?: boolean; inquiryText?: string; organizationId?: string; userId?: string }>,
@@ -19,7 +57,7 @@ export class LeadIntakeController {
     try {
       const body = req.body ?? ({} as any);
       const rawRfpContent: string = (body.rawRfpContent || body.inquiryText || '').trim();
-      const { source = 'INBOUND_EMAIL', persist = true } = body;
+      const { source = 'INBOUND_EMAIL', persist = false } = body;
       const result = await this.analyzeUseCase.execute({ rawRfpContent, source });
 
       let savedLead = null;

@@ -143,7 +143,7 @@ export const leadService = {
   analyzeIntake: (rawRfpContent: string, source?: LeadSource) =>
     apiRequest<AnalyzeLeadResult>(`${LEADS_PREFIX}/intake/analyze`, {
       method: 'POST',
-      body: { rawRfpContent, source },
+      body: { rawRfpContent, source, persist: false },
       timeoutMs: AI_TIMEOUT_MS
     }),
 

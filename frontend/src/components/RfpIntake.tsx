@@ -53,6 +53,11 @@ function csv(value: string): string[] {
     .filter(Boolean);
 }
 
+function text(value: unknown, fallback: string): string {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  return normalized || fallback;
+}
+
 export const RfpIntake: React.FC<RfpIntakeProps> = ({
   onNavigateOverview,
   onNavigateAIWorkspace,
@@ -129,7 +134,10 @@ export const RfpIntake: React.FC<RfpIntakeProps> = ({
             : csv(String(metadata.integrationsRequired ?? '')),
           complianceAndSecurity: Array.isArray(metadata.complianceAndSecurity)
             ? metadata.complianceAndSecurity
-            : csv(String(metadata.complianceAndSecurity ?? ''))
+            : csv(String(metadata.complianceAndSecurity ?? '')),
+          missing_information: missing,
+          target_sla: text(metadata.target_sla ?? metadata.targetSla, '< 100ms'),
+          peak_workload: text(metadata.peak_workload ?? metadata.peakWorkload, 'Cao tải theo thời gian thực')
         },
         clientId: clientId || null,
         assignedTo: assignedTo || null

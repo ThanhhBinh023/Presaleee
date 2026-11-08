@@ -166,6 +166,12 @@ export const ClientPortalPage: React.FC = () => {
       <div className="mx-auto max-w-5xl">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div>
+            <button
+              onClick={() => navigateTo('home')}
+              className="mb-1 text-xs font-mono font-bold text-brand-700 hover:underline block"
+            >
+              &larr; BACK TO APP
+            </button>
             <p className="text-xs font-mono font-bold text-brand-700">CLIENT PORTAL</p>
             <h1 className="mt-1 text-2xl font-bold tracking-tight">Shared proposal</h1>
             <p className="mt-1 text-sm text-slate-500">

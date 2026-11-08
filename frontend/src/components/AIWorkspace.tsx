@@ -29,8 +29,13 @@ import {
   Trash2,
   RefreshCw,
   X,
-  Save
+  Save,
+  CreditCard,
+  History
 } from 'lucide-react';
+import { useMemberDirectory } from '../hooks/useMemberDirectory';
+import { navigateTo } from '../navigation';
+import { initialsOf } from '../utils/format';
 import { ClientPortalModal } from './ClientPortalModal';
 import { DiscoveryMeetingsTab } from './DiscoveryMeetingsTab';
 import { ProposalStudioTab } from './ProposalStudioTab';
@@ -264,44 +269,14 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
               </span>
             </button>
 
-            <button 
-              onClick={() => {
-                if (onNavigateVault) onNavigateVault();
-              }}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all"
-            >
-              <BookOpen className="w-4 h-4 text-slate-400" />
-              <span>Knowledge Vault</span>
-            </button>
-
             <button
               onClick={() => navigateTo('leads')}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all"
             >
-              <FileText className="w-4 h-4 text-slate-400" />
+              <Zap className="w-4 h-4 text-slate-400" />
               <span>Leads</span>
             </button>
-            <button
-              onClick={() => navigateTo('rate-cards')}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all"
-            >
-              <CreditCard className="w-4 h-4 text-slate-400" />
-              <span>Rate cards</span>
-            </button>
-            <button
-              onClick={() => navigateTo('meetings')}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all"
-            >
-              <History className="w-4 h-4 text-slate-400" />
-              <span>Meetings</span>
-            </button>
-            <button
-              onClick={() => navigateTo('proposals')}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all"
-            >
-              <Layers className="w-4 h-4 text-slate-400" />
-              <span>Proposals</span>
-            </button>
+
             <button
               onClick={() => navigateTo('portal')}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all"
@@ -791,7 +766,7 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
 
           {/* TAB 2: DISCOVERY MEETINGS */}
           {activeSubnav === 'Discovery Meetings' && (
-            <DiscoveryMeetingsTab />
+            <DiscoveryMeetingsTab onProceedToProposals={() => setActiveSubnav('Proposal Builder v2.4')} />
           )}
 
           {/* TAB 3: TECHNICAL SESSIONS */}

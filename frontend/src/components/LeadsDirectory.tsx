@@ -1,3 +1,4 @@
+import { Sparkles } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useLeadDirectory } from '../hooks/useLeadDirectory';
@@ -39,6 +40,10 @@ export const LeadsDirectory: React.FC<LeadsDirectoryProps> = ({ onBackToOverview
   const [status, setStatus] = useState<LeadStatus | ''>('');
   const [source, setSource] = useState<LeadSource | ''>('');
   const [page, setPage] = useState(1);
+  const [pipelineTab, setPipelineTab] = useState<'all' | 'in_process' | 'complete'>('all');
+
+  const IN_PROCESS_STATUSES: LeadStatus[] = ['NEW', 'IN_REVIEW', 'QUALIFYING', 'QUALIFIED', 'PROPOSAL_DRAFTING', 'APPROVED'];
+  const COMPLETE_STATUSES: LeadStatus[] = ['WON', 'LOST', 'REJECTED'];
 
   const [detail, setDetail] = useState<LeadRecord | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -290,6 +295,50 @@ export const LeadsDirectory: React.FC<LeadsDirectoryProps> = ({ onBackToOverview
           <button onClick={reload} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-600">Reload</button>
         </div>
 
+        {/* Segment Tabs: In Process & Complete */}
+        <div className="flex items-center gap-2 mb-4 border-b border-slate-200 pb-2">
+          <button
+            onClick={() => setPipelineTab('all')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              pipelineTab === 'all'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            Tất cả ({leads.length})
+          </button>
+          <button
+            onClick={() => setPipelineTab('in_process')}
+            className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              pipelineTab === 'in_process'
+                ? 'bg-amber-500 text-white shadow-xs'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <span>Đang xử lý (In Process)</span>
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+              pipelineTab === 'in_process' ? 'bg-amber-400 text-slate-900' : 'bg-slate-200 text-slate-700'
+            }`}>
+              {leads.filter(l => IN_PROCESS_STATUSES.includes(l.status)).length}
+            </span>
+          </button>
+          <button
+            onClick={() => setPipelineTab('complete')}
+            className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              pipelineTab === 'complete'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            <span>Đã hoàn thành (Complete)</span>
+            <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+              pipelineTab === 'complete' ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-700'
+            }`}>
+              {leads.filter(l => COMPLETE_STATUSES.includes(l.status)).length}
+            </span>
+          </button>
+        </div>
+
         <div className="grid gap-6 lg:grid-cols-12">
           <div className="lg:col-span-7 overflow-x-auto rounded-2xl border border-slate-200 bg-white">
             <table className="w-full text-left text-sm">
@@ -305,10 +354,10 @@ export const LeadsDirectory: React.FC<LeadsDirectoryProps> = ({ onBackToOverview
               <tbody>
                 {isLoading ? (
                   <tr><td className="px-3 py-6 text-slate-400" colSpan={5}>Loading…</td></tr>
-                ) : leads.length === 0 ? (
-                  <tr><td className="px-3 py-6 text-slate-400" colSpan={5}>No leads match these filters.</td></tr>
+                ) : leads.filter(l => pipelineTab === 'all' ? true : pipelineTab === 'in_process' ? IN_PROCESS_STATUSES.includes(l.status) : COMPLETE_STATUSES.includes(l.status)).length === 0 ? (
+                  <tr><td className="px-3 py-6 text-slate-400" colSpan={5}>Không có dự án nào trong nhóm này.</td></tr>
                 ) : (
-                  leads.map((lead) => (
+                  leads.filter(l => pipelineTab === 'all' ? true : pipelineTab === 'in_process' ? IN_PROCESS_STATUSES.includes(l.status) : COMPLETE_STATUSES.includes(l.status)).map((lead) => (
                     <tr
                       key={lead.id}
                       className={`cursor-pointer border-t border-slate-100 hover:bg-emerald-50/40 ${detail?.id === lead.id ? 'bg-emerald-50/70' : ''}`}
@@ -356,6 +405,17 @@ export const LeadsDirectory: React.FC<LeadsDirectoryProps> = ({ onBackToOverview
                   </div>
                   <button onClick={closeDetail} className="text-xs font-bold text-slate-400 hover:text-slate-700">Close</button>
                 </div>
+
+                <button
+                  onClick={() => {
+                    localStorage.setItem('presaleee_active_lead_id', detail.id);
+                    navigateTo('ai-workspace');
+                  }}
+                  className="w-full py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
+                >
+                  <Sparkles className="w-4 h-4 text-white" />
+                  <span>Mở trong AI Workspace (Chấm điểm &amp; Đề xuất) &rarr;</span>
+                </button>
 
                 <div className="flex flex-wrap items-center gap-2">
                   <span className={`rounded px-2 py-0.5 text-[10px] font-mono font-bold ${statusClass(detail.status)}`}>{detail.status}</span>

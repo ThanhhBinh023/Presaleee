@@ -7,7 +7,9 @@ import {
   Layers, 
   Copy, 
   Save, 
-  RefreshCw
+  RefreshCw,
+  FileText,
+  Globe
 } from 'lucide-react';
 import type { LeadItem } from '../services/leadService';
 import { useToast } from './common/Toast';
@@ -18,7 +20,8 @@ import {
   updateProposalSheet, 
   updateProposalLifecycle, 
   generateProposalUIDesignBrief,
-  getProposalExcelDownloadUrl 
+  getProposalExcelDownloadUrl,
+  getProposalPdfDownloadUrl
 } from '../services/proposalService';
 
 interface ProposalStudioTabProps {
@@ -319,6 +322,26 @@ ${uiBrief.interaction_flow}
             <FileSpreadsheet className="w-4 h-4" />
             <span>Export to Excel (.xlsx)</span>
           </a>
+
+          <a
+            href={getProposalPdfDownloadUrl(proposal.id)}
+            download
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-sm transition-all cursor-pointer"
+          >
+            <FileText className="w-4 h-4 text-brand-400" />
+            <span>Export to PDF (.pdf)</span>
+          </a>
+
+          <button
+            onClick={() => {
+              window.location.hash = `#portal?proposalId=${proposal.id}`;
+            }}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-brand-300 bg-brand-50 hover:bg-brand-100 text-brand-800 text-xs font-semibold shadow-xs transition-all cursor-pointer"
+            title="Mở Client Portal Desk để tạo token và link chia sẻ cho khách hàng comment"
+          >
+            <Globe className="w-4 h-4 text-brand-600" />
+            <span>Client Portal &rarr;</span>
+          </button>
 
           <button
             onClick={handleGenerateProposal}

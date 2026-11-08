@@ -220,8 +220,12 @@ const AppShell: React.FC = () => {
     );
   }
 
-  if (currentPage === 'signin') {
-    return <SignIn onBackToHome={navigateToHome} onLoginSuccess={navigateToOverview} />;
+  if (currentPage === 'audit') {
+    return (
+      <RequireAuth>
+        <AuditLog onBackToOverview={navigateToOverview} />
+      </RequireAuth>
+    );
   }
 
   if (currentPage === 'members') {

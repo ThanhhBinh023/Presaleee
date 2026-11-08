@@ -211,17 +211,7 @@ export function createContainer(): ServiceContainer {
     exportProposalToPdfUseCase,
     submitProposalForReviewUseCase
   );
-  const leadIntakeController = new LeadIntakeController(
-    analyzeLeadIntakeUseCase,
-    new CreateLeadUseCase(leadRepository, referenceValidator, auditRepository),
-    new ListLeadsUseCase(leadRepository),
-    new GetLeadUseCase(leadRepository),
-    new UpdateLeadUseCase(leadRepository, referenceValidator, auditRepository),
-    new UpdateLeadStatusUseCase(leadRepository, auditRepository),
-    new DeleteLeadUseCase(leadRepository, auditRepository),
-    new QualifyLeadUseCase(leadRepository, llmGateway, auditRepository),
-    new GetLatestQualificationUseCase(leadRepository)
-  );
+  const leadIntakeController = new LeadIntakeController(analyzeLeadIntakeUseCase, dbPool, llmGateway);
   const authController = new AuthController(
     loginUseCase,
     refreshSessionUseCase,
@@ -293,11 +283,6 @@ export function createContainer(): ServiceContainer {
   );
   const auditController = new AuditController(new ListAuditLogsUseCase(auditRepository));
 
-  const dashboardController = new DashboardController(
-    getDashboardOverviewUseCase,
-    listDashboardLeadsUseCase,
-    listDashboardActivityUseCase
-  );
 
   return {
     knowledgeRepository,

@@ -232,13 +232,23 @@ export const PortalDesk: React.FC<PortalDeskProps> = ({ onBackToOverview }) => {
             <div className="mt-2 flex flex-wrap gap-2">
               <button
                 onClick={() => void navigator.clipboard.writeText(issued.accessToken)}
-                className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-bold text-white"
+                className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-bold text-white hover:bg-slate-800"
               >
                 Copy token
               </button>
               <button
+                onClick={() => {
+                  const clientUrl = `${window.location.origin}${window.location.pathname}#client-portal?proposalId=${issued.proposalId}&token=${issued.accessToken}`;
+                  void navigator.clipboard.writeText(clientUrl);
+                  setNotice('Đã copy đường link Client Portal vào clipboard!');
+                }}
+                className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700"
+              >
+                Copy client link
+              </button>
+              <button
                 onClick={() => navigateTo('client-portal', { proposalId: issued.proposalId, token: issued.accessToken })}
-                className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-bold text-white"
+                className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-brand-700"
               >
                 Open as client
               </button>

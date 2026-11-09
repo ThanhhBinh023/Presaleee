@@ -17,6 +17,9 @@ export function createLeadIntakeRouter(controller: LeadIntakeController): Router
   // Qualify lead with AI BANT evaluation
   router.post('/:id/qualify', optionalAuth, controller.qualify);
 
+  // BANT scoring: reads the stored RFP, writes bant_score + bant_details, status -> QUALIFIED
+  router.post('/:id/qualifications', requireAuth, requireOrganization, controller.qualifyBant);
+
   // Get single lead
   router.get('/:id', optionalAuth, controller.getLeadById);
 

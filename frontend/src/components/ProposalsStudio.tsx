@@ -3,6 +3,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useProposalDirectory } from '../hooks/useProposalDirectory';
 import { useLeadDirectory } from '../hooks/useLeadDirectory';
 import { proposalService } from '../services/proposalService';
+import { rateCardService } from '../services/rateCardService';
 import { ApiError } from '../services/apiClient';
 import { navigateTo, readHashQuery } from '../navigation';
 import { formatDateTime, formatMoney } from '../utils/format';
@@ -13,11 +14,31 @@ import {
   STANDARD_PROPOSAL_SHEETS
 } from '../types/proposal';
 import type { GenerateSheetsResult, ProposalStatus, ProposalWithSheets } from '../types/proposal';
+import { RATE_CARD_LEVELS } from '../types/rateCard';
+import type { PricingInputLine, RateCardLevel } from '../types/rateCard';
 
 const PAGE_SIZE = 20;
 
 interface ProposalsStudioProps {
   onBackToOverview: () => void;
+}
+
+/** The Team sheet carries the staffing intent; money only ever comes back from the rate-card engine. */
+function toPricingLines(value: unknown): PricingInputLine[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === 'object' && !Array.isArray(row))
+    .map((row) => {
+      const roleName = typeof row.role === 'string' ? row.role.trim() : typeof row.roleName === 'string' ? row.roleName.trim() : '';
+      const level = RATE_CARD_LEVELS.find((candidate) => candidate === row.level);
+      const manMonths = Number(row.manMonths);
+      return {
+        roleName,
+        ...(level ? { level: level as RateCardLevel } : {}),
+        manMonths: Number.isFinite(manMonths) ? manMonths : 0
+      };
+    })
+    .filter((line) => line.roleName && line.manMonths > 0);
 }
 
 function statusClass(status: ProposalStatus): string {
@@ -208,6 +229,30 @@ export const ProposalsStudio: React.FC<ProposalsStudioProps> = ({ onBackToOvervi
           ? `${message} Start the AI service on port 8000.`
           : message
       );
+    } finally {
+      setIsWorking(false);
+    }
+  };
+
+  const applyPricing = async () => {
+    if (!detail) return;
+    const teamSheet = detail.sheets.find((sheet) => sheet.sheetName === 'Team & Rate Cards');
+    const lines = toPricingLines(teamSheet?.sheetData.roles);
+    if (lines.length === 0) {
+      setActionError('Generate or edit the "Team & Rate Cards" sheet first — pricing needs roles with manMonths.');
+      return;
+    }
+    setIsWorking(true);
+    setActionError(null);
+    try {
+      const result = await rateCardService.calculatePricing({ proposalId: detail.id, apply: true, lines });
+      await loadProposal(
+        detail.id,
+        `Pricing applied: ${formatMoney(result.pricing.totalCost, result.pricing.currency)} net for ${result.pricing.totalEffortManMonths} man-months.`
+      );
+      reload();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Pricing failed.');
     } finally {
       setIsWorking(false);
     }
@@ -464,6 +509,9 @@ export const ProposalsStudio: React.FC<ProposalsStudioProps> = ({ onBackToOvervi
                   </button>
                   <button onClick={() => void generateAll()} disabled={isWorking || !isDraft} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-600 disabled:opacity-50">
                     Generate all 10
+                  </button>
+                  <button onClick={() => void applyPricing()} disabled={isWorking || !isDraft} title="Prices the Team & Rate Cards roles from this organization rate cards and writes sheets 5 and 6." className="rounded-lg border border-brand-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-brand-700 disabled:opacity-50">
+                    Apply rate-card pricing
                   </button>
                   <button onClick={() => void exportFile('excel')} disabled={isWorking} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-600">
                     Export Excel

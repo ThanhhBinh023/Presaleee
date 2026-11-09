@@ -3,16 +3,17 @@ import { Pool } from 'pg';
 import { AnalyzeLeadIntakeUseCase } from '../../application/use-cases/AnalyzeLeadIntakeUseCase.js';
 import { AnalyzeLeadIntakeInputDTO } from '../../application/dtos/AnalyzeLeadIntakeDTO.js';
 import { ILLMGateway, LLMTaskMode } from '../../domain/repositories/ILLMGateway.js';
-import { CreateLeadUseCase } from '../../application/use-cases/LeadUseCases.js';
+import { CreateLeadUseCase, QualifyLeadUseCase } from '../../application/use-cases/LeadUseCases.js';
 import { AuthenticatedLeadScope, LeadWriteInput } from '../../application/dtos/LeadDTO.js';
 import { UnauthorizedError, ValidationError } from '../../domain/errors/AppError.js';
 
 export class LeadIntakeController {
   constructor(
     private readonly analyzeUseCase: AnalyzeLeadIntakeUseCase,
+    private readonly createLeadUseCase: CreateLeadUseCase,
+    private readonly qualifyLeadUseCase: QualifyLeadUseCase,
     private readonly dbPool?: Pool,
-    private readonly llmGateway?: ILLMGateway,
-    private readonly createLeadUseCase: CreateLeadUseCase
+    private readonly llmGateway?: ILLMGateway
   ) {}
 
   private leadScope(req: Request): AuthenticatedLeadScope {
@@ -45,6 +46,20 @@ export class LeadIntakeController {
       res.status(201).location(`/api/v1/leads/${lead.id}`).json({ success: true, data: lead });
     } catch (error) {
       console.error('[LeadIntakeController.createLead] Error:', error);
+      next(error);
+    }
+  };
+
+  qualifyBant = async (
+    req: Request<{ id: string }>,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const qualification = await this.qualifyLeadUseCase.execute(req.params.id, this.leadScope(req));
+      res.status(200).json({ success: true, data: qualification });
+    } catch (error) {
+      console.error('[LeadIntakeController.qualifyBant] Error:', error);
       next(error);
     }
   };

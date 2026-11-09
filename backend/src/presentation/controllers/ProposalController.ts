@@ -8,8 +8,10 @@ import { UpdateProposalUseCase } from '../../application/use-cases/UpdateProposa
 import { UpdateProposalSheetUseCase } from '../../application/use-cases/UpdateProposalSheetUseCase.js';
 import { DeleteProposalUseCase } from '../../application/use-cases/DeleteProposalUseCase.js';
 import { ExportProposalToExcelUseCase } from '../../application/use-cases/ExportProposalToExcelUseCase.js';
+import { GenerateProposalSheetsUseCase } from '../../application/use-cases/GenerateProposalSheetsUseCase.js';
+import { ExportProposalToPdfUseCase } from '../../application/use-cases/ExportProposalToPdfUseCase.js';
+import { SubmitProposalForReviewUseCase } from '../../application/use-cases/SubmitProposalForReviewUseCase.js';
 import { GenerateProposalFromLeadUseCase } from '../../application/use-cases/GenerateProposalFromLeadUseCase.js';
-import { IProposalRepository } from '../../domain/repositories/IProposalRepository.js';
 
 function getParam(param: string | string[] | undefined): string {
   return Array.isArray(param) ? param[0] || '' : param || '';
@@ -50,8 +52,10 @@ export class ProposalController {
     private readonly updateSheetUseCase: UpdateProposalSheetUseCase,
     private readonly deleteUseCase: DeleteProposalUseCase,
     private readonly exportExcelUseCase: ExportProposalToExcelUseCase,
-    private readonly generateFromLeadUseCase?: GenerateProposalFromLeadUseCase,
-    private readonly proposalRepo?: IProposalRepository
+    private readonly generateSheetsUseCase: GenerateProposalSheetsUseCase,
+    private readonly exportPdfUseCase: ExportProposalToPdfUseCase,
+    private readonly submitForReviewUseCase: SubmitProposalForReviewUseCase,
+    private readonly generateFromLeadUseCase?: GenerateProposalFromLeadUseCase
   ) {}
 
   /**
@@ -86,22 +90,14 @@ export class ProposalController {
   getByLeadId = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const leadId = getParam(req.params.leadId);
-      if (this.proposalRepo) {
-        const proposal = await this.proposalRepo.findByLeadId(leadId);
-        res.status(200).json({
-          success: true,
-          data: proposal
-        });
-        return;
-      }
-
-      const listRes = await this.listUseCase.execute({ leadId, limit: 1 });
+      const { organizationId } = authContext(req);
+      const listRes = await this.listUseCase.execute({ leadId, organizationId, limit: 1 });
       const prop = listRes.proposals[0];
       if (!prop) {
         res.status(200).json({ success: true, data: null });
         return;
       }
-      const full = await this.getByIdUseCase.execute(prop.id);
+      const full = await this.getByIdUseCase.execute(prop.id, organizationId);
       res.status(200).json({ success: true, data: full });
     } catch (error) {
       next(error);

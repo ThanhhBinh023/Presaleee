@@ -58,6 +58,17 @@ export class PostgresMeetingRepository implements IMeetingRepository {
     return result.rows.map(row => this.mapRowToMeeting(row));
   }
 
+  async listByLead(leadId: string, scope: { organizationId: string }): Promise<Meeting[]> {
+    const result = await this.pool.query(
+      `SELECT m.* FROM meetings m
+       JOIN leads l ON l.id = m.lead_id
+       WHERE m.lead_id = $1 AND l.organization_id = $2
+       ORDER BY m.meeting_order ASC, m.meeting_date ASC;`,
+      [leadId, scope.organizationId]
+    );
+    return result.rows.map(row => this.mapRowToMeeting(row));
+  }
+  
   async update(id: string, params: UpdateMeetingParams): Promise<Meeting> {
     const updates: string[] = ['updated_at = NOW()'];
     const values: any[] = [id];

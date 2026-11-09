@@ -170,6 +170,7 @@ export function createContainer(): ServiceContainer {
   const generateProposalUseCase = new GenerateProposalUseCase(searchHybridRAGUseCase, llmGateway);
   const analyzeLeadIntakeUseCase = new AnalyzeLeadIntakeUseCase(llmGateway);
   const createLeadUseCase = new CreateLeadUseCase(leadRepository, referenceValidator, auditRepository);
+  const qualifyLeadUseCase = new QualifyLeadUseCase(leadRepository, llmGateway, auditRepository);
   const loginUseCase = new LoginUseCase(authRepository);
   const refreshSessionUseCase = new RefreshSessionUseCase(authRepository);
   const logoutUseCase = new LogoutUseCase(authRepository);
@@ -189,7 +190,7 @@ export function createContainer(): ServiceContainer {
   const exportProposalToPdfUseCase = new ExportProposalToPdfUseCase(proposalRepository, pdfExporterService);
   const submitProposalForReviewUseCase = new SubmitProposalForReviewUseCase(proposalRepository);
   const generateProposalSheetsUseCase = new GenerateProposalSheetsUseCase(
-    proposalRepository, leadRepository, meetingRepository, searchHybridRAGUseCase, llmGateway
+    proposalRepository, leadRepository, meetingRepository, searchHybridRAGUseCase, llmGateway, rateCardRepository
   );
 
   // 3. Presentation layer (Controllers)
@@ -212,7 +213,7 @@ export function createContainer(): ServiceContainer {
     exportProposalToPdfUseCase,
     submitProposalForReviewUseCase
   );
-  const leadIntakeController = new LeadIntakeController(analyzeLeadIntakeUseCase, dbPool, llmGateway, createLeadUseCase);
+  const leadIntakeController = new LeadIntakeController(analyzeLeadIntakeUseCase, createLeadUseCase, qualifyLeadUseCase, dbPool, llmGateway);
   const authController = new AuthController(
     loginUseCase,
     refreshSessionUseCase,

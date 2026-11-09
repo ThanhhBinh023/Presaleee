@@ -1,5 +1,6 @@
-import { NotFoundError, ValidationError } from '../../domain/errors/AppError.js';
-import { Proposal } from '../../domain/entities/Proposal.js';
+import { ConflictError, NotFoundError, ValidationError } from '../../domain/errors/AppError.js';
+import { Proposal, ProposalWithSheets, STANDARD_PROPOSAL_SHEETS } from '../../domain/entities/Proposal.js';
+import { getDefaultProposalSheets } from '../services/DefaultProposalSheets.js';
 import { PricingCalculationError, calculatePricing, deriveMonthlyRate } from '../../domain/services/calculatePricing.js';
 import { RATE_CARD_LEVELS, RateCard } from '../../domain/entities/RateCard.js';
 import { IRateCardRepository, RateCardInput as RateCardCreateInput, UpdateRateCardInput } from '../../domain/repositories/IRateCardRepository.js';
@@ -234,12 +235,45 @@ export class CalculateQuotationPricingUseCase {
     let proposal = null;
     if (shouldApply) {
       if (!proposalId || !this.proposalRepository) throw new ValidationError('proposalId is required to apply a calculated quotation.');
-      const updated = await this.proposalRepository.update(proposalId, scope.organizationId, {
+      const existing = await this.proposalRepository.findById(proposalId, scope.organizationId);
+      if (!existing) throw new NotFoundError('Proposal not found.');
+      if (existing.status !== 'DRAFT') throw new ConflictError('Only a DRAFT proposal can receive applied pricing.');
+      await this.proposalRepository.update(proposalId, scope.organizationId, {
         totalCost: pricing.totalCost,
         currency: pricing.currency
       });
-      if (!updated) throw new NotFoundError('Proposal not found.');
-      proposal = updated;
+
+      const items = buildPaymentSchedule(pricing, sheetArray(existing, 'Pricing & Quotation', 'items'));
+      const subtotal = items.reduce((sum, item) => sum + Number(item.amount), 0);
+      const taxAmount = roundMoney(subtotal * VAT_PERCENTAGE / 100);
+      const savedTeam = await this.proposalRepository.updateSheet(
+        proposalId, scope.organizationId, TEAM_SHEET.name, TEAM_SHEET.order,
+        {
+          ...blankSheetData(TEAM_SHEET.name),
+          ...sheetData(existing, 'Team & Rate Cards'),
+          roles: staffingRows(pricing, sheetArray(existing, 'Team & Rate Cards', 'roles')),
+          totalEffortManMonths: pricing.totalEffortManMonths,
+          totalTeamCost: pricing.totalCost
+        },
+        false
+      );
+      const savedPricing = await this.proposalRepository.updateSheet(
+        proposalId, scope.organizationId, PRICING_SHEET.name, PRICING_SHEET.order,
+        {
+          ...blankSheetData(PRICING_SHEET.name),
+          ...sheetData(existing, 'Pricing & Quotation'),
+          currency: pricing.currency,
+          items,
+          subtotal,
+          taxPercentage: VAT_PERCENTAGE,
+          taxAmount,
+          grandTotal: roundMoney(subtotal + taxAmount),
+          totalEffortManMonths: pricing.totalEffortManMonths
+        },
+        false
+      );
+      if (!savedTeam || !savedPricing) throw new ConflictError('Proposal stopped being a draft while pricing was applied.');
+      proposal = await this.proposalRepository.findById(proposalId, scope.organizationId);
     }
 
     await this.auditRepository.record({
@@ -259,6 +293,75 @@ export class CalculateQuotationPricingUseCase {
 function availableRoles(rateCards: RateCard[], currency: string): string {
   const names = rateCards.filter(card => (card.currency || 'USD').toUpperCase() === currency).map(card => card.roleName);
   return [...new Set(names)].join(', ') || 'none';
+}
+
+const VAT_PERCENTAGE = 10;
+const TEAM_SHEET = STANDARD_PROPOSAL_SHEETS.find(sheet => sheet.name === 'Team & Rate Cards')!;
+const PRICING_SHEET = STANDARD_PROPOSAL_SHEETS.find(sheet => sheet.name === 'Pricing & Quotation')!;
+
+function sheetData(proposal: ProposalWithSheets, sheetName: string): Record<string, any> {
+  return proposal.sheets.find(sheet => sheet.sheetName === sheetName)?.sheetData || {};
+}
+
+function sheetArray(proposal: ProposalWithSheets, sheetName: string, key: string): Record<string, any>[] {
+  const value = sheetData(proposal, sheetName)[key];
+  return Array.isArray(value) ? value.filter(row => Boolean(row) && typeof row === 'object' && !Array.isArray(row)) : [];
+}
+
+function blankSheetData(sheetName: string): Record<string, any> {
+  return getDefaultProposalSheets('').find(sheet => sheet.sheetName === sheetName)?.sheetData || {};
+}
+
+function staffingRows(pricing: PricingCalculationResult, existingRoles: Record<string, any>[]): Record<string, unknown>[] {
+  return pricing.lines.map((line, index) => ({
+    role: line.roleName,
+    level: line.level,
+    ...(existingRoles[index]?.allocation === undefined ? {} : { allocation: existingRoles[index].allocation }),
+    manMonths: line.manMonths,
+    monthlyRate: line.monthlyRate,
+    totalCost: line.totalCost
+  }));
+}
+
+/** Tranches keep the milestone wording already on the sheet; every amount is derived from the rate-card total. */
+function buildPaymentSchedule(pricing: PricingCalculationResult, existingItems: Record<string, any>[]): Record<string, unknown>[] {
+  const scheduled = existingItems
+    .map(item => ({
+      milestone: text(item.milestone),
+      description: text(item.description) || text(item.milestone),
+      trigger: text(item.trigger),
+      percentage: Number(item.percentage),
+      weight: Number(item.percentage)
+    }))
+    .filter(item => Number.isFinite(item.percentage) && item.percentage > 0);
+  const rows = scheduled.length > 0
+    ? scheduled
+    : pricing.lines.map(line => ({
+        milestone: `${line.roleName}${line.level ? ` (${line.level})` : ''}`,
+        description: `${line.manMonths} man-months at ${line.monthlyRate} ${pricing.currency} per month`,
+        trigger: line.rateSource === 'RATE_CARD'
+          ? 'Priced from the organization rate card - confirm the invoice trigger before sending.'
+          : 'Priced from a manual monthly rate override - confirm the invoice trigger before sending.',
+        percentage: Math.round(line.totalCost / pricing.totalCost * 10000) / 100,
+        weight: line.totalCost
+      }));
+  const weightSum = rows.reduce((sum, row) => sum + row.weight, 0);
+  let allocated = 0;
+  return rows.map((row, index) => {
+    const amount = index === rows.length - 1
+      ? roundMoney(pricing.totalCost - allocated)
+      : roundMoney(pricing.totalCost * row.weight / weightSum);
+    allocated = roundMoney(allocated + amount);
+    return { milestone: row.milestone, description: row.description, trigger: row.trigger, percentage: row.percentage, amount };
+  });
+}
+
+function text(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
 }
 
 function positiveAmount(value: unknown, field: string): number {

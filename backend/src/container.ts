@@ -58,7 +58,6 @@ import { DashboardController } from './presentation/controllers/DashboardControl
 import { KnowledgeController } from './presentation/controllers/KnowledgeController.js';
 import { ListKnowledgeDocumentsUseCase, GetKnowledgeDocumentUseCase, DeleteKnowledgeDocumentUseCase } from './application/use-cases/KnowledgeVaultUseCases.js';
 import { AskKnowledgeUseCase } from './application/use-cases/AskKnowledgeUseCase.js';
-import { PostgresMeetingRepository } from './infrastructure/database/repositories/PostgresMeetingRepository.js';
 import { MeetingController } from './presentation/controllers/MeetingController.js';
 import {
   AnalyzeMeetingUseCase, CreateMeetingUseCase, GetMeetingUseCase,
@@ -190,7 +189,7 @@ export function createContainer(): ServiceContainer {
   const exportProposalToPdfUseCase = new ExportProposalToPdfUseCase(proposalRepository, pdfExporterService);
   const submitProposalForReviewUseCase = new SubmitProposalForReviewUseCase(proposalRepository);
   const generateProposalSheetsUseCase = new GenerateProposalSheetsUseCase(
-    proposalRepository, leadRepository, meetingRepository, searchHybridRAGUseCase, llmGateway, rateCardRepository
+    proposalRepository, leadRepository, meetingRepository, searchHybridRAGUseCase, llmGateway, rateCardRepository, clientRepository
   );
 
   // 3. Presentation layer (Controllers)

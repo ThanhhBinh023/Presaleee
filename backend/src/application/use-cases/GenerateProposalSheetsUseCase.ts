@@ -6,6 +6,7 @@ import { STANDARD_PROPOSAL_SHEETS, ProposalSheet } from '../../domain/entities/P
 import { SearchHybridRAGUseCase } from './SearchHybridRAGUseCase.js';
 import { IMeetingRepository } from '../../domain/repositories/IMeetingRepository.js';
 import { IRateCardRepository } from '../../domain/repositories/IRateCardRepository.js';
+import { IClientRepository } from '../../domain/repositories/IClientRepository.js';
 import { requiredUuid } from '../services/RequestValidation.js';
 
 const MAX_INSTRUCTIONS = 4000;
@@ -57,7 +58,8 @@ export class GenerateProposalSheetsUseCase {
     private readonly meetingRepository: IMeetingRepository,
     private readonly searchUseCase: SearchHybridRAGUseCase,
     private readonly llmGateway: ILLMGateway,
-    private readonly rateCardRepository: IRateCardRepository
+    private readonly rateCardRepository: IRateCardRepository,
+    private readonly clientRepository: IClientRepository
   ) {}
 
   async execute(input: GenerateProposalSheetsInput): Promise<GeneratedProposalSheetResult> {
@@ -75,6 +77,9 @@ export class GenerateProposalSheetsUseCase {
       ? await this.leadRepository.findById(proposal.leadId, { organizationId: input.organizationId })
       : null;
     if (proposal.leadId && !lead) throw new NotFoundError('Linked lead not found.');
+    const client = lead?.clientId
+      ? await this.clientRepository.findById(lead.clientId, { organizationId: input.organizationId })
+      : null;
     const meetingContext = lead
       ? (await this.meetingRepository.listByLead(lead.id, { organizationId: input.organizationId }))
         .filter(meeting => meeting.status === 'INSPECTED' && meeting.cleanNotes)
@@ -93,7 +98,7 @@ export class GenerateProposalSheetsUseCase {
       return `Reference ${index + 1}: ${title}\n${chunk.chunkContent}`;
     }).join('\n\n');
     const roleCatalogue = sheetNames.includes('Team & Rate Cards')
-      ? (await this.rateCardRepository.listActive(input.organizationId))
+      ? (await this.rateCardRepository.listActive(input.organizationId, proposal.currency || undefined))
         .map(card => `${card.roleName} [level=${card.level}, currency=${card.currency}]`)
         .join('\n')
       : '';
@@ -111,7 +116,10 @@ export class GenerateProposalSheetsUseCase {
           ? ['For this section numeric effort is required and is not an invented client fact: fill every effort field with a positive number scaled to complexity - Simple 10-20, Medium 20-30, High 35-50, Very High 55-80 - keep totalWeeks a whole number, and state the assumption basis in the neighbouring text field. Leave monetary fields null; they are derived from the organization rate cards elsewhere.']
           : []),
         ...(name === 'Team & Rate Cards'
-          ? [`roles must be an array of objects shaped exactly {role, level, manMonths}. Copy role and level verbatim from this organization rate card catalogue, where role is the text before the brackets. manMonths is one role's share of the staffing effort: a positive number between 0.5 and 12, never a currency amount. Monetary fields belong to the rate cards and stay out of this sheet: ${roleCatalogue || '(No active rate cards - leave roles empty.)'}`]
+          ? [`roles must be an array of objects shaped exactly {role, level, manMonths}. Copy role and level verbatim from this organization rate card catalogue, where role is the text before the brackets. manMonths is one role's share of the staffing effort: a positive number between 0.5 and 12, never a currency amount. Monetary fields belong to the rate cards and stay out of this sheet: ${roleCatalogue || `(No active ${proposal.currency || 'USD'} rate cards for this organization - leave roles empty.)`}`]
+          : []),
+        ...(name === 'Appendices & Case Studies'
+          ? ['caseStudies must be an array of objects shaped exactly {client, domain, stack, outcome}, one object per engagement. Use only organizations named in the verified knowledge references or in this client record; return an empty array when no reference names one. outcome is what a reference states happened, never an invented ROI, percentage, or revenue figure.']
           : []),
         'Return exactly one valid JSON object. It will be stored as the sheet data object and consumed by a typed workbook exporter.',
         `Proposal title: ${proposal.title}`,
@@ -119,6 +127,7 @@ export class GenerateProposalSheetsUseCase {
         `Section purpose: ${definition.title}`,
         `Required top-level content keys (follow these keys): ${JSON.stringify(existing?.sheetData || {})}`,
         `Currency: ${proposal.currency || 'USD'}`,
+        `Client company name (use this exact spelling wherever a client name is required): ${client?.companyName || '(No client record linked to this lead.)'}`,
         `Lead metadata: ${JSON.stringify(lead?.extractedMetadata || {})}`,
         `Inspected discovery meeting context:\n${meetingContext || '(No inspected meetings linked to this lead.)'}`,
         `RFP source text:\n<rfp>${rfpText}</rfp>`,
@@ -127,6 +136,7 @@ export class GenerateProposalSheetsUseCase {
       ].join('\n\n');
       const output = await this.llmGateway.generate({ taskMode: 5, prompt, temperature: 0.15, maxTokens: 2200 });
       const sheetData = parseObject(output);
+      if (name === 'Overview' && client) sheetData.clientName = client.companyName;
       if (name === 'Pricing & Quotation' && sheetData.grandTotal !== undefined &&
         (typeof sheetData.grandTotal !== 'number' || !Number.isFinite(sheetData.grandTotal) || sheetData.grandTotal < 0)) {
         throw new ConflictError('AI returned an invalid grandTotal. The sheet was not saved.');

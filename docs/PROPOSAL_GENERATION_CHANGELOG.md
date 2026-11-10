@@ -56,7 +56,7 @@
 ## 6. Điểm mở (chưa tự sửa)
 
 - **`proposals.total_cost` thành giá TRƯỚC thuế → SAU thuế.** `PostgresProposalRepository.updateSheet:295` có sẵn luật `grandTotal → total_cost`, nên sau khi apply ô COST hiển thị `18 700` trong khi engine báo `17 000` net. Chọn một: để nguyên (giá client phải trả) hay bỏ `grandTotal` khỏi sheet Data (PDF mất dòng tổng).
-- 43/73 lỗi biên dịch còn lại nằm ở module Meeting (`IMeetingRepository` thiếu `saveTranscript`/`changeStatus`/`saveAnalysis`, `findById` bỏ qua scope) — cùng một lớp lỗi vừa sửa của proposal, cần quyết định có làm luôn không.
+- 43/73 lỗi biên dịch còn lại nằm ở module Meeting (`IMeetingRepository` thiếu `saveTranscript`/`changeStatus`/`saveAnalysis`, `findById` bỏ qua scope) — **đã đóng một phần ngày 11/11 (mục 8)**: repository giờ fulfil đủ interface nên nhánh được DI chạy được; 35 lỗi còn lại nằm trong 7 file hệ thống cũ (`CreateMeetingUseCase.ts`, `GetMeetingByIdUseCase.ts`, `ListMeetingsByLeadUseCase.ts`, `InspectMeetingUseCase.ts`, `UpdateMeetingLifecycleUseCase.ts`, `MeetingDTOs.ts`, `scripts/testDiscoveryMeetingE2E.ts`) — **không file nào được `container.ts` khởi tạo**, tức code chết, chưa quyết định xóa hay nâng cấp.
 - 6 lỗi `FastAPILMGateway` tham chiếu `MEETING_ASSISTANT`/`GAP_ANALYSIS`/`BANT_QUALIFICATION`/`TECH_ARCHITECTURE` — cùng căn nguyên 422; route A (`POST /:id/qualify`) vẫn dùng mode hỏng và ghi DB không scope.
 - `generateFromLead` (`POST /proposals/generate-from-lead`) vẫn trả 501 có chủ đích: UC chưa từng được khởi tạo, `leadRepository.list()` không lọc tổ chức, `req.user?.id` không tồn tại.
 - `PATCH /proposals/:id` và `/lifecycle` vẫn 400 do controller thiếu `organizationId`/`actorId` trong DTO (`ProposalController.ts:114, :131, :232`); `POST /:id/ui-brief` (:131) gọi UC thiếu tổ chức.
@@ -87,3 +87,55 @@
 **Hệ quả còn treo:** vì tab 06 (order 6) có nội dung nên vòng generate đã đi qua sheet 5 mà không ném lỗi ⇒ `rateCardRepository` được nối đúng và `listActive()` trả mảng rỗng. Nghĩa là **nhánh `apply` chưa từng chạy thật trong app** — mới chỉ có proof bằng repository giả (mục 4). Mở khoá bằng cách: tạo ≥ 2 rate card (role `ADMIN`/`PRESALE_LEAD`; `setupDatabase.ts:52` gắn 7 card seed vào `SELECT id FROM organizations LIMIT 1`, tức org của người khác nên org mình vẫn trống), rồi **generate lại riêng sheet 5**, rồi Apply.
 
 **Tally theo phạm vi "sinh proposal":** 4/10 sheet vào workbook nguyên vẹn · 4/10 rơi một số cột (để sửa vòng sau) · 1/10 chặn vì thiếu dữ liệu rate card (không phải lỗi code) · 1/10 trống có chủ đích.
+
+---
+
+## 8. Vòng 2 — 11/11: nối các nguồn thông tin bổ sung cho proposal (P0 + P1)
+
+Phạm vi theo đúng hai mục P0/P1 đã chốt; P2 (knowledge data, BANT vào prompt) và P3 (VAT, fallback `16`/`9`, `total_cost` net/gross, `proposal_collaborators`) **chưa đụng vào**.
+
+### 8.1. Meeting — module hết chết ngay cú ghi đầu tiên
+
+`PostgresMeetingRepository.ts` viết lại theo interface thật (`IMeetingRepository.ts:13-20`), chỉ dùng cột mà migration **001 + 006** bảo vệ (bỏ hẳn dependency vào `migrate_meetings.ts` — script này không có trong `package.json` nên không ai chắc DB nào có `meeting_order`/`source_tool`).
+
+| Method | Nội dung | Guard |
+|---|---|---|
+| `saveTranscript` | `UPDATE … FROM leads`, append bằng `raw_transcript \|\| E'\n\n' \|\| $3` khi `append=true` | `status = 'OPEN'` |
+| `changeStatus` | `m.status = ANY($4::text[])` — chuyển trạng thái có điều kiện hiện trạng | chống ghi đè song song |
+| `saveAnalysis` | ghi `analysis` + 4 cột denormalize (`decisions`/`action_items`/`open_questions`/`gap_analysis`), set `status='INSPECTED'`, `analyzed_at=NOW()` | `status = 'OPEN'` |
+| `mapRowToMeeting` | nay trả đúng shape `Meeting` (`organizationId`, `attendees`, `decisions`, `openQuestions`, `analysis`, `analyzedAt`) | `analysis` mặc định `{}` |
+
+Ba quyết định cần nêu rõ vì chúng không hiển nhiên:
+
+1. **Scope luôn resolve qua `JOIN leads`**, không qua `meetings.organization_id`: probe đọc `organization_id IS NULL` cho 1 trong 2 meeting INSPECTED đang tồn tại (row cũ do `INSERT` cũ tạo), nên dựa vào cột denormalize sẽ làm mất dữ liệu đó.
+2. **`saveAnalysis` ghi luôn `clean_notes` từ `analysis.summary`**: `GenerateProposalSheetsUseCase.ts:80` lọc `status === 'INSPECTED' && meeting.cleanNotes` — nếu không có dòng này thì meeting INSPECTED vẫn không bao giờ vào proposal.
+3. **`MeetingController.createForLead` gọi `parseCreateMeetingInput`** (trước đây truyền `input.attendees` kiểu `unknown` thẳng vào JSONB); đây là đường ghi duy nhất tạo meeting, nằm trong chuỗi P0 đang sửa.
+
+Hậu quả đo được: **6 lỗi `container.ts` "PostgresMeetingRepository is not assignable to IMeetingRepository" hết** — tức `GenerateProposalSheetsUseCase.ts:82` (`'technicalSummary' in meeting.analysis`) không còn là súng lên cò;DB đang có **2 meeting INSPECTED**, chỉ cần proposal link đúng lead là generate sập 500 với code cũ.
+
+### 8.2. Tên khách hàng — hết "Valued Client"
+
+`clients.company_name` đã có trong DB (52 client, 24 lead đã gắn `client_id`) nhưng không đường nào tới proposal. Sửa 3 điểm trong `GenerateProposalSheetsUseCase.ts`:
+
+- constructor thêm `clientRepository: IClientRepository` (arg thứ 7), `container.ts:192` truyền `clientRepository`;
+- prompt mọi sheet nay có `Client company name (use this exact spelling wherever a client name is required): …` — xoá thế bí "cấm bịa sự thật khách hàng" vs "điền clientName";
+- **stamp deterministic** `if (name === 'Overview' && client) sheetData.clientName = client.companyName;` — cùng nguyên tắc "LLM chỉ đề xuất effort, số tiền và sự thật do backend quyết".
+
+Không đổi chữ ký `IExcelExporterService` (sẽ kéo theo PDF exporter + 2 use case export + container); exporter vẫn giữ fallback `data.clientName || 'Valued Client'` (`ExcelProposalExporterService.ts:133`) cho proposal không link lead.
+
+### 8.3. Rate card theo đúng tiền tệ + khoá cấp dòng sheet 10
+
+- `listActive(input.organizationId, proposal.currency || undefined)` — catalogue đưa vào prompt sheet 5 giờ chỉ còn role đúng đồng tiền của proposal. Luật lọc kiểm chứng bằng repository giả (PASS "catalogue chỉ USD"); dữ liệu thật có đất thử vì Northwind có 6 card USD và 1 card EUR (`EU Solution Architect`). `CalculateQuotationPricingUseCase.ts:222` **giữ nguyên không lọc**, vì comment `:221` giải thích cố ý: engine cần phân biệt "không có card cho role này" và "card tồn tại ở tiền tệ khác".
+- Thêm rule khoá cấp phần tử cho `Appendices & Case Studies`, khớp chính xác `ExcelProposalExporterService.ts:541-549`: `caseStudies` phải là mảng `{client, domain, stack, outcome}`, chỉ dùng tổ chức có tên trong knowledge reference, rỗng nếu không có.
+
+### 8.4. Đã kiểm chứng bằng cmd (không ghi dòng nào xuống DB)
+
+| Bước kiểm tra | Kết quả |
+|---|---|
+| `npx tsc --noEmit` | **73 → 57** lỗi. `comm` đối chiếu tập lỗi: **0 lỗi mới**; 2 dòng `Duplicate identifier` ở `container.ts:78,79` chỉ là đổi số dòng của lỗi có sẵn (đã xoá import trùng ở dòng 61) |
+| Probe `information_schema` | `meetings` có đủ 24 cột → cả migration 006 lẫn `migrate_meetings.ts` đều đã chạy trên DB này |
+| `PREPARE`/`DEALLOCATE` cho 7 câu SQL mới | **PARSE_OK cả 7** (kể cả suy kiểu `boolean` cho `$4` của nhánh append) — PREPARE parse và phân tích kiểu nhưng không thực thi, nên không ghi dữ liệu |
+| Script repository giả (16 assertion) | **16/16 PASS**: client name có trong cả 3 prompt · `Overview.clientName` vẫn đúng khi LLM trả `null` · meeting INSPECTED vào prompt, meeting OPEN bị loại · meeting không có `analysis` không crash · catalogue chỉ USD · rule sheet 10 chỉ áp dụng cho sheet 10 |
+| Data đo được của tenant fixture `Northwind Presales` | 7 rate card active (6 USD + 1 EUR) · 4 knowledge doc / 7 chunk `vector(768)`, trong đó 1 `CASE_STUDY` · 25 client · lead `d1000000-…-05` “Acme compliance evidence portal” (client *Acme Fintech Group*) có 1 meeting INSPECTED kèm `analysis.technicalSummary` → **một lead duy nhất kích hoạt cả 4 nguồn bổ sung cùng lúc** |
+
+`package-lock.json` lại đổi 11 dòng cờ `"peer": true` do `npx` tự resolve — **không staged, không nằm trong commit này**.

@@ -39,10 +39,25 @@ export interface ProposalFilterParams {
 
 export interface IProposalRepository {
   create(params: CreateProposalParams): Promise<ProposalWithSheets>;
-  findById(id: string): Promise<ProposalWithSheets | null>;
+  findById(id: string, organizationId: string): Promise<ProposalWithSheets | null>;
   findByLeadId(leadId: string): Promise<ProposalWithSheets | null>;
   findAll(filter?: ProposalFilterParams): Promise<{ proposals: Proposal[]; total: number }>;
-  update(id: string, params: UpdateProposalParams): Promise<Proposal>;
-  updateSheet(proposalId: string, sheetName: string, sheetData: Record<string, any>, aiGenerated?: boolean): Promise<ProposalSheet>;
-  delete(id: string): Promise<boolean>;
+  update(id: string, organizationId: string, params: UpdateProposalParams): Promise<Proposal | null>;
+  updateStatus(
+    id: string,
+    organizationId: string,
+    actorId: string,
+    status: Proposal['status'],
+    allowedCurrentStatuses: Proposal['status'][]
+  ): Promise<Proposal | null>;
+  submitForReview(id: string, organizationId: string, actorId: string): Promise<Proposal | null>;
+  updateSheet(
+    proposalId: string,
+    organizationId: string,
+    sheetName: string,
+    sheetOrder: number,
+    sheetData: Record<string, any>,
+    aiGenerated?: boolean
+  ): Promise<ProposalSheet | null>;
+  delete(id: string, organizationId: string): Promise<boolean>;
 }

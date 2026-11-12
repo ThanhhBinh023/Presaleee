@@ -8,6 +8,7 @@ export function createProposalRouter(controller: ProposalController): Router {
 
   // Excel Export endpoint (must be before :id if matched specifically)
   router.get('/:id/export-excel', controller.exportExcel);
+  router.get('/:id/export-pdf', controller.exportPdf);
   router.post('/:id/generate', controller.generateAll);
   router.post('/:id/sheets/:sheetName/generate', controller.generateSheet);
   router.post('/:id/sections/:sectionName/regenerate', controller.regenerateSection);

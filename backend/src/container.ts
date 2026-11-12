@@ -58,7 +58,6 @@ import { DashboardController } from './presentation/controllers/DashboardControl
 import { KnowledgeController } from './presentation/controllers/KnowledgeController.js';
 import { ListKnowledgeDocumentsUseCase, GetKnowledgeDocumentUseCase, DeleteKnowledgeDocumentUseCase } from './application/use-cases/KnowledgeVaultUseCases.js';
 import { AskKnowledgeUseCase } from './application/use-cases/AskKnowledgeUseCase.js';
-import { PostgresMeetingRepository } from './infrastructure/database/repositories/PostgresMeetingRepository.js';
 import { MeetingController } from './presentation/controllers/MeetingController.js';
 import {
   AnalyzeMeetingUseCase, CreateMeetingUseCase, GetMeetingUseCase,
@@ -169,6 +168,8 @@ export function createContainer(): ServiceContainer {
   const ingestDocumentUseCase = new IngestDocumentUseCase(knowledgeRepository, embeddingGateway);
   const generateProposalUseCase = new GenerateProposalUseCase(searchHybridRAGUseCase, llmGateway);
   const analyzeLeadIntakeUseCase = new AnalyzeLeadIntakeUseCase(llmGateway);
+  const createLeadUseCase = new CreateLeadUseCase(leadRepository, referenceValidator, auditRepository);
+  const qualifyLeadUseCase = new QualifyLeadUseCase(leadRepository, llmGateway, auditRepository);
   const loginUseCase = new LoginUseCase(authRepository);
   const refreshSessionUseCase = new RefreshSessionUseCase(authRepository);
   const logoutUseCase = new LogoutUseCase(authRepository);
@@ -188,7 +189,7 @@ export function createContainer(): ServiceContainer {
   const exportProposalToPdfUseCase = new ExportProposalToPdfUseCase(proposalRepository, pdfExporterService);
   const submitProposalForReviewUseCase = new SubmitProposalForReviewUseCase(proposalRepository);
   const generateProposalSheetsUseCase = new GenerateProposalSheetsUseCase(
-    proposalRepository, leadRepository, meetingRepository, searchHybridRAGUseCase, llmGateway
+    proposalRepository, leadRepository, meetingRepository, searchHybridRAGUseCase, llmGateway, rateCardRepository, clientRepository
   );
 
   // 3. Presentation layer (Controllers)
@@ -211,17 +212,7 @@ export function createContainer(): ServiceContainer {
     exportProposalToPdfUseCase,
     submitProposalForReviewUseCase
   );
-  const leadIntakeController = new LeadIntakeController(
-    analyzeLeadIntakeUseCase,
-    new CreateLeadUseCase(leadRepository, referenceValidator, auditRepository),
-    new ListLeadsUseCase(leadRepository),
-    new GetLeadUseCase(leadRepository),
-    new UpdateLeadUseCase(leadRepository, referenceValidator, auditRepository),
-    new UpdateLeadStatusUseCase(leadRepository, auditRepository),
-    new DeleteLeadUseCase(leadRepository, auditRepository),
-    new QualifyLeadUseCase(leadRepository, llmGateway, auditRepository),
-    new GetLatestQualificationUseCase(leadRepository)
-  );
+  const leadIntakeController = new LeadIntakeController(analyzeLeadIntakeUseCase, createLeadUseCase, qualifyLeadUseCase, dbPool, llmGateway);
   const authController = new AuthController(
     loginUseCase,
     refreshSessionUseCase,
@@ -293,11 +284,6 @@ export function createContainer(): ServiceContainer {
   );
   const auditController = new AuditController(new ListAuditLogsUseCase(auditRepository));
 
-  const dashboardController = new DashboardController(
-    getDashboardOverviewUseCase,
-    listDashboardLeadsUseCase,
-    listDashboardActivityUseCase
-  );
 
   return {
     knowledgeRepository,

@@ -23,7 +23,9 @@ import {
   Calendar, 
   Zap, 
   ChevronRight,
-  Users
+  Users,
+  CreditCard,
+  SlidersHorizontal
 } from 'lucide-react';
 
 function formatCurrencies(values: CurrencyAmount[]): string {
@@ -64,7 +66,6 @@ export const Overview: React.FC<OverviewProps> = ({
   const [activeNav, setActiveNav] = useState('Overview');
   const [searchTerm, setSearchTerm] = useState('');
   const [leadLimit, setLeadLimit] = useState(8);
-  const { user } = useAuth();
   const { overview, activity, isLoading, error, reload } = useDashboardOverview(leadLimit);
   const kpis = overview?.kpis;
   const pipeline = overview?.pipeline ?? [];
@@ -100,16 +101,9 @@ export const Overview: React.FC<OverviewProps> = ({
             {[
               { name: 'Overview', icon: LayoutGrid },
               { name: 'RFPs & Specs', icon: FileText },
-              { name: 'Leads', icon: Zap },
-              { name: 'Meetings', icon: Calendar },
-              { name: 'Proposals', icon: FileText },
-              { name: 'Client portal', icon: Globe },
-              { name: 'Rate cards', icon: CreditCard },
               { name: 'AI Workspace', icon: Sparkles, badge: 'New' },
-              { name: 'Knowledge Vault', icon: BookOpen },
-              { name: 'Clients', icon: Building2 },
-              { name: 'Audit trail', icon: ShieldCheck },
-              { name: 'Members', icon: Users },
+              { name: 'Leads', icon: Zap },
+              { name: 'Client portal', icon: Globe },
             ].map((item) => {
               const Icon = item.icon;
               const isActive = activeNav === item.name;

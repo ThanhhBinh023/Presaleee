@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   LayoutGrid,
+  Globe,
   FileText,
   Sparkles,
   BookOpen,
@@ -52,6 +53,11 @@ function csv(value: string): string[] {
     .filter(Boolean);
 }
 
+function text(value: unknown, fallback: string): string {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  return normalized || fallback;
+}
+
 export const RfpIntake: React.FC<RfpIntakeProps> = ({
   onNavigateOverview,
   onNavigateAIWorkspace,
@@ -60,7 +66,7 @@ export const RfpIntake: React.FC<RfpIntakeProps> = ({
   const clients = useClientDirectory({ page: 1, limit: 100 });
   const members = useMemberDirectory({ page: 1, limit: 50 });
 
-  const [inquiryText, setInquiryText] = useState(SAMPLE_RFP);
+  const [inquiryText, setInquiryText] = useState('');
   const [source, setSource] = useState<LeadSource>('MANUAL');
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
@@ -128,12 +134,16 @@ export const RfpIntake: React.FC<RfpIntakeProps> = ({
             : csv(String(metadata.integrationsRequired ?? '')),
           complianceAndSecurity: Array.isArray(metadata.complianceAndSecurity)
             ? metadata.complianceAndSecurity
-            : csv(String(metadata.complianceAndSecurity ?? ''))
+            : csv(String(metadata.complianceAndSecurity ?? '')),
+          missing_information: missing,
+          target_sla: text(metadata.target_sla ?? metadata.targetSla, '< 100ms'),
+          peak_workload: text(metadata.peak_workload ?? metadata.peakWorkload, 'Cao tải theo thời gian thực')
         },
         clientId: clientId || null,
         assignedTo: assignedTo || null
       });
       setSavedLeadId(created.id);
+      localStorage.setItem('presaleee_active_lead_id', created.id);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Could not save the lead.');
     } finally {
@@ -168,21 +178,17 @@ export const RfpIntake: React.FC<RfpIntakeProps> = ({
                 <span>RFPs &amp; Specs</span>
               </div>
             </button>
-            <button onClick={() => navigateTo('leads')} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50">
-              <List className="w-4 h-4 text-slate-400" />
-              <span>Leads</span>
-            </button>
             <button onClick={onNavigateAIWorkspace} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50">
               <Sparkles className="w-4 h-4 text-slate-400" />
               <span>AI Workspace</span>
             </button>
-            <button onClick={() => navigateTo('vault')} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50">
-              <BookOpen className="w-4 h-4 text-slate-400" />
-              <span>Knowledge Vault</span>
+            <button onClick={() => navigateTo('leads')} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50">
+              <Zap className="w-4 h-4 text-slate-400" />
+              <span>Leads</span>
             </button>
-            <button onClick={() => navigateTo('rate-cards')} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50">
-              <CreditCard className="w-4 h-4 text-slate-400" />
-              <span>Rate cards</span>
+            <button onClick={() => navigateTo('portal')} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50">
+              <Globe className="w-4 h-4 text-slate-400" />
+              <span>Client portal</span>
             </button>
           </nav>
         </div>
@@ -230,13 +236,23 @@ export const RfpIntake: React.FC<RfpIntakeProps> = ({
                   </select>
                 </div>
 
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-semibold text-slate-700">Customer request / RFP brief</span>
+                  <button
+                    type="button"
+                    onClick={() => setInquiryText(SAMPLE_RFP)}
+                    className="text-[10px] text-brand-600 hover:underline font-mono"
+                  >
+                    Dán mẫu POS Retail RFP
+                  </button>
+                </div>
                 <label className="text-xs font-semibold text-slate-700 block">
-                  Customer request / RFP brief
                   <textarea
                     rows={8}
                     value={inquiryText}
                     onChange={(e) => setInquiryText(e.target.value)}
-                    className="mt-1.5 w-full p-3 rounded-xl border border-slate-200 bg-slate-50/70 text-xs font-mono text-slate-800 focus:outline-none focus:border-brand-500"
+                    placeholder="Dán hoặc nhập yêu cầu dự án / RFP brief từ khách hàng vào đây để AI phân tích..."
+                    className="mt-1 w-full p-3 rounded-xl border border-slate-200 bg-slate-50/70 text-xs font-mono text-slate-800 focus:outline-none focus:border-brand-500"
                   />
                 </label>
                 <p className="text-[10px] font-mono text-slate-400">{inquiryText.length} / 50000 characters. File upload is not wired — the backend parser is still pending.</p>
@@ -361,12 +377,30 @@ export const RfpIntake: React.FC<RfpIntakeProps> = ({
                     {saveError && <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{saveError}</p>}
 
                     {savedLeadId ? (
-                      <div className="flex items-start gap-2 rounded-xl border border-brand-200 bg-emerald-50 p-3 text-xs text-brand-800">
-                        <CheckCircle2 className="w-4 h-4 shrink-0" />
-                        <div>
-                          Lead saved as NEW. Qualification, status changes and proposal creation live on the lead record.
-                          <button onClick={() => navigateTo('leads', { id: savedLeadId })} className="mt-2 block font-bold underline">
-                            Open lead
+                      <div className="flex flex-col gap-2.5 rounded-2xl border border-brand-200 bg-emerald-50/80 p-4 text-xs text-brand-900 shadow-sm">
+                        <div className="flex items-center gap-2 font-bold text-sm text-brand-800">
+                          <CheckCircle2 className="w-5 h-5 text-brand-600 shrink-0" />
+                          <span>Dự án đã được lưu vào Database thành công!</span>
+                        </div>
+                        <p className="text-slate-600 leading-relaxed text-[11px]">
+                          Thông số RFP đã được chuyển sang quy trình tiếp theo. Chuyển sang AI Workspace để thực hiện chấm điểm BANT, ghi nhận biên bản cuộc họp và xuất Proposal 10 Sheets.
+                        </p>
+                        <div className="flex flex-wrap items-center gap-2 pt-1">
+                          <button
+                            onClick={() => {
+                              localStorage.setItem('presaleee_active_lead_id', savedLeadId);
+                              onNavigateAIWorkspace();
+                            }}
+                            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white font-bold shadow-sm transition-all cursor-pointer"
+                          >
+                            <Sparkles className="w-4 h-4 text-white" />
+                            <span>Chuyển sang AI Workspace (Chấm điểm &amp; Đề xuất) &rarr;</span>
+                          </button>
+                          <button
+                            onClick={() => navigateTo('leads', { id: savedLeadId })}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-[11px]"
+                          >
+                            <span>Xem danh sách Leads</span>
                           </button>
                         </div>
                       </div>

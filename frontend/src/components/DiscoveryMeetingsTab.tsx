@@ -35,7 +35,11 @@ const SAMPLE_ZOOM_TRANSCRIPT = `[00:01] Alex (Solution Architect): Um, hi Marcus
 [01:30] Alex: Got it. Who on your side handles the SAP integration APIs?
 [01:40] Marcus: That would be David Tran, our Lead SAP Architect. He can provide the OpenAPI specs by next Tuesday. Let's schedule a deep dive with David next week.`;
 
-export const DiscoveryMeetingsTab: React.FC = () => {
+interface DiscoveryMeetingsTabProps {
+  onProceedToProposals?: () => void;
+}
+
+export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({ onProceedToProposals }) => {
   const toast = useToast();
   const [leads, setLeads] = useState<LeadItem[]>([]);
   const [selectedLeadId, setSelectedLeadId] = useState<string>('');
@@ -611,6 +615,21 @@ export const DiscoveryMeetingsTab: React.FC = () => {
                   </button>
                 </div>
               </div>
+
+              {onProceedToProposals && (
+                <div className="mt-5 flex flex-col sm:flex-row items-center justify-between p-4 bg-emerald-50/80 rounded-2xl border border-brand-200/80 gap-3">
+                  <div>
+                    <span className="text-xs font-bold text-brand-900 block font-mono uppercase">Tiếp tục luồng Presale (Bước 3):</span>
+                    <span className="text-xs text-slate-600">Đã chốt biên bản cuộc họp. Khởi tạo và đồng bộ sang Hồ sơ Đề xuất Kỹ thuật (10 Sheets Proposal).</span>
+                  </div>
+                  <button
+                    onClick={onProceedToProposals}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white font-semibold text-xs transition-all cursor-pointer shadow-sm shrink-0"
+                  >
+                    <span>Sang Proposal Builder (10 Sheets) &rarr;</span>
+                  </button>
+                </div>
+              )}
 
             </div>
           ) : (

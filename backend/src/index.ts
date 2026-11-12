@@ -41,13 +41,18 @@ app.use(
     container.ragController,
     container.proposalController,
     container.leadIntakeController,
-    container.meetingController,
     container.authController,
+    container.dashboardController,
+    container.knowledgeController,
+    container.meetingController,
+    container.portalController,
+    container.portalRepository,
+    container.clientController,
+    container.rateCardController,
     container.userController,
-    container.dashboardController
+    container.auditController
   )
 );
-
 
 // Centralized error handling middleware
 app.use(errorHandler);

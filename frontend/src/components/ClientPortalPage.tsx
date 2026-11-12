@@ -167,10 +167,10 @@ export const ClientPortalPage: React.FC = () => {
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div>
             <button
-              onClick={() => navigateTo('home')}
-              className="mb-1 text-xs font-mono font-bold text-brand-700 hover:underline block"
+              onClick={() => navigateTo('overview')}
+              className="mb-1 text-xs font-mono font-bold text-brand-700 hover:underline block cursor-pointer"
             >
-              &larr; BACK TO APP
+              &larr; BACK TO OVERVIEW
             </button>
             <p className="text-xs font-mono font-bold text-brand-700">CLIENT PORTAL</p>
             <h1 className="mt-1 text-2xl font-bold tracking-tight">Shared proposal</h1>
@@ -210,9 +210,20 @@ export const ClientPortalPage: React.FC = () => {
                     {proposal.version} · {proposal.status} · {formatMoney(proposal.totalCost ?? null, proposal.currency)} · {proposal.estimatedTimelineWeeks ?? '—'} weeks
                   </p>
                 </div>
-                <button onClick={() => void exportPdf()} disabled={isWorking} className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
-                  Download PDF
-                </button>
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => {
+                      window.print();
+                      setNotice('Đang mở hộp thoại in / xuất bản tóm tắt Overview...');
+                    }} 
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer shadow-2xs"
+                  >
+                    Xuất / In Overview
+                  </button>
+                  <button onClick={() => void exportPdf()} disabled={isWorking} className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white disabled:opacity-50 cursor-pointer">
+                    Download PDF
+                  </button>
+                </div>
               </div>
               <div className="mt-3 flex flex-wrap gap-1">
                 {proposal.sheets.map((sheet) => (

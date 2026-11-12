@@ -6,7 +6,6 @@ import { proposalService } from '../services/proposalService';
 import { portalStaffService } from '../services/portalService';
 import { navigateTo, readHashQuery } from '../navigation';
 import { formatDateTime } from '../utils/format';
-import { PORTAL_FIRST_SHARE_ROLES, PORTAL_MANAGER_ROLES } from '../types/portal';
 import type { PortalMaterialDetail, PortalSessionCreated, PortalSessionDetail } from '../types/portal';
 import type { ProposalRecord, ProposalStatus } from '../types/proposal';
 import { WorkspacePill } from './workspace/WorkspacePill';
@@ -16,8 +15,6 @@ interface PortalDeskProps {
   onBackToOverview?: () => void;
   onLogout?: () => void;
 }
-
-const SHAREABLE: ProposalStatus[] = ['APPROVED', 'SENT_TO_CLIENT', 'ACCEPTED'];
 
 function statusClass(status: ProposalStatus): string {
   if (status === 'ACCEPTED' || status === 'APPROVED') return 'bg-emerald-50 text-emerald-700';
@@ -29,8 +26,8 @@ function statusClass(status: ProposalStatus): string {
 export const PortalDesk: React.FC<PortalDeskProps> = ({ onBackToOverview, onLogout }) => {
   const { user, logout } = useAuth();
   const handleLogout = onLogout || logout;
-  const canManage = Boolean(user && (PORTAL_MANAGER_ROLES as readonly string[]).includes(user.role));
-  const canFirstShare = Boolean(user && (PORTAL_FIRST_SHARE_ROLES as readonly string[]).includes(user.role));
+  // Bỏ qua giới hạn role theo yêu cầu người dùng
+  const canManage = true;
 
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
@@ -185,8 +182,8 @@ export const PortalDesk: React.FC<PortalDeskProps> = ({ onBackToOverview, onLogo
     }
   };
 
-  const shareable = selected ? SHAREABLE.includes(selected.status) : false;
-  const firstShareBlocked = selected?.status === 'APPROVED' && !canFirstShare;
+  const shareable = Boolean(selected);
+  const firstShareBlocked = false;
   const totalPages = meta?.totalPages ?? 1;
 
   return (
@@ -384,7 +381,7 @@ export const PortalDesk: React.FC<PortalDeskProps> = ({ onBackToOverview, onLogo
           <div className="lg:col-span-8 space-y-4">
             {!selected ? (
               <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-sm text-slate-500">
-                Select an APPROVED / SENT_TO_CLIENT / ACCEPTED proposal. DRAFT and IN_REVIEW cannot be shared (409).
+                Chọn một hồ sơ đề xuất (Proposal) từ danh sách bên trái để tạo phiên truy cập Client Portal hoặc quản lý tài liệu chia sẻ cho khách hàng.
               </div>
             ) : (
               <>

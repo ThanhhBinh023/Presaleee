@@ -61,7 +61,7 @@ export class PostgresPortalRepository implements IPortalRepository {
       `UPDATE portal_sessions s SET last_accessed_at = NOW()
        FROM proposals p WHERE s.proposal_id = p.id AND s.token_hash = $1 AND s.proposal_id = $2
          AND s.revoked_at IS NULL AND s.expires_at > NOW()
-         AND p.status IN ('SENT_TO_CLIENT', 'ACCEPTED')
+         AND p.status IN ('DRAFT', 'IN_REVIEW', 'APPROVED', 'SENT_TO_CLIENT', 'ACCEPTED')
        RETURNING s.id, s.proposal_id, s.organization_id, s.client_email, s.client_name, s.expires_at;`,
       [tokenHash, proposalId]
     );

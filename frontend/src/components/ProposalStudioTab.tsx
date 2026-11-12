@@ -34,9 +34,9 @@ function buildDefault10SheetsProposal(leadId: string, lead: LeadItem | null): Pr
   const meta = lead?.extracted_metadata || {};
   const budget = meta.budgetUsd || 120000;
   const timeline = meta.timelineWeeks || 20;
-  const techStack = meta.techStack?.length ? meta.techStack.join(', ') : 'React 19, TypeScript, Node.js, PostgreSQL, Kubernetes, Redis, Apache Kafka';
+  const techStack = Array.isArray(meta.techStack) ? meta.techStack.join(', ') : (meta.techStack || 'React 19, TypeScript, Node.js, PostgreSQL, Kubernetes, Redis, Apache Kafka');
   const platforms = meta.targetPlatforms?.length ? meta.targetPlatforms.join(', ') : 'Web Portal, iOS, Android, Cloud Native Microservices';
-  const compliance = meta.complianceStandards?.length ? meta.complianceStandards.join(', ') : 'SOC-2 Type II, ISO 27001, PCI-DSS Level 1, OWASP Top 10';
+  const compliance = Array.isArray(meta.complianceStandards) ? meta.complianceStandards.join(', ') : (meta.complianceStandards || 'SOC-2 Type II, ISO 27001, PCI-DSS Level 1, OWASP Top 10');
 
   return {
     id: leadId,
@@ -234,7 +234,7 @@ export const ProposalStudioTab: React.FC<ProposalStudioTabProps> = ({ leadId, ac
   const [loading, setLoading] = useState<boolean>(true);
   const [generating, setGenerating] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
-  const [customInstructions, setCustomInstructions] = useState<string>('');
+  const [customInstructions] = useState<string>('');
   
   // Active sheet selection
   const [activeSheetName, setActiveSheetName] = useState<string>('Overview');

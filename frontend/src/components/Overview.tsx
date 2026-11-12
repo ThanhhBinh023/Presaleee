@@ -10,21 +10,15 @@ import {
   LayoutGrid, 
   FileText, 
   Sparkles, 
-  BookOpen, 
   Search, 
   Plus, 
   ArrowRight, 
   Clock, 
   DollarSign, 
   TrendingUp, 
-  ShieldCheck, 
   Globe, 
-  Building2, 
-  Calendar, 
   Zap, 
   ChevronRight,
-  Users,
-  CreditCard,
   SlidersHorizontal
 } from 'lucide-react';
 

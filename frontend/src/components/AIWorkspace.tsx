@@ -9,14 +9,10 @@ import {
   LayoutGrid, 
   FileText, 
   Sparkles, 
-  BookOpen, 
   Send, 
   CheckCircle2, 
   ShieldCheck, 
   Zap, 
-  Paperclip, 
-  Check, 
-  Layers, 
   Globe,
   Settings, 
   Cpu, 
@@ -30,21 +26,22 @@ import {
   RefreshCw,
   X,
   Save,
-  CreditCard,
-  History,
   FolderOpen,
   Clock,
   MessageSquare,
   ShieldAlert,
   FileCheck
 } from 'lucide-react';
-import { useMemberDirectory } from '../hooks/useMemberDirectory';
 import { navigateTo } from '../navigation';
-import { initialsOf } from '../utils/format';
 import { ClientPortalModal } from './ClientPortalModal';
 import { DiscoveryMeetingsTab } from './DiscoveryMeetingsTab';
 import { ProposalStudioTab } from './ProposalStudioTab';
 import { useToast } from './common/Toast';
+import { portalStaffService } from '../services/portalService';
+import type { PortalSessionDetail, PortalMaterialDetail } from '../types/portal';
+import { fetchProposalByLead } from '../services/proposalService';
+import type { ProposalItem } from '../services/proposalService';
+import { formatDateTime } from '../utils/format';
 
 interface AIWorkspaceProps {
   onNavigateOverview: () => void;
@@ -57,7 +54,7 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
   onNavigateOverview, 
   onLogout,
   onNavigateRfps,
-  onNavigateVault
+  onNavigateVault: _onNavigateVault
 }) => {
   const toast = useToast();
   const { user } = useAuth();
@@ -70,15 +67,6 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
 
   // Requirement 2: Default subnav is 'Intake & Scope'
   const [activeSubnav, setActiveSubnav] = useState<'Intake & Scope' | 'Discovery Meetings' | 'Technical Sessions' | 'Proposal Builder v2.4' | 'Client Intelligence'>('Intake & Scope');
-
-  const {
-    members: workspaceMembers,
-    meta: workspaceMeta,
-    isLoading: isLoadingMembers,
-    error: membersError
-  } = useMemberDirectory({ limit: 5 });
-  const visibleMembers = workspaceMembers.slice(0, 4);
-  const hiddenMemberCount = Math.max(0, (workspaceMeta?.total ?? workspaceMembers.length) - visibleMembers.length);
 
   // Client Portal preview modal
   const [portalModalOpen, setPortalModalOpen] = useState(false);
@@ -127,6 +115,59 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
   }, []);
 
   const selectedProject = projects.find(p => p.id === selectedProjectId) || null;
+
+  // Real Client Intelligence State (Không dùng dữ liệu giả định)
+  const [realProposal, setRealProposal] = useState<ProposalItem | null>(null);
+  const [realSessions, setRealSessions] = useState<PortalSessionDetail[]>([]);
+  const [realMaterials, setRealMaterials] = useState<PortalMaterialDetail[]>([]);
+  const [isLoadingIntelligence, setIsLoadingIntelligence] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!selectedProjectId) {
+      setRealProposal(null);
+      setRealSessions([]);
+      setRealMaterials([]);
+      return;
+    }
+
+    let isCancelled = false;
+    async function fetchRealData() {
+      setIsLoadingIntelligence(true);
+      try {
+        const prop = await fetchProposalByLead(selectedProjectId);
+        if (isCancelled) return;
+        setRealProposal(prop);
+        if (prop?.id) {
+          try {
+            const [sessRes, matRes] = await Promise.all([
+              portalStaffService.listSessions(prop.id),
+              portalStaffService.listMaterials(prop.id)
+            ]);
+            if (isCancelled) return;
+            setRealSessions(sessRes.sessions || []);
+            setRealMaterials(matRes.materials || []);
+          } catch {
+            if (!isCancelled) {
+              setRealSessions([]);
+              setRealMaterials([]);
+            }
+          }
+        } else {
+          setRealSessions([]);
+          setRealMaterials([]);
+        }
+      } catch (err) {
+        console.error('Failed to load real intelligence:', err);
+      } finally {
+        if (!isCancelled) setIsLoadingIntelligence(false);
+      }
+    }
+
+    void fetchRealData();
+    return () => {
+      isCancelled = true;
+    };
+  }, [selectedProjectId]);
 
   // Handle Select Change
   const handleSelectProject = (id: string) => {
@@ -220,6 +261,7 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
       <ClientPortalModal 
         isOpen={portalModalOpen} 
         onClose={() => setPortalModalOpen(false)} 
+        activeProject={selectedProject}
       />
 
       {/* 1. LEFT SIDEBAR */}
@@ -320,34 +362,36 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
             <span className="text-slate-500">{user?.role?.replace(/_/g, ' ') || 'PRESALE WORKSPACE'}</span>
             <span className="text-slate-300">/</span>
             <span className="font-semibold text-brand-700">
-              {selectedProject ? selectedProject.title : 'Chưa có dự án nào'}
+              {selectedProject ? selectedProject.title : 'Chọn dự án làm việc'}
             </span>
           </div>
 
-          {/* Quick search & Action */}
+          {/* Quick Action - Only when project selected */}
           <div className="flex items-center gap-3">
-            <button 
-              onClick={() => setPortalModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-white shadow-xs"
-            >
-              <Eye className="w-3.5 h-3.5 text-brand-400" />
-              <span>Preview Client Portal</span>
-            </button>
+            {selectedProject && (
+              <button 
+                onClick={() => setPortalModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-white shadow-xs cursor-pointer"
+              >
+                <Eye className="w-3.5 h-3.5 text-brand-400" />
+                <span>Preview Client Portal</span>
+              </button>
+            )}
           </div>
 
         </header>
 
         {/* Lead Title & Metrics Bar (Dynamic for Logged-in User) */}
-        <div className="bg-white border-b border-slate-200 px-6 sm:px-8 py-6">
+        <div className="bg-white border-b border-slate-200 px-6 sm:px-8 py-5">
           
-          <div className="max-w-7xl mx-auto space-y-4">
+          <div className="max-w-7xl mx-auto space-y-3">
             
-            {/* Top Row: Path & Actions */}
+            {/* Top Row: Path & Status */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-xs font-mono">
                 <span className="text-slate-400">Tổ chức:</span>
                 <span className="font-bold text-slate-800 flex items-center gap-1.5">
-                  {organization?.name || user?.fullName || 'My Organization'}
+                  {organization?.name || user?.fullName || 'DUT'}
                   <span className={`w-2 h-2 rounded-full ${selectedProject ? 'bg-brand-500' : 'bg-slate-300'}`}></span>
                 </span>
                 {selectedProject && (
@@ -355,56 +399,17 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                 )}
               </div>
 
-              <div className="flex items-center gap-3">
-                {/* Avatar Stack — thành viên thật của tổ chức */}
-                <button
-                  onClick={() => navigateTo('members')}
-                  title="Member list"
-                  className="flex items-center -space-x-1.5"
-                >
-                  {visibleMembers.map((member, index) => (
-                    <span
-                      key={member.id}
-                      className={`w-6 h-6 rounded-full border-2 border-white text-[10px] flex items-center justify-center font-bold ${
-                        index % 2 === 0 ? 'bg-slate-300 text-slate-700' : 'bg-slate-400 text-white'
-                      }`}
-                    >
-                      {initialsOf(member.fullName)}
-                    </span>
-                  ))}
-                  {hiddenMemberCount > 0 && (
-                    <span className="w-6 h-6 rounded-full bg-brand-100 border-2 border-white text-[10px] flex items-center justify-center font-bold text-brand-800">
-                      +{hiddenMemberCount}
-                    </span>
-                  )}
-                  {isLoadingMembers && <span className="text-[10px] font-mono text-slate-400 pr-1.5">loading…</span>}
-                  {!isLoadingMembers && membersError && <span className="text-[10px] font-mono text-rose-500 pr-1.5">error</span>}
-                </button>
-
-                <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-mono font-medium text-slate-700 hover:bg-slate-50 transition-colors">
-                  <History className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Version Log</span>
-                </button>
-
-                <button 
-                  onClick={onNavigateRfps}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold shadow-2xs transition-all"
-                  title="Chuyển tới RFPs & Specs để chạy AI Intake"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-brand-600" />
-                  <span>Chạy AI Intake</span>
-                </button>
-
-                {selectedProject && (
+              {selectedProject && (
+                <div className="flex items-center gap-2">
                   <button 
                     onClick={() => toast.info('Hồ sơ đề xuất đã gửi để xét duyệt nội bộ.', 'Trình duyệt')}
-                    className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold shadow-sm transition-all"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold shadow-sm transition-all cursor-pointer"
                   >
                     <Send className="w-3.5 h-3.5" />
                     <span>Submit for Review</span>
                   </button>
-                )}
-              </div>
+                </div>
+              )}
             </div>
 
             {/* Status Pills */}
@@ -417,7 +422,7 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
 
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 text-brand-700 border border-brand-200">
                   <span className="w-1.5 h-1.5 rounded-full bg-brand-500"></span>
-                  Qualification Score: <strong>{selectedProject.extracted_metadata?.qualification?.qualification_score ? `${selectedProject.extracted_metadata.qualification.qualification_score}/100` : 'Chờ thẩm định'}</strong>
+                  Qualification Score: <strong>{selectedProject.qualification_score ? `${selectedProject.qualification_score}/100` : 'Chờ thẩm định'}</strong>
                 </span>
 
                 <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
@@ -433,14 +438,24 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                 <RefreshCw className="w-3.5 h-3.5 animate-spin text-brand-600" />
                 <span>Đang tải danh sách Intake của bạn...</span>
               </div>
+            ) : projects.length > 0 ? (
+              <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand-50 text-brand-700 border border-brand-200 font-semibold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-brand-500 animate-pulse"></span>
+                  HỆ THỐNG CÓ {projects.length} DỰ ÁN SẴN SÀNG
+                </span>
+                <span className="text-slate-500 text-xs">
+                  (Vui lòng chọn một dự án ở danh mục bên dưới để bắt đầu làm việc)
+                </span>
+              </div>
             ) : (
               <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200 font-semibold">
-                  CHƯA CÓ DỰ ÁN NÀO
+                  CHƯA CÓ YÊU CẦU RFP NÀO
                 </span>
-                <span className="text-slate-400 text-xs">
-                  (Hãy tạo yêu cầu RFP đầu tiên để bắt đầu làm việc)
-                </span>
+                <button onClick={onNavigateRfps} className="text-brand-700 underline text-xs font-bold">
+                  + Tạo yêu cầu RFP đầu tiên
+                </button>
               </div>
             )}
 
@@ -933,7 +948,7 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
             )
           )}
 
-          {/* TAB 5: CLIENT INTELLIGENCE (PDF Page 6 & 7) */}
+          {/* TAB 5: CLIENT INTELLIGENCE (Real Data Only - Zero Mock) */}
           {activeSubnav === 'Client Intelligence' && (
             !selectedProject ? (
               <div className="bg-white rounded-3xl border border-slate-200 shadow-card p-12 text-center space-y-4">
@@ -944,397 +959,498 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                   Vui lòng chọn dự án trước
                 </h3>
                 <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
-                  Vui lòng chọn một dự án từ danh mục phía trên để theo dõi tín hiệu tương tác Client Portal (Signals) và phân tích Lead Intelligence.
+                  Vui lòng chọn một dự án từ danh mục phía trên để theo dõi tín hiệu tương tác Client Portal (Signals) và phân tích Lead Intelligence thực tế.
                 </p>
               </div>
-            ) : (
-              <div className="space-y-6">
-                
-                {/* 1. Header Card with Portal Quick Launch */}
-                <div className="bg-white rounded-3xl border border-slate-200 shadow-card p-6 space-y-6">
-                  
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-brand-50 text-brand-700 border border-brand-200">
-                          {selectedProject.organization || 'DUT'}
-                        </span>
-                        <span className="text-xs font-mono text-slate-400">
-                          ID: {selectedProject.id.slice(0, 8)}...
-                        </span>
-                      </div>
-                      <h2 className="text-xl font-bold text-slate-900 tracking-tight">
-                        Client Engagement Tracking &amp; Lead Intelligence
-                      </h2>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        Phân tích hành vi tương tác thời gian thực từ Client Portal (Signals) và tự động tính toán Next Best Action theo ngữ cảnh dự án "{selectedProject.title}".
-                      </p>
-                    </div>
+            ) : (() => {
+              const activeSessionsCount = realSessions.filter(s => !s.revokedAt).length;
+              const lastAccessedSession = realSessions
+                .filter(s => Boolean(s.lastAccessedAt))
+                .sort((a, b) => new Date(b.lastAccessedAt!).getTime() - new Date(a.lastAccessedAt!).getTime())[0];
+              const totalComments = realSessions.reduce((acc, s) => acc + (s.commentCount || 0), 0);
 
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => navigateTo('portal')}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs"
-                      >
-                        <Globe className="w-3.5 h-3.5 text-slate-500" />
-                        <span>Client Portal Desk</span>
-                      </button>
-                      <button
-                        onClick={() => setPortalModalOpen(true)}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold shadow-xs"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                        <span>Preview Client Portal</span>
-                      </button>
-                    </div>
-                  </div>
+              // Calculate real info completeness
+              const meta = selectedProject.extracted_metadata || {};
+              const checks = [
+                Boolean(meta.budgetUsd),
+                Boolean(meta.timelineWeeks),
+                Boolean(meta.techStack && meta.techStack.length > 0),
+                Boolean(selectedProject.requirements_summary || selectedProject.client_request_raw),
+                Boolean(realProposal)
+              ];
+              const completenessPercent = Math.round((checks.filter(Boolean).length / checks.length) * 100);
 
-                  {/* 4 Signals Cards from PDF Page 6 */}
-                  <div>
-                    <div className="flex items-center gap-2 mb-3">
-                      <span className="text-xs font-mono font-bold text-slate-700 uppercase tracking-wider">
-                        Client Engagement Tracking Signals (PDF Page 6)
-                      </span>
-                      <span className="px-2 py-0.2 rounded-full text-[10px] font-mono bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold">
-                        Real-time Telemetry
-                      </span>
-                    </div>
+              // Real risks derived from database fields
+              const realRisks: string[] = [];
+              if (!meta.budgetUsd) realRisks.push('Ngân sách chưa được xác nhận trong yêu cầu RFP (Budget TBD).');
+              if (!meta.timelineWeeks) realRisks.push('Chưa xác định thời hạn bàn giao mục tiêu (Target Timeline undefined).');
+              if (!meta.complianceStandards || meta.complianceStandards.length === 0) {
+                realRisks.push('Chưa làm rõ các tiêu chuẩn tuân thủ & bảo mật bắt buộc.');
+              }
+              if (!realProposal) {
+                realRisks.push('Hồ sơ kỹ thuật Proposal 10 Sheets chưa được khởi tạo.');
+              }
+              if (realSessions.length === 0) {
+                realRisks.push('Chưa cấp phiên truy cập Client Portal để khách hàng xem và phản hồi.');
+              }
 
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                      <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/90 relative overflow-hidden">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-mono font-bold text-slate-400 uppercase">PORTAL OPENED</span>
-                          <Eye className="w-4 h-4 text-brand-600" />
+              // Real Next Best Actions
+              const nextActions: { title: string; desc: string; isHighPriority?: boolean }[] = [];
+              if (!realProposal) {
+                nextActions.push({
+                  title: '1. Khởi tạo Hồ sơ Đề xuất Kỹ thuật (10 Sheets)',
+                  desc: 'Chuyển sang tab Proposal Builder v2.4 để AI tổng hợp thông số dự án thành bộ 10 sheets hoàn chỉnh.',
+                  isHighPriority: true
+                });
+              } else if (realSessions.length === 0) {
+                nextActions.push({
+                  title: '1. Tạo phiên truy cập Client Portal',
+                  desc: `Hồ sơ "${realProposal.title}" đã sẵn sàng (${realProposal.status}). Hãy tạo phiên portal để cấp link an toàn cho khách hàng.`,
+                  isHighPriority: true
+                });
+              } else if (!lastAccessedSession) {
+                nextActions.push({
+                  title: '1. Theo dõi mở liên kết Client Portal',
+                  desc: `Đã cấp ${realSessions.length} phiên truy cập nhưng khách hàng chưa mở link. Hãy gửi email nhắc nhở hoặc kiểm tra lại thông tin liên hệ.`,
+                  isHighPriority: true
+                });
+              } else {
+                nextActions.push({
+                  title: '1. Họp thống nhất tiêu chí kỹ thuật & Phản hồi',
+                  desc: `Khách hàng (${lastAccessedSession.clientEmail}) đã truy cập portal lúc ${formatDateTime(lastAccessedSession.lastAccessedAt!)}. Lên lịch Discovery/Technical meeting để chốt phạm vi.`,
+                  isHighPriority: true
+                });
+              }
+
+              if (realRisks.length > 0) {
+                nextActions.push({
+                  title: '2. Bổ sung làm rõ các thông số còn thiếu',
+                  desc: realRisks[0]
+                });
+              }
+
+              return (
+                <div className="space-y-6">
+                  {/* 1. Real Signals Header Card */}
+                  <div className="bg-white rounded-3xl border border-slate-200 shadow-card p-6 space-y-6">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-brand-50 text-brand-700 border border-brand-200">
+                            {selectedProject.organization || 'DUT'}
+                          </span>
+                          <span className="text-xs font-mono text-slate-400">
+                            ID: {selectedProject.id.slice(0, 8)}...
+                          </span>
+                          {isLoadingIntelligence && (
+                            <span className="inline-flex items-center gap-1 text-[10px] text-brand-600 font-mono animate-pulse">
+                              <RefreshCw className="w-3 h-3 animate-spin" /> Đang đồng bộ...
+                            </span>
+                          )}
                         </div>
-                        <div className="text-2xl font-bold font-mono text-slate-900 mt-1">16 Lượt xem</div>
-                        <span className="text-[11px] text-brand-700 font-semibold block mt-1">
-                          CTO &amp; Lead Architect active (45m trước)
-                        </span>
-                      </div>
-
-                      <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/90 relative overflow-hidden">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-mono font-bold text-slate-400 uppercase">READING DURATION</span>
-                          <Clock className="w-4 h-4 text-brand-600" />
-                        </div>
-                        <div className="text-2xl font-bold font-mono text-slate-900 mt-1">18m 42s</div>
-                        <span className="text-[11px] text-brand-700 font-semibold block mt-1">
-                          Xem lâu nhất: Scope (8m) &amp; Pricing (6m)
-                        </span>
-                      </div>
-
-                      <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/90 relative overflow-hidden">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-mono font-bold text-slate-400 uppercase">AI QUERIES</span>
-                          <HelpCircle className="w-4 h-4 text-brand-600" />
-                        </div>
-                        <div className="text-2xl font-bold font-mono text-slate-900 mt-1">3 Câu hỏi</div>
-                        <span className="text-[11px] text-brand-700 font-semibold block mt-1">
-                          Hỏi về SLA failover, RPO &amp; Bảo mật
-                        </span>
-                      </div>
-
-                      <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/90 relative overflow-hidden">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[10px] font-mono font-bold text-slate-400 uppercase">CLIENT COMMENTS</span>
-                          <MessageSquare className="w-4 h-4 text-brand-600" />
-                        </div>
-                        <div className="text-2xl font-bold font-mono text-slate-900 mt-1">2 Phản hồi</div>
-                        <span className="text-[11px] text-brand-700 font-semibold block mt-1">
-                          Làm rõ tiêu chí bàn giao Phase 1
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Section Reading Breakdown & Portal AI Interactions */}
-                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-2">
-                    
-                    {/* Left: Section Reading Duration breakdown */}
-                    <div className="lg:col-span-6 space-y-3">
-                      <div className="text-xs font-mono font-bold text-slate-800 uppercase flex items-center justify-between">
-                        <span>SECTION READING DURATION &amp; INTENT:</span>
-                        <span className="text-[10px] text-slate-400 font-normal">Tracking theo từng sheet</span>
+                        <h2 className="text-xl font-bold text-slate-900 tracking-tight">
+                          Client Engagement Tracking &amp; Lead Intelligence
+                        </h2>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Dữ liệu thực tế 100% từ cơ sở dữ liệu hệ thống (Sessions, Materials, Proposals &amp; RFP). Tuyệt đối không dùng dữ liệu giả định.
+                        </p>
                       </div>
 
-                      <div className="p-4 rounded-2xl bg-slate-50/70 border border-slate-200 space-y-2.5 text-xs font-mono">
-                        <div className="space-y-1">
-                          <div className="flex justify-between text-slate-700">
-                            <span>Sheet 2: Scope of Work &amp; Deliverables</span>
-                            <span className="font-bold text-brand-700">8m 10s (High Attention)</span>
-                          </div>
-                          <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
-                            <div className="bg-brand-500 h-full rounded-full" style={{ width: '85%' }}></div>
-                          </div>
-                        </div>
-
-                        <div className="space-y-1">
-                          <div className="flex justify-between text-slate-700">
-                            <span>Sheet 6: Pricing &amp; Payment Milestones</span>
-                            <span className="font-bold text-brand-700">6m 20s (Financial review)</span>
-                          </div>
-                          <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
-                            <div className="bg-brand-500 h-full rounded-full" style={{ width: '68%' }}></div>
-                          </div>
-                        </div>
-
-                        <div className="space-y-1">
-                          <div className="flex justify-between text-slate-700">
-                            <span>Sheet 9: SLA, Availability &amp; Maintenance</span>
-                            <span className="font-bold text-slate-800">5m 12s (SLA verification)</span>
-                          </div>
-                          <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
-                            <div className="bg-brand-400 h-full rounded-full" style={{ width: '55%' }}></div>
-                          </div>
-                        </div>
-
-                        <div className="space-y-1">
-                          <div className="flex justify-between text-slate-700">
-                            <span>Sheet 3: Architecture &amp; Tech Stack</span>
-                            <span className="font-bold text-slate-800">4m 30s</span>
-                          </div>
-                          <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
-                            <div className="bg-brand-300 h-full rounded-full" style={{ width: '45%' }}></div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Right: AI Inquiries asked on Portal */}
-                    <div className="lg:col-span-6 space-y-3">
-                      <div className="text-xs font-mono font-bold text-slate-800 uppercase flex items-center justify-between">
-                        <span>AI QUERIES FROM CLIENT (IN PORTAL):</span>
-                        <span className="text-[10px] text-slate-400 font-normal">Trợ lý AI Portal giải đáp</span>
-                      </div>
-
-                      <div className="p-4 rounded-2xl bg-slate-50/70 border border-slate-200 space-y-3 text-xs">
-                        <div className="p-2.5 rounded-xl bg-white border border-slate-200 space-y-1">
-                          <div className="font-semibold text-slate-800 text-[11px] flex items-center gap-1.5">
-                            <HelpCircle className="w-3.5 h-3.5 text-brand-600 shrink-0" />
-                            <span>"Hệ thống có cơ chế sao lưu tự động và thời gian phục hồi RPO/RTO dưới bao lâu?"</span>
-                          </div>
-                          <p className="text-[11px] text-slate-500 font-mono pl-5">
-                            → AI Portal đã trả lời: Cam kết RPO &lt; 1 phút, RTO &lt; 15 phút với sao lưu tự động đa vùng (Sheet 3 &amp; 9).
-                          </p>
-                        </div>
-
-                        <div className="p-2.5 rounded-xl bg-white border border-slate-200 space-y-1">
-                          <div className="font-semibold text-slate-800 text-[11px] flex items-center gap-1.5">
-                            <HelpCircle className="w-3.5 h-3.5 text-brand-600 shrink-0" />
-                            <span>"Chi phí giai đoạn Phase 1 đã bao gồm chuyển giao tài liệu CI/CD và đào tạo chưa?"</span>
-                          </div>
-                          <p className="text-[11px] text-slate-500 font-mono pl-5">
-                            → AI Portal đã trả lời: Đã bao gồm trọn gói chuyển giao tài liệu vận hành và 12 tháng bảo trì (Sheet 5 &amp; 6).
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                  </div>
-
-                </div>
-
-                {/* 2. LEAD INTELLIGENCE 5 DIMENSIONS (PDF Page 7) */}
-                <div className="bg-white rounded-3xl border border-slate-200 shadow-card p-6 space-y-5">
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                    <div>
-                      <h3 className="text-sm font-bold text-slate-900 font-mono uppercase tracking-wider flex items-center gap-2">
-                        <ShieldCheck className="w-4 h-4 text-brand-600" />
-                        <span>Lead Intelligence Assessment (5 Dimensions - PDF Page 7)</span>
-                      </h3>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        Tổng hợp toàn diện từ RFP Intake, Discovery Meetings và tín hiệu tương tác thực tế từ Client Portal.
-                      </p>
-                    </div>
-                    <span className="text-xs font-mono font-bold px-2.5 py-1 rounded-xl bg-brand-50 text-brand-700 border border-brand-200">
-                      Overall Health: {selectedProject.qualification_score || 88}%
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 text-xs font-mono">
-                    <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
-                      <span className="text-[10px] text-slate-400 block font-bold">1. LEAD HEALTH</span>
-                      <div className="text-xl font-bold text-brand-700 mt-1">
-                        {selectedProject.qualification_score || 88}%
-                      </div>
-                      <span className="text-[10px] text-emerald-700 font-semibold mt-0.5 block">Xác suất chốt: Cao</span>
-                    </div>
-
-                    <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
-                      <span className="text-[10px] text-slate-400 block font-bold">2. PROPOSAL READINESS</span>
-                      <div className="text-xl font-bold text-slate-800 mt-1">95%</div>
-                      <span className="text-[10px] text-slate-500 block mt-0.5">Đủ 10 sheets chuẩn</span>
-                    </div>
-
-                    <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
-                      <span className="text-[10px] text-slate-400 block font-bold">3. CLIENT ENGAGEMENT</span>
-                      <div className="text-xl font-bold text-emerald-700 mt-1">High</div>
-                      <span className="text-[10px] text-slate-500 block mt-0.5">16 sessions tương tác</span>
-                    </div>
-
-                    <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
-                      <span className="text-[10px] text-slate-400 block font-bold">4. INFO COMPLETENESS</span>
-                      <div className="text-xl font-bold text-slate-800 mt-1">92%</div>
-                      <span className="text-[10px] text-slate-500 block mt-0.5">RFP + Discovery rõ</span>
-                    </div>
-
-                    <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 col-span-2 lg:col-span-1">
-                      <span className="text-[10px] text-slate-400 block font-bold">5. IDENTIFIED RISKS</span>
-                      <div className="text-xl font-bold text-amber-700 mt-1">Low-Med</div>
-                      <span className="text-[10px] text-amber-600 block mt-0.5">Phụ thuộc API bên thứ 3</span>
-                    </div>
-                  </div>
-
-                  {/* Risks Alert Details */}
-                  <div className="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200 flex items-start gap-3">
-                    <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                    <div className="text-xs space-y-0.5">
-                      <div className="font-bold text-amber-900 font-mono">
-                        Điểm lưu ý tiềm ẩn rủi ro (Friction Points):
-                      </div>
-                      <p className="text-slate-600">
-                        Khách hàng đang phân vân giữa timeline bàn giao {selectedProject.extracted_metadata?.timelineWeeks || 20} tuần và tiến độ nghiệm thu Phase 1. Khuyến nghị chuẩn bị trước tiêu chí nghiệm thu UAT để thống nhất trong buổi gặp tới.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 3. AI RECOMMENDATIONS & NEXT BEST ACTIONS (PDF Page 7) */}
-                <div className="bg-white rounded-3xl border border-slate-200 shadow-card p-6 space-y-6">
-                  
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                    <div>
-                      <h3 className="text-sm font-bold text-slate-900 font-mono uppercase tracking-wider flex items-center gap-2">
-                        <Zap className="w-4 h-4 text-brand-600" />
-                        <span>AI Recommendations &amp; Next Best Actions (PDF Page 7)</span>
-                      </h3>
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        Gợi ý hành động tối ưu cho Presale Team. Quyết định cuối cùng thuộc về Presale Consultant.
-                      </p>
-                    </div>
-                    <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600">
-                      Advisory Only — Không tự động gửi
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                    
-                    {/* Left: Next Best Action & Discussion Topics (5 cols) */}
-                    <div className="lg:col-span-5 space-y-4">
-                      
-                      <div className="space-y-3">
-                        <div className="text-xs font-mono font-bold text-slate-800 uppercase flex items-center gap-1.5">
-                          <Zap className="w-3.5 h-3.5 text-brand-600" />
-                          <span>RECOMMENDED NEXT BEST ACTIONS:</span>
-                        </div>
-
-                        <div className="p-4 rounded-2xl bg-emerald-50/70 border border-brand-200 space-y-1.5">
-                          <div className="font-bold text-xs text-brand-900">
-                            1. Gửi phụ lục cam kết SLA 99.999% &amp; Tiêu chuẩn Bảo mật
-                          </div>
-                          <p className="text-[11px] text-slate-600 font-mono">
-                            Dữ liệu portal cho thấy CTO đã đọc mục SLA &amp; Availability 3 lần trong 24 giờ qua.
-                          </p>
-                        </div>
-
-                        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1.5">
-                          <div className="font-bold text-xs text-slate-900">
-                            2. Lên lịch làm rõ cơ chế bàn giao Phase 1 (15-20 phút)
-                          </div>
-                          <p className="text-[11px] text-slate-600 font-mono">
-                            Giải tỏa lo lắng của khách hàng về tiến độ chuyển giao trước khi ký kết SOW.
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Suggested Discussion Topics */}
-                      <div className="space-y-2 pt-2">
-                        <div className="text-xs font-mono font-bold text-slate-800 uppercase">
-                          SUGGESTED DISCUSSION TOPICS &amp; QUESTIONS:
-                        </div>
-                        <ul className="text-xs text-slate-600 space-y-1.5 list-disc pl-4 font-mono">
-                          <li>"Xác nhận lại yêu cầu kết nối hạ tầng on-premise hay cloud sandbox phía khách hàng."</li>
-                          <li>"Làm rõ các kịch bản kiểm thử tải trọng cao điểm (TPS) trước khi nghiệm thu Phase 1."</li>
-                          <li>"Thống nhất quy trình Change Request (CR) khi có phát sinh ngoài WBS Sheet 2."</li>
-                        </ul>
-                      </div>
-
-                      {/* Relevant Assets & Case Studies */}
-                      <div className="space-y-2 pt-2">
-                        <div className="text-xs font-mono font-bold text-slate-800 uppercase flex items-center gap-1.5">
-                          <BookOpen className="w-3.5 h-3.5 text-brand-600" />
-                          <span>RELEVANT ASSETS / CASE STUDIES ĐỀ XUẤT:</span>
-                        </div>
-                        <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-1 text-xs">
-                          <div className="font-semibold text-slate-800 text-[11px]">
-                            • Case Study: Triển khai giải pháp phân tán chịu tải cao (EcoMart Retail)
-                          </div>
-                          <div className="font-semibold text-slate-800 text-[11px]">
-                            • Whitepaper: Architecture Blueprint Multi-AZ Uptime 99.999%
-                          </div>
-                        </div>
-                      </div>
-
-                    </div>
-
-                    {/* Right: Suggested Follow-up Email Draft (7 cols) */}
-                    <div className="lg:col-span-7 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-mono font-bold text-slate-800 uppercase">
-                          SUGGESTED FOLLOW-UP EMAIL DRAFT (AI GENERATED):
-                        </span>
+                      <div className="flex items-center gap-2">
                         <button
-                          onClick={() => {
-                            setEmailCopied(true);
-                            setTimeout(() => setEmailCopied(false), 2000);
-                          }}
-                          className="inline-flex items-center gap-1 text-[11px] font-mono text-brand-700 bg-emerald-50 px-2 py-0.5 rounded border border-brand-200 hover:bg-emerald-100 cursor-pointer"
+                          onClick={() => navigateTo('portal')}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs"
                         >
-                          <Copy className="w-3 h-3" />
-                          <span>{emailCopied ? 'Copied ✓' : 'Copy Email'}</span>
+                          <Globe className="w-3.5 h-3.5 text-slate-500" />
+                          <span>Client Portal Desk</span>
                         </button>
-                      </div>
-
-                      <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 font-mono text-xs text-slate-700 leading-relaxed space-y-2">
-                        <div className="text-slate-500 text-[10px] space-y-0.5">
-                          <div><strong>TO:</strong> Ban Giám đốc Kỹ thuật &amp; CTO &lt;cto@{selectedProject.organization?.toLowerCase() || 'client'}.vn&gt;</div>
-                          <div><strong>SUBJECT:</strong> [Presaleee] Phản hồi kỹ thuật &amp; Kế hoạch nghiệm thu dự án: {selectedProject.title}</div>
-                        </div>
-                        <div className="border-t border-slate-200 pt-2 space-y-2">
-                          <p>Kính gửi Ban Giám đốc Kỹ thuật &amp; Ban Quản lý dự án,</p>
-                          <p>
-                            Đội ngũ Presale Solutions xin chân thành cảm ơn quý khách hàng đã dành thời gian nghiên cứu và thẩm định hồ sơ kỹ thuật của dự án <strong>"{selectedProject.title}"</strong> trên Client Portal.
-                          </p>
-                          <p>
-                            Theo dõi sự quan tâm của quý công ty đối với các điều khoản SLA sẵn sàng 99.999% và phạm vi công việc trong Scope of Work, đội ngũ kiến trúc sư của chúng tôi đã chuẩn bị sẵn phụ lục bảo mật chi tiết, cùng kịch bản kiểm thử tải trọng thực tế để sẵn sàng chuyển giao.
-                          </p>
-                          <p>
-                            Kính mời quý công ty sắp xếp một buổi thảo luận ngắn 15-20 phút vào thứ Năm tuần này để hai bên cùng thống nhất các tiêu chí nghiệm thu UAT cho Phase 1, tạo tiền đề thuận lợi cho việc ký kết hợp đồng chính thức.
-                          </p>
-                          <p>
-                            Trân trọng,<br />
-                            <strong>{user?.fullName || 'Presale Consultant'}</strong> — Đội ngũ Giải pháp Presaleee
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="p-3 rounded-2xl bg-slate-100/80 border border-slate-200/80 text-[11px] font-mono text-slate-500 flex items-center justify-between">
-                        <span>Lưu ý: AI chỉ tạo bản nháp. Presale team có toàn quyền tùy chỉnh nội dung trước khi gửi.</span>
                         <button
                           onClick={() => setPortalModalOpen(true)}
-                          className="text-brand-700 hover:underline font-bold"
+                          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold shadow-xs"
                         >
-                          Xem Portal Preview →
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>Preview Client Portal</span>
                         </button>
                       </div>
                     </div>
 
+                    {/* 4 Real Signals Cards */}
+                    <div>
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="text-xs font-mono font-bold text-slate-700 uppercase tracking-wider">
+                          Dữ liệu Tương tác Thực tế (Portal Telemetry)
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold">
+                          Live DB Signals
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/90 relative overflow-hidden">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-mono font-bold text-slate-400 uppercase">PORTAL SESSIONS</span>
+                            <Globe className="w-4 h-4 text-brand-600" />
+                          </div>
+                          <div className="text-2xl font-bold font-mono text-slate-900 mt-1">
+                            {realSessions.length} Phiên
+                          </div>
+                          <span className="text-[11px] text-brand-700 font-semibold block mt-1">
+                            {activeSessionsCount} phiên đang hiệu lực
+                          </span>
+                        </div>
+
+                        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/90 relative overflow-hidden">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-mono font-bold text-slate-400 uppercase">LẦN TRUY CẬP CUỐI</span>
+                            <Clock className="w-4 h-4 text-brand-600" />
+                          </div>
+                          <div className="text-sm font-bold font-mono text-slate-900 mt-2 truncate">
+                            {lastAccessedSession?.lastAccessedAt 
+                              ? formatDateTime(lastAccessedSession.lastAccessedAt)
+                              : 'Chưa truy cập'}
+                          </div>
+                          <span className="text-[11px] text-slate-500 font-semibold block mt-1 truncate">
+                            {lastAccessedSession ? lastAccessedSession.clientEmail : 'Chưa phát sinh lượt truy cập'}
+                          </span>
+                        </div>
+
+                        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/90 relative overflow-hidden">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-mono font-bold text-slate-400 uppercase">TÀI LIỆU CHIA SẺ</span>
+                            <FileCheck className="w-4 h-4 text-brand-600" />
+                          </div>
+                          <div className="text-2xl font-bold font-mono text-slate-900 mt-1">
+                            {realMaterials.length} File
+                          </div>
+                          <span className="text-[11px] text-brand-700 font-semibold block mt-1">
+                            {realProposal ? `Proposal v${realProposal.version}` : 'Chưa gắn Proposal'}
+                          </span>
+                        </div>
+
+                        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/90 relative overflow-hidden">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] font-mono font-bold text-slate-400 uppercase">CLIENT COMMENTS</span>
+                            <MessageSquare className="w-4 h-4 text-brand-600" />
+                          </div>
+                          <div className="text-2xl font-bold font-mono text-slate-900 mt-1">
+                            {totalComments} Phản hồi
+                          </div>
+                          <span className="text-[11px] text-brand-700 font-semibold block mt-1">
+                            Từ các phiên Client Portal
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Real Session & Material Detail Tables */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-2">
+                      {/* Left: Active Portal Sessions list */}
+                      <div className="lg:col-span-7 space-y-3">
+                        <div className="text-xs font-mono font-bold text-slate-800 uppercase flex items-center justify-between">
+                          <span>DANH SÁCH PHIÊN CLIENT PORTAL THỰC TẾ:</span>
+                          <span className="text-[10px] text-slate-400 font-normal">Nguồn: portal_sessions</span>
+                        </div>
+
+                        {realSessions.length === 0 ? (
+                          <div className="p-6 rounded-2xl bg-slate-50/70 border border-dashed border-slate-300 text-center space-y-2">
+                            <Globe className="w-6 h-6 text-slate-400 mx-auto" />
+                            <p className="text-xs font-semibold text-slate-700">Chưa có phiên Client Portal nào</p>
+                            <p className="text-[11px] text-slate-500">
+                              Dự án này chưa phát sinh liên kết truy cập an toàn cho khách hàng.
+                            </p>
+                            <button
+                              onClick={() => navigateTo('portal')}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold cursor-pointer"
+                            >
+                              <span>Tạo phiên truy cập tại Client Portal Desk</span>
+                              <ArrowRight className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="p-4 rounded-2xl bg-slate-50/70 border border-slate-200 space-y-2 text-xs font-mono">
+                            {realSessions.map((s) => (
+                              <div key={s.id} className="p-3 bg-white rounded-xl border border-slate-200 flex items-center justify-between gap-3">
+                                <div className="space-y-0.5 min-w-0">
+                                  <div className="font-bold text-slate-800 truncate flex items-center gap-1.5">
+                                    <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+                                    <span>{s.clientEmail}</span>
+                                    {s.clientName && <span className="text-slate-400 font-normal">({s.clientName})</span>}
+                                  </div>
+                                  <div className="text-[10px] text-slate-500">
+                                    Tạo: {formatDateTime(s.createdAt)} | Hết hạn: {formatDateTime(s.expiresAt)}
+                                  </div>
+                                  <div className="text-[10px] text-brand-700">
+                                    {s.lastAccessedAt ? `Lần xem cuối: ${formatDateTime(s.lastAccessedAt)}` : 'Chưa mở link'}
+                                  </div>
+                                </div>
+                                <div className="text-right shrink-0">
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                    s.revokedAt 
+                                      ? 'bg-rose-50 text-rose-700 border border-rose-200' 
+                                      : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                  }`}>
+                                    {s.revokedAt ? 'Đã thu hồi' : 'Hoạt động'}
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Right: Proposal & Materials Status */}
+                      <div className="lg:col-span-5 space-y-3">
+                        <div className="text-xs font-mono font-bold text-slate-800 uppercase flex items-center justify-between">
+                          <span>HỒ SƠ ĐỀ XUẤT &amp; TÀI LIỆU KÈM THEO:</span>
+                          <span className="text-[10px] text-slate-400 font-normal">Nguồn: proposals &amp; materials</span>
+                        </div>
+
+                        <div className="p-4 rounded-2xl bg-slate-50/70 border border-slate-200 space-y-3 text-xs font-mono">
+                          <div className="p-3 rounded-xl bg-white border border-slate-200 space-y-1">
+                            <span className="text-[10px] text-slate-400 font-bold uppercase block">Hồ sơ Proposal 10 Sheets</span>
+                            {realProposal ? (
+                              <div>
+                                <div className="font-bold text-slate-800 text-[11px]">{realProposal.title}</div>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-brand-50 text-brand-700 border border-brand-200">
+                                    Trạng thái: {realProposal.status}
+                                  </span>
+                                  <span className="text-[10px] text-slate-500">Phiên bản: v{realProposal.version}</span>
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="text-[11px] text-amber-700">Chưa có bản ghi proposal trong cơ sở dữ liệu.</p>
+                            )}
+                          </div>
+
+                          <div className="p-3 rounded-xl bg-white border border-slate-200 space-y-1">
+                            <span className="text-[10px] text-slate-400 font-bold uppercase block">Tài liệu chia sẻ ({realMaterials.length})</span>
+                            {realMaterials.length === 0 ? (
+                              <p className="text-[11px] text-slate-500">Chưa có tài liệu bổ sung nào được tải lên portal.</p>
+                            ) : (
+                              <div className="space-y-1">
+                                {realMaterials.map(m => (
+                                  <div key={m.id} className="text-[11px] text-slate-700 flex items-center justify-between">
+                                    <span className="truncate">{m.title || m.fileName}</span>
+                                    <span className="text-slate-400 text-[10px]">{m.mimeType || 'Đính kèm'}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
-                </div>
+                  {/* 2. LEAD INTELLIGENCE 5 DIMENSIONS (Derived From Real DB Fields) */}
+                  <div className="bg-white rounded-3xl border border-slate-200 shadow-card p-6 space-y-5">
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                      <div>
+                        <h3 className="text-sm font-bold text-slate-900 font-mono uppercase tracking-wider flex items-center gap-2">
+                          <ShieldCheck className="w-4 h-4 text-brand-600" />
+                          <span>Lead Intelligence Assessment (5 Dimensions)</span>
+                        </h3>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Đánh giá dựa 100% trên dữ liệu thực tế từ hồ sơ RFP, điểm thẩm định BANT và trạng thái hồ sơ trong hệ thống.
+                        </p>
+                      </div>
+                      <span className="text-xs font-mono font-bold px-2.5 py-1 rounded-xl bg-brand-50 text-brand-700 border border-brand-200">
+                        BANT Score: {selectedProject.qualification_score !== null ? `${selectedProject.qualification_score}/100` : 'Chưa thẩm định'}
+                      </span>
+                    </div>
 
-              </div>
-            )
+                    <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 text-xs font-mono">
+                      <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
+                        <span className="text-[10px] text-slate-400 block font-bold">1. LEAD HEALTH</span>
+                        <div className="text-xl font-bold text-brand-700 mt-1">
+                          {selectedProject.qualification_score !== null ? `${selectedProject.qualification_score}%` : 'N/A'}
+                        </div>
+                        <span className="text-[10px] text-emerald-700 font-semibold mt-0.5 block">
+                          {selectedProject.qualification_status || 'Chưa phân loại'}
+                        </span>
+                      </div>
+
+                      <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
+                        <span className="text-[10px] text-slate-400 block font-bold">2. PROPOSAL READINESS</span>
+                        <div className="text-xl font-bold text-slate-800 mt-1">
+                          {realProposal ? '100%' : '0%'}
+                        </div>
+                        <span className="text-[10px] text-slate-500 block mt-0.5 truncate">
+                          {realProposal ? `Đã có v${realProposal.version}` : 'Chưa lập hồ sơ'}
+                        </span>
+                      </div>
+
+                      <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
+                        <span className="text-[10px] text-slate-400 block font-bold">3. CLIENT ENGAGEMENT</span>
+                        <div className="text-xl font-bold text-emerald-700 mt-1">
+                          {realSessions.length > 0 ? (lastAccessedSession ? 'Đã xem' : 'Đã cấp link') : 'Chưa cấp'}
+                        </div>
+                        <span className="text-[10px] text-slate-500 block mt-0.5">
+                          {realSessions.length} phiên portal
+                        </span>
+                      </div>
+
+                      <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
+                        <span className="text-[10px] text-slate-400 block font-bold">4. INFO COMPLETENESS</span>
+                        <div className="text-xl font-bold text-slate-800 mt-1">
+                          {completenessPercent}%
+                        </div>
+                        <span className="text-[10px] text-slate-500 block mt-0.5">
+                          Độ khớp thông số RFP
+                        </span>
+                      </div>
+
+                      <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 col-span-2 lg:col-span-1">
+                        <span className="text-[10px] text-slate-400 block font-bold">5. IDENTIFIED RISKS</span>
+                        <div className="text-xl font-bold text-amber-700 mt-1">
+                          {realRisks.length === 0 ? 'Thấp' : `${realRisks.length} lưu ý`}
+                        </div>
+                        <span className="text-[10px] text-amber-600 block mt-0.5">
+                          {realRisks.length === 0 ? 'Dữ liệu đầy đủ' : 'Cần bổ sung'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Risks Alert Details */}
+                    {realRisks.length > 0 && (
+                      <div className="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200 flex items-start gap-3">
+                        <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                        <div className="text-xs space-y-1">
+                          <div className="font-bold text-amber-900 font-mono">
+                            Điểm lưu ý tiềm ẩn rủi ro dựa trên dữ liệu hiện có:
+                          </div>
+                          <ul className="text-slate-600 list-disc pl-4 space-y-0.5">
+                            {realRisks.map((r, i) => (
+                              <li key={i}>{r}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 3. AI RECOMMENDATIONS & NEXT BEST ACTIONS (Real Project Context) */}
+                  <div className="bg-white rounded-3xl border border-slate-200 shadow-card p-6 space-y-6">
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                      <div>
+                        <h3 className="text-sm font-bold text-slate-900 font-mono uppercase tracking-wider flex items-center gap-2">
+                          <Zap className="w-4 h-4 text-brand-600" />
+                          <span>Hành Động Khuyến Nghị &amp; Bước Tiếp Theo</span>
+                        </h3>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Tự động tính toán theo trạng thái thực tế của dự án "{selectedProject.title}".
+                        </p>
+                      </div>
+                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600">
+                        Tự động sinh theo dữ liệu
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                      {/* Left: Next Best Action & Discussion Topics (5 cols) */}
+                      <div className="lg:col-span-5 space-y-4">
+                        <div className="space-y-3">
+                          <div className="text-xs font-mono font-bold text-slate-800 uppercase flex items-center gap-1.5">
+                            <Zap className="w-3.5 h-3.5 text-brand-600" />
+                            <span>HÀNH ĐỘNG ĐỀ XUẤT HÀNG ĐẦU:</span>
+                          </div>
+
+                          {nextActions.map((act, i) => (
+                            <div 
+                              key={i} 
+                              className={`p-4 rounded-2xl border space-y-1.5 ${
+                                act.isHighPriority 
+                                  ? 'bg-emerald-50/70 border-brand-200 text-brand-900' 
+                                  : 'bg-slate-50 border-slate-200 text-slate-900'
+                              }`}
+                            >
+                              <div className="font-bold text-xs">{act.title}</div>
+                              <p className="text-[11px] text-slate-600 font-mono">{act.desc}</p>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Suggested Discussion Topics */}
+                        <div className="space-y-2 pt-2">
+                          <div className="text-xs font-mono font-bold text-slate-800 uppercase">
+                            NỘI DUNG TRAO ĐỔI VỚI KHÁCH HÀNG:
+                          </div>
+                          <ul className="text-xs text-slate-600 space-y-1.5 list-disc pl-4 font-mono">
+                            <li>Làm rõ phạm vi và các mốc bàn giao kỹ thuật cho dự án "{selectedProject.title}".</li>
+                            {meta.timelineWeeks && (
+                              <li>Thống nhất lộ trình triển khai trong thời hạn {meta.timelineWeeks} tuần.</li>
+                            )}
+                            {meta.budgetUsd && (
+                              <li>Xác nhận cơ cấu thanh toán tương ứng với ngân sách ${Number(meta.budgetUsd).toLocaleString()} USD.</li>
+                            )}
+                            <li>Khảo sát và xác thực lại môi trường hạ tầng trước khi ký kết SOW chính thức.</li>
+                          </ul>
+                        </div>
+                      </div>
+
+                      {/* Right: Suggested Follow-up Email Draft (7 cols) */}
+                      <div className="lg:col-span-7 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-mono font-bold text-slate-800 uppercase">
+                            EMAIL DRAFT GỬI KHÁCH HÀNG (THEO DỰ ÁN THẬT):
+                          </span>
+                          <button
+                            onClick={() => {
+                              setEmailCopied(true);
+                              setTimeout(() => setEmailCopied(false), 2000);
+                            }}
+                            className="inline-flex items-center gap-1 text-[11px] font-mono text-brand-700 bg-emerald-50 px-2 py-0.5 rounded border border-brand-200 hover:bg-emerald-100 cursor-pointer"
+                          >
+                            <Copy className="w-3 h-3" />
+                            <span>{emailCopied ? 'Copied ✓' : 'Copy Email'}</span>
+                          </button>
+                        </div>
+
+                        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 font-mono text-xs text-slate-700 leading-relaxed space-y-2">
+                          <div className="text-slate-500 text-[10px] space-y-0.5">
+                            <div><strong>TO:</strong> {realSessions[0]?.clientEmail || `contact@${selectedProject.organization?.toLowerCase() || 'client'}.vn`}</div>
+                            <div><strong>SUBJECT:</strong> [Presaleee] Hồ sơ Kỹ thuật &amp; Kế hoạch phối hợp: {selectedProject.title}</div>
+                          </div>
+                          <div className="border-t border-slate-200 pt-2 space-y-2">
+                            <p>Kính gửi Quý đối tác / Ban Quản lý dự án {selectedProject.organization || ''},</p>
+                            <p>
+                              Đội ngũ Presale xin chân thành cảm ơn Quý đơn vị đã cùng phối hợp làm rõ các yêu cầu kỹ thuật cho dự án <strong>"{selectedProject.title}"</strong>.
+                            </p>
+                            {realProposal ? (
+                              <p>
+                                Hiện tại hồ sơ đề xuất giải pháp kỹ thuật (Proposal 10 Sheets phiên bản v{realProposal.version}) đã được hoàn thiện trên hệ thống Client Portal để Quý đối tác thẩm định trực tiếp và gửi các phản hồi kỹ thuật.
+                              </p>
+                            ) : (
+                              <p>
+                                Đội ngũ kỹ sư giải pháp đang hoàn tất các phân tích kỹ thuật và ma trận phạm vi công việc dựa trên yêu cầu RFP đã tiếp nhận để sớm bàn giao hồ sơ đề xuất hoàn chỉnh.
+                              </p>
+                            )}
+                            <p>
+                              Kính mời Quý công ty sắp xếp một buổi thảo luận ngắn (15-20 phút) để hai bên cùng rà soát các tiêu chí kỹ thuật và lộ trình triển khai phù hợp nhất.
+                            </p>
+                            <p>
+                              Trân trọng,<br />
+                              <strong>{user?.fullName || 'Presale Consultant'}</strong> — Presale Solutions Team
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="p-3 rounded-2xl bg-slate-100/80 border border-slate-200/80 text-[11px] font-mono text-slate-500 flex items-center justify-between">
+                          <span>Nội dung được điền tự động từ dữ liệu dự án thực tế.</span>
+                          <button
+                            onClick={() => setPortalModalOpen(true)}
+                            className="text-brand-700 hover:underline font-bold cursor-pointer"
+                          >
+                            Xem Portal Preview →
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()
           )}
 
         </div>

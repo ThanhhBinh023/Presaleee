@@ -7,7 +7,7 @@ import { env } from '../../infrastructure/config/env.js';
 
 const ACCESS_COOKIE = 'presaleee_access';
 const REFRESH_COOKIE = 'presaleee_refresh';
-const ACCESS_TTL_MS = 15 * 60 * 1000;
+const ACCESS_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 // The access cookie must accompany every protected route; only the refresh cookie is auth-endpoint scoped.
 const ACCESS_COOKIE_PATH = '/api/v1';

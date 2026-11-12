@@ -1,4 +1,4 @@
-import { Sparkles } from 'lucide-react';
+import { Sparkles, LayoutGrid, FileText, Zap, Globe, Settings } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useLeadDirectory } from '../hooks/useLeadDirectory';
@@ -8,6 +8,8 @@ import { leadService } from '../services/leadService';
 import { ApiError } from '../services/apiClient';
 import { navigateTo, readHashQuery } from '../navigation';
 import { formatDateTime } from '../utils/format';
+import { WorkspacePill } from './workspace/WorkspacePill';
+import { UserCard } from './workspace/UserCard';
 import {
   LEAD_SOURCES,
   LEAD_STATUSES,
@@ -30,11 +32,13 @@ function qualificationFromLead(lead: LeadRecord): LeadQualification | null {
 }
 
 interface LeadsDirectoryProps {
-  onBackToOverview: () => void;
+  onBackToOverview?: () => void;
+  onLogout?: () => void;
 }
 
-export const LeadsDirectory: React.FC<LeadsDirectoryProps> = ({ onBackToOverview }) => {
-  const { user } = useAuth();
+export const LeadsDirectory: React.FC<LeadsDirectoryProps> = ({ onBackToOverview, onLogout }) => {
+  const { user, logout } = useAuth();
+  const handleLogout = onLogout || logout;
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<LeadStatus | ''>('');
@@ -246,8 +250,80 @@ export const LeadsDirectory: React.FC<LeadsDirectoryProps> = ({ onBackToOverview
   const metadata = detail?.extractedMetadata ?? {};
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] px-4 py-8 font-sans text-slate-900 md:px-10">
-      <div className="mx-auto max-w-6xl">
+    <div className="min-h-screen bg-[#f8fafc] flex text-slate-900 font-sans">
+      {/* 1. LEFT SIDEBAR */}
+      <aside className="w-64 bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 hidden md:flex">
+        <div>
+          <div className="p-5 border-b border-slate-100">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white shadow-sm font-bold font-mono text-base">
+                P
+              </div>
+              <span className="text-xl font-bold tracking-tight text-slate-900">
+                Presaleee
+              </span>
+            </div>
+            <WorkspacePill />
+          </div>
+
+          <nav className="p-3 space-y-1">
+            <button
+              onClick={onBackToOverview || (() => navigateTo('home'))}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all"
+            >
+              <LayoutGrid className="w-4 h-4 text-slate-400" />
+              <span>Overview</span>
+            </button>
+
+            <button
+              onClick={() => navigateTo('rfps')}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all"
+            >
+              <FileText className="w-4 h-4 text-slate-400" />
+              <span>RFPs &amp; Specs</span>
+            </button>
+
+            <button
+              onClick={() => navigateTo('ai-workspace')}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all"
+            >
+              <Sparkles className="w-4 h-4 text-slate-400" />
+              <span>AI Workspace</span>
+            </button>
+
+            {/* Active Leads */}
+            <button className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-semibold bg-brand-500 text-white shadow-sm shadow-brand-500/30 transition-all">
+              <div className="flex items-center gap-3">
+                <Zap className="w-4 h-4 text-white" />
+                <span>Leads</span>
+              </div>
+              <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-brand-600 text-white">
+                Active
+              </span>
+            </button>
+
+            <button
+              onClick={() => navigateTo('portal')}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all"
+            >
+              <Globe className="w-4 h-4 text-slate-400" />
+              <span>Client portal</span>
+            </button>
+          </nav>
+        </div>
+
+        <div className="p-3 border-t border-slate-100 space-y-2">
+          <button className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-500 hover:text-slate-900 hover:bg-slate-50">
+            <Settings className="w-3.5 h-3.5" />
+            <span>Settings</span>
+          </button>
+          <UserCard onLogout={handleLogout} subtitle="role" />
+        </div>
+      </aside>
+
+      {/* 2. MAIN CONTENT AREA */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto px-4 py-8 md:px-10">
+        <div className="mx-auto max-w-6xl w-full">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div>
             <button onClick={onBackToOverview} className="text-xs font-mono font-bold text-brand-700 hover:underline">
@@ -558,6 +634,7 @@ export const LeadsDirectory: React.FC<LeadsDirectoryProps> = ({ onBackToOverview
             )}
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

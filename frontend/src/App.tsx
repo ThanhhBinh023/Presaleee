@@ -171,7 +171,7 @@ const AppShell: React.FC = () => {
   if (currentPage === 'leads') {
     return (
       <RequireAuth>
-        <LeadsDirectory onBackToOverview={navigateToOverview} />
+        <LeadsDirectory onBackToOverview={navigateToOverview} onLogout={handleLogout} />
       </RequireAuth>
     );
   }
@@ -203,7 +203,7 @@ const AppShell: React.FC = () => {
   if (currentPage === 'portal') {
     return (
       <RequireAuth>
-        <PortalDesk onBackToOverview={navigateToOverview} />
+        <PortalDesk onBackToOverview={navigateToOverview} onLogout={handleLogout} />
       </RequireAuth>
     );
   }

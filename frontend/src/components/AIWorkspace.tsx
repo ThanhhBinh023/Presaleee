@@ -31,7 +31,8 @@ import {
   X,
   Save,
   CreditCard,
-  History
+  History,
+  FolderOpen
 } from 'lucide-react';
 import { useMemberDirectory } from '../hooks/useMemberDirectory';
 import { navigateTo } from '../navigation';
@@ -102,12 +103,10 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
       const list = await fetchLeads();
       setProjects(list);
 
-      const savedLeadId = preferredLeadId || localStorage.getItem('presaleee_active_lead_id');
+      const savedLeadId = preferredLeadId;
       if (savedLeadId && list.some(p => p.id === savedLeadId)) {
         setSelectedProjectId(savedLeadId);
-      } else if (list.length > 0) {
-        setSelectedProjectId(list[0].id);
-        localStorage.setItem('presaleee_active_lead_id', list[0].id);
+        localStorage.setItem('presaleee_active_lead_id', savedLeadId);
       } else {
         setSelectedProjectId('');
         localStorage.removeItem('presaleee_active_lead_id');
@@ -445,14 +444,12 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 pt-1">
               <div>
                 <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-                  {selectedProject ? selectedProject.title : loadingProjects ? 'Đang tải dữ liệu...' : 'Chưa có dữ liệu dự án AI Intake'}
+                  {selectedProject ? selectedProject.title : 'AI Presale Workspace'}
                 </h1>
                 <p className="mt-1 text-xs sm:text-sm text-slate-500 max-w-3xl leading-relaxed">
                   {selectedProject 
-                    ? (selectedProject.raw_rfp_content || 'Không có mô tả chi tiết.') 
-                    : loadingProjects 
-                      ? 'Hệ thống đang kết nối cơ sở dữ liệu...'
-                      : 'Tổ chức của bạn chưa có dự án nào. Hãy bấm "Tạo Intake Mới" hoặc chạy AI Intake để bóc tách yêu cầu khách hàng đầu tiên.'}
+                    ? 'Không gian thẩm định giải pháp kỹ thuật, phân tích điểm BANT và xây dựng Proposal 10 Sheets.' 
+                    : 'Vui lòng chọn một dự án trong ô chọn bên dưới để xem báo cáo thẩm định, cuộc họp và hồ sơ đề xuất.'}
                 </p>
               </div>
 
@@ -544,6 +541,7 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                           onChange={(e) => handleSelectProject(e.target.value)}
                           className="w-full px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100/60 text-xs font-semibold text-slate-800 focus:outline-none focus:border-brand-500 focus:bg-white truncate transition-colors"
                         >
+                          <option value="">-- Chọn dự án cần làm việc ({projects.length} dự án) --</option>
                           {projects.map((p) => (
                             <option key={p.id} value={p.id}>
                               [{p.status}] {p.title}
@@ -594,22 +592,32 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
               {/* Detail View of Selected Project OR Empty State */}
               {!selectedProject ? (
                 <div className="bg-white rounded-3xl border border-slate-200 shadow-card p-12 text-center space-y-4">
-                  <div className="w-16 h-16 rounded-3xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
-                    <Sparkles className="w-8 h-8 text-slate-400" />
+                  <div className="w-16 h-16 rounded-3xl bg-brand-50 border border-brand-200 text-brand-600 flex items-center justify-center mx-auto">
+                    <FolderOpen className="w-8 h-8 text-brand-600" />
                   </div>
                   <h3 className="text-lg font-bold text-slate-800">
-                    Chưa có dự án AI Intake nào
+                    {projects.length > 0 ? 'Vui lòng chọn một dự án trước' : 'Chưa có dự án AI Intake nào'}
                   </h3>
                   <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
-                    Tài khoản của bạn chưa chạy AI Intake. Hệ thống chỉ khởi tạo dự án sau khi bạn dán yêu cầu RFP và chạy AI Intake Parser tại mục RFPs & Specs.
+                    {projects.length > 0 
+                      ? 'Hệ thống yêu cầu chọn dự án trước khi hiển thị kết quả phân tích yêu cầu (SOW), chấm điểm BANT và xây dựng tài liệu đề xuất.'
+                      : 'Tài khoản của bạn chưa có dự án. Hãy bấm vào nút bên dưới để tạo yêu cầu RFP đầu tiên và chạy AI Intake.'}
                   </p>
-                  <button
-                    onClick={onNavigateRfps}
-                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-bold shadow-md transition-all mt-2"
-                  >
-                    <Sparkles className="w-4 h-4" />
-                    <span>Chuyển tới RFPs & Specs để chạy AI Intake</span>
-                  </button>
+                  {projects.length > 0 ? (
+                    <div className="pt-1">
+                      <span className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 text-slate-700 text-xs font-semibold">
+                        &uarr; Hãy chọn một dự án từ menu chọn ở phía trên
+                      </span>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={onNavigateRfps}
+                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-bold shadow-md transition-all mt-2"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      <span>Chuyển tới RFPs &amp; Specs để chạy AI Intake</span>
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div className="bg-white rounded-3xl border border-slate-200 shadow-card p-6 space-y-6">
@@ -766,11 +774,38 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
 
           {/* TAB 2: DISCOVERY MEETINGS */}
           {activeSubnav === 'Discovery Meetings' && (
-            <DiscoveryMeetingsTab onProceedToProposals={() => setActiveSubnav('Proposal Builder v2.4')} />
+            !selectedProject ? (
+              <div className="bg-white rounded-3xl border border-slate-200 shadow-card p-12 text-center space-y-4">
+                <div className="w-16 h-16 rounded-3xl bg-brand-50 border border-brand-200 text-brand-600 flex items-center justify-center mx-auto">
+                  <FolderOpen className="w-8 h-8 text-brand-600" />
+                </div>
+                <h3 className="text-lg font-bold text-slate-800">
+                  Vui lòng chọn dự án trước
+                </h3>
+                <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
+                  Vui lòng chọn một dự án từ danh mục phía trên trước khi thực hiện ghi nhận biên bản cuộc họp Discovery.
+                </p>
+              </div>
+            ) : (
+              <DiscoveryMeetingsTab onProceedToProposals={() => setActiveSubnav('Proposal Builder v2.4')} />
+            )
           )}
 
           {/* TAB 3: TECHNICAL SESSIONS */}
           {activeSubnav === 'Technical Sessions' && (
+            !selectedProject ? (
+              <div className="bg-white rounded-3xl border border-slate-200 shadow-card p-12 text-center space-y-4">
+                <div className="w-16 h-16 rounded-3xl bg-brand-50 border border-brand-200 text-brand-600 flex items-center justify-center mx-auto">
+                  <FolderOpen className="w-8 h-8 text-brand-600" />
+                </div>
+                <h3 className="text-lg font-bold text-slate-800">
+                  Vui lòng chọn dự án trước
+                </h3>
+                <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
+                  Vui lòng chọn một dự án từ danh mục phía trên trước khi xem tóm tắt phiên làm việc kỹ thuật.
+                </p>
+              </div>
+            ) : (
             <div className="space-y-6">
               <div className="bg-white rounded-3xl border border-slate-200 shadow-card p-6 space-y-6">
                 
@@ -869,14 +904,29 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
 
               </div>
             </div>
+            )
           )}
 
           {/* TAB 4: PROPOSAL BUILDER V2.4 (Real Database & AI Synthesis) */}
           {activeSubnav === 'Proposal Builder v2.4' && (
-            <ProposalStudioTab 
-              leadId={selectedProjectId} 
-              activeProject={selectedProject} 
-            />
+            !selectedProject ? (
+              <div className="bg-white rounded-3xl border border-slate-200 shadow-card p-12 text-center space-y-4">
+                <div className="w-16 h-16 rounded-3xl bg-brand-50 border border-brand-200 text-brand-600 flex items-center justify-center mx-auto">
+                  <FolderOpen className="w-8 h-8 text-brand-600" />
+                </div>
+                <h3 className="text-lg font-bold text-slate-800">
+                  Vui lòng chọn dự án trước
+                </h3>
+                <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
+                  Vui lòng chọn một dự án từ danh mục phía trên trước khi mở Proposal Studio (10 Sheets).
+                </p>
+              </div>
+            ) : (
+              <ProposalStudioTab 
+                leadId={selectedProjectId} 
+                activeProject={selectedProject} 
+              />
+            )
           )}
 
           {/* TAB 5: CLIENT INTELLIGENCE (PDF Page 6 & 7) */}

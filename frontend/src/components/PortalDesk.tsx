@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { LayoutGrid, FileText, Sparkles, Zap, Globe, Settings } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useProposalDirectory } from '../hooks/useProposalDirectory';
 import { proposalService } from '../services/proposalService';
@@ -8,9 +9,12 @@ import { formatDateTime } from '../utils/format';
 import { PORTAL_FIRST_SHARE_ROLES, PORTAL_MANAGER_ROLES } from '../types/portal';
 import type { PortalMaterialDetail, PortalSessionCreated, PortalSessionDetail } from '../types/portal';
 import type { ProposalRecord, ProposalStatus } from '../types/proposal';
+import { WorkspacePill } from './workspace/WorkspacePill';
+import { UserCard } from './workspace/UserCard';
 
 interface PortalDeskProps {
-  onBackToOverview: () => void;
+  onBackToOverview?: () => void;
+  onLogout?: () => void;
 }
 
 const SHAREABLE: ProposalStatus[] = ['APPROVED', 'SENT_TO_CLIENT', 'ACCEPTED'];
@@ -22,8 +26,9 @@ function statusClass(status: ProposalStatus): string {
   return 'bg-slate-100 text-slate-600';
 }
 
-export const PortalDesk: React.FC<PortalDeskProps> = ({ onBackToOverview }) => {
-  const { user } = useAuth();
+export const PortalDesk: React.FC<PortalDeskProps> = ({ onBackToOverview, onLogout }) => {
+  const { user, logout } = useAuth();
+  const handleLogout = onLogout || logout;
   const canManage = Boolean(user && (PORTAL_MANAGER_ROLES as readonly string[]).includes(user.role));
   const canFirstShare = Boolean(user && (PORTAL_FIRST_SHARE_ROLES as readonly string[]).includes(user.role));
 
@@ -185,8 +190,80 @@ export const PortalDesk: React.FC<PortalDeskProps> = ({ onBackToOverview }) => {
   const totalPages = meta?.totalPages ?? 1;
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] px-4 py-8 font-sans text-slate-900 md:px-10">
-      <div className="mx-auto max-w-7xl">
+    <div className="min-h-screen bg-[#f8fafc] flex text-slate-900 font-sans">
+      {/* 1. LEFT SIDEBAR */}
+      <aside className="w-64 bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 hidden md:flex">
+        <div>
+          <div className="p-5 border-b border-slate-100">
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white shadow-sm font-bold font-mono text-base">
+                P
+              </div>
+              <span className="text-xl font-bold tracking-tight text-slate-900">
+                Presaleee
+              </span>
+            </div>
+            <WorkspacePill />
+          </div>
+
+          <nav className="p-3 space-y-1">
+            <button
+              onClick={onBackToOverview || (() => navigateTo('home'))}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all"
+            >
+              <LayoutGrid className="w-4 h-4 text-slate-400" />
+              <span>Overview</span>
+            </button>
+
+            <button
+              onClick={() => navigateTo('rfps')}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all"
+            >
+              <FileText className="w-4 h-4 text-slate-400" />
+              <span>RFPs &amp; Specs</span>
+            </button>
+
+            <button
+              onClick={() => navigateTo('ai-workspace')}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all"
+            >
+              <Sparkles className="w-4 h-4 text-slate-400" />
+              <span>AI Workspace</span>
+            </button>
+
+            <button
+              onClick={() => navigateTo('leads')}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all"
+            >
+              <Zap className="w-4 h-4 text-slate-400" />
+              <span>Leads</span>
+            </button>
+
+            {/* Active Client portal */}
+            <button className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-semibold bg-brand-500 text-white shadow-sm shadow-brand-500/30 transition-all">
+              <div className="flex items-center gap-3">
+                <Globe className="w-4 h-4 text-white" />
+                <span>Client portal</span>
+              </div>
+              <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-brand-600 text-white">
+                Active
+              </span>
+            </button>
+          </nav>
+        </div>
+
+        <div className="p-3 border-t border-slate-100 space-y-2">
+          <button className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-500 hover:text-slate-900 hover:bg-slate-50">
+            <Settings className="w-3.5 h-3.5" />
+            <span>Settings</span>
+          </button>
+          <UserCard onLogout={handleLogout} subtitle="role" />
+        </div>
+      </aside>
+
+      {/* 2. MAIN CONTENT AREA */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto px-4 py-8 md:px-10">
+        <div className="mx-auto max-w-7xl w-full">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div>
             <button onClick={onBackToOverview} className="text-xs font-mono font-bold text-brand-700 hover:underline">
@@ -421,6 +498,7 @@ export const PortalDesk: React.FC<PortalDeskProps> = ({ onBackToOverview }) => {
             )}
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

@@ -66,7 +66,7 @@ export const RfpIntake: React.FC<RfpIntakeProps> = ({
   const clients = useClientDirectory({ page: 1, limit: 100 });
   const members = useMemberDirectory({ page: 1, limit: 50 });
 
-  const [inquiryText, setInquiryText] = useState(SAMPLE_RFP);
+  const [inquiryText, setInquiryText] = useState('');
   const [source, setSource] = useState<LeadSource>('MANUAL');
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
@@ -236,13 +236,23 @@ export const RfpIntake: React.FC<RfpIntakeProps> = ({
                   </select>
                 </div>
 
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs font-semibold text-slate-700">Customer request / RFP brief</span>
+                  <button
+                    type="button"
+                    onClick={() => setInquiryText(SAMPLE_RFP)}
+                    className="text-[10px] text-brand-600 hover:underline font-mono"
+                  >
+                    Dán mẫu POS Retail RFP
+                  </button>
+                </div>
                 <label className="text-xs font-semibold text-slate-700 block">
-                  Customer request / RFP brief
                   <textarea
                     rows={8}
                     value={inquiryText}
                     onChange={(e) => setInquiryText(e.target.value)}
-                    className="mt-1.5 w-full p-3 rounded-xl border border-slate-200 bg-slate-50/70 text-xs font-mono text-slate-800 focus:outline-none focus:border-brand-500"
+                    placeholder="Dán hoặc nhập yêu cầu dự án / RFP brief từ khách hàng vào đây để AI phân tích..."
+                    className="mt-1 w-full p-3 rounded-xl border border-slate-200 bg-slate-50/70 text-xs font-mono text-slate-800 focus:outline-none focus:border-brand-500"
                   />
                 </label>
                 <p className="text-[10px] font-mono text-slate-400">{inquiryText.length} / 50000 characters. File upload is not wired — the backend parser is still pending.</p>

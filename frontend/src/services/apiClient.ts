@@ -24,7 +24,32 @@ interface RequestOptions {
   credentials?: RequestCredentials;
 }
 
-async function send<T>(path: string, options: RequestOptions): Promise<ApiEnvelope<T>> {
+let isRefreshing = false;
+let refreshSubscribers: Array<(success: boolean) => void> = [];
+
+function subscribeTokenRefresh(cb: (success: boolean) => void) {
+  refreshSubscribers.push(cb);
+}
+
+function onRefreshed(success: boolean) {
+  refreshSubscribers.forEach((cb) => cb(success));
+  refreshSubscribers = [];
+}
+
+async function trySilentRefresh(): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/v1/auth/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function send<T>(path: string, options: RequestOptions, isRetry = false): Promise<ApiEnvelope<T>> {
   const controller = new AbortController();
   const timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS;
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -49,6 +74,28 @@ async function send<T>(path: string, options: RequestOptions): Promise<ApiEnvelo
     throw new ApiError(0, `Cannot reach the API at ${API_BASE_URL}. Start it with "npm run dev:backend".`);
   }
   clearTimeout(timer);
+
+  // If 401 Unauthorized and not already retried or an auth route, try silent refresh
+  const isAuthRoute = path.includes('/auth/login') || path.includes('/auth/refresh') || path.includes('/auth/register');
+  if (response.status === 401 && !isRetry && !options.bearerToken && !isAuthRoute) {
+    if (!isRefreshing) {
+      isRefreshing = true;
+      const success = await trySilentRefresh();
+      isRefreshing = false;
+      onRefreshed(success);
+      if (success) {
+        return send<T>(path, options, true);
+      }
+    } else {
+      // Wait for existing refresh to finish
+      const success = await new Promise<boolean>((resolve) => {
+        subscribeTokenRefresh(resolve);
+      });
+      if (success) {
+        return send<T>(path, options, true);
+      }
+    }
+  }
 
   const text = await response.text();
   let payload: ApiEnvelope<T>;

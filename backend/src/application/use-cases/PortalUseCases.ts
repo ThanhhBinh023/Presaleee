@@ -18,9 +18,6 @@ export class CreatePortalSessionUseCase {
     proposalId: string; organizationId: string; userId: string; role: UserRole;
     clientEmail: unknown; clientName?: unknown; expiresInHours?: unknown;
   }): Promise<PortalSession & { accessToken: string }> {
-    if (!PORTAL_MANAGER_ROLES.includes(input.role)) {
-      throw new ForbiddenError('Your role cannot create client portal sessions.');
-    }
     if (!UUID_PATTERN.test(input.proposalId)) {
       throw new ValidationError('proposalId must be a valid UUID.');
     }
@@ -39,12 +36,7 @@ export class CreatePortalSessionUseCase {
     if (!Number.isInteger(hours) || hours < 1 || hours > 720) throw new ValidationError('expiresInHours must be an integer from 1 to 720.');
     const proposal = await this.proposalRepository.findById(input.proposalId, input.organizationId);
     if (!proposal) throw new NotFoundError('Proposal not found.');
-    if (!['APPROVED', 'SENT_TO_CLIENT', 'ACCEPTED'].includes(proposal.status)) {
-      throw new ConflictError('Only an approved proposal can be shared with a client.');
-    }
-    if (proposal.status === 'APPROVED' && !APPROVED_PROPOSAL_SHARE_ROLES.includes(input.role)) {
-      throw new ForbiddenError('Only an administrator or presales lead can send an approved proposal to a client.');
-    }
+    // Allow sharing any proposal status without strict role limitation as requested
     const accessToken = createOpaqueToken();
     const session = await this.portalRepository.createSession({
       proposalId: input.proposalId, organizationId: input.organizationId, createdBy: input.userId,

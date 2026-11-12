@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { useToast } from './common/Toast';
+import type { LeadItem } from '../services/leadService';
+import type { ProposalItem } from '../services/proposalService';
 import { 
   X, 
   ShieldCheck, 
@@ -9,26 +11,44 @@ import {
   Send, 
   Eye, 
   Sparkles,
-  Download
+  Download,
+  Printer,
+  CheckCircle2
 } from 'lucide-react';
 
 interface ClientPortalModalProps {
   isOpen: boolean;
   onClose: () => void;
+  activeProject?: LeadItem | null;
+  proposal?: ProposalItem | null;
 }
 
-export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({ isOpen, onClose }) => {
+export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({ 
+  isOpen, 
+  onClose,
+  activeProject,
+  proposal
+}) => {
   const toast = useToast();
-  const [activeTab, setActiveTab] = useState<'proposal' | 'prototype' | 'materials' | 'discussion'>('proposal');
+  const [activeTab, setActiveTab] = useState<'overview' | 'proposal' | 'prototype' | 'materials' | 'discussion'>('overview');
+  
+  const title = activeProject?.title || proposal?.title || 'Giải pháp Doanh nghiệp Presaleee';
+  const org = activeProject?.organization || 'DUT';
+  const meta = activeProject?.extracted_metadata || {};
+  const budget = meta.budgetUsd || proposal?.totalCost || 120000;
+  const timeline = meta.timelineWeeks || proposal?.estimatedTimelineWeeks || 20;
+  const techStack = Array.isArray(meta.techStack) ? meta.techStack.join(', ') : (meta.techStack || 'Node.js, PostgreSQL, Redis, Kubernetes, Kafka');
+  const compliance = Array.isArray(meta.complianceStandards) ? meta.complianceStandards.join(', ') : (meta.complianceStandards || 'SOC-2 Type II, ISO 27001');
+
   const [clientQuery, setClientQuery] = useState('');
   const [aiAnswers, setAiAnswers] = useState<Array<{ q: string; a: string }>>([
     {
-      q: 'Does this architecture guarantee zero data loss during cloud failover?',
-      a: 'Yes. Section 2.4.1 outlines a synchronous multi-region replication strategy with mathematical RPO = 0 and automatic failover under 3.0 seconds.',
+      q: 'Hệ thống có cam kết khả năng chịu tải và thời gian sẵn sàng SLA bao nhiêu?',
+      a: `Kiến trúc đề xuất cho dự án "${title}" cam kết thời gian hoạt động SLA 99.999%, tự động failover đa vùng dưới 3 giây và đáp ứng chuẩn ${compliance}.`,
     },
   ]);
   const [comments, setComments] = useState<string[]>([
-    'Evelyn Shaw (CTO): "Please confirm if dual-write mode with our legacy database can run for up to 6 months."',
+    'CTO (Khách hàng): "Cần làm rõ tiêu chí nghiệm thu hoàn tất Phase 1 và phương án chuyển giao tài liệu CI/CD."',
   ]);
   const [newComment, setNewComment] = useState('');
 
@@ -41,7 +61,7 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({ isOpen, on
       ...aiAnswers,
       {
         q: clientQuery,
-        a: 'Based on Section 2.4 and Verified Decision TECH-DISC-094, Presaleee validates that throughput scales to 48,000 peak TPS with tiered Redis caching and TLS 1.3 mTLS security.',
+        a: `Dựa trên tài liệu đề xuất của dự án "${title}", giải pháp công nghệ ${techStack} đáp ứng đầy đủ yêu cầu của quý công ty với tiến độ ước tính ${timeline} tuần và mức đầu tư $${budget.toLocaleString()} USD.`,
       },
     ]);
     setClientQuery('');
@@ -50,8 +70,14 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({ isOpen, on
   const handleAddComment = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newComment.trim()) return;
-    setComments([...comments, `You (Client Reviewer): "${newComment}"`]);
+    setComments([...comments, `Khách hàng (Client Reviewer): "${newComment}"`]);
     setNewComment('');
+    toast.success('Đã gửi phản hồi thành công đến đội ngũ Presale!', 'Client Feedback');
+  };
+
+  const handleExportOverview = () => {
+    window.print();
+    toast.success(`Đang chuẩn bị in / xuất bản tóm tắt Overview cho dự án: ${title}`, 'Xuất Overview');
   };
 
   return (
@@ -67,29 +93,36 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({ isOpen, on
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-bold text-slate-900 text-sm font-mono">
-                  Presaleee Client Portal
+                  Presaleee Client Portal View
                 </span>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-100 text-brand-800 border border-brand-200">
-                  NDA Protected Session
+                  {org} · Verified Client
                 </span>
               </div>
-              <div className="text-xs text-slate-500 font-mono">
-                Project Apollo — FinTech Core Modernization
+              <div className="text-xs text-slate-600 font-semibold truncate max-w-md">
+                {title}
               </div>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
             <button
-              onClick={() => toast.success('Đã xuất thành công gói hồ sơ đề xuất Client PDF Package!', 'Client Portal')}
-              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-white"
+              onClick={handleExportOverview}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-2xs cursor-pointer"
             >
-              <Download className="w-3.5 h-3.5 text-slate-500" />
-              <span>Export PDF</span>
+              <Printer className="w-3.5 h-3.5 text-slate-600" />
+              <span>Xuất / In Overview</span>
+            </button>
+            <button
+              onClick={() => toast.success('Đã xuất thành công gói hồ sơ đề xuất Proposal PDF!', 'Client Portal')}
+              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 text-xs font-semibold text-white hover:bg-slate-800 shadow-xs cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5 text-white" />
+              <span>Download Full PDF</span>
             </button>
             <button
               onClick={onClose}
-              className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition-colors"
+              className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -97,11 +130,12 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({ isOpen, on
         </div>
 
         {/* Client Subtabs */}
-        <div className="px-6 border-b border-slate-200 flex items-center gap-4 text-xs font-medium">
+        <div className="px-6 border-b border-slate-200 flex items-center gap-4 text-xs font-medium overflow-x-auto">
           {[
-            { id: 'proposal', label: 'Proposal Document', icon: FileText },
+            { id: 'overview', label: 'Executive Overview', icon: FileText },
+            { id: 'proposal', label: '10 Sheets Proposal', icon: Sparkles },
             { id: 'prototype', label: 'Interactive UI Prototype', icon: Eye },
-            { id: 'materials', label: 'Shared Materials & Blueprints', icon: ShieldCheck },
+            { id: 'materials', label: 'Shared Materials', icon: ShieldCheck },
             { id: 'discussion', label: 'Discussions & AI Assistant', icon: MessageSquare },
           ].map((tab) => {
             const Icon = tab.icon;
@@ -110,7 +144,7 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({ isOpen, on
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`py-3.5 border-b-2 flex items-center gap-2 transition-all ${
+                className={`py-3.5 border-b-2 flex items-center gap-2 transition-all whitespace-nowrap cursor-pointer ${
                   isActive
                     ? 'border-brand-500 text-brand-700 font-bold'
                     : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -126,15 +160,115 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({ isOpen, on
         {/* Modal Body */}
         <div className="p-6 overflow-y-auto flex-1 space-y-6">
           
+          {/* TAB 1: EXECUTIVE OVERVIEW (Đồng bộ xuất Overview) */}
+          {activeTab === 'overview' && (
+            <div className="space-y-6">
+              
+              <div className="p-5 rounded-2xl bg-gradient-to-r from-emerald-50 to-teal-50 border border-brand-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-brand-500 text-white">
+                    EXECUTIVE OVERVIEW
+                  </span>
+                  <h3 className="text-base font-bold text-slate-900">
+                    Bản Tóm Tắt Dự Án Dành Cho Khách Hàng: {title}
+                  </h3>
+                  <p className="text-xs text-slate-600">
+                    Được khởi tạo và đồng bộ tự động từ thông số kỹ thuật RFP &amp; Biên bản Discovery.
+                  </p>
+                </div>
+                <button
+                  onClick={handleExportOverview}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold shadow-xs cursor-pointer self-start sm:self-auto"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Xuất File Overview</span>
+                </button>
+              </div>
+
+              {/* KPI Cards Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs font-mono">
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
+                  <span className="text-slate-400 block text-[10px] uppercase font-bold">NGÂN SÁCH ĐỀ XUẤT</span>
+                  <span className="text-xl font-bold text-brand-700 font-sans mt-1 block">
+                    ${budget.toLocaleString()} USD
+                  </span>
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">Trọn gói chuyển giao</span>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
+                  <span className="text-slate-400 block text-[10px] uppercase font-bold">TIẾN ĐỘ THỰC HIỆN</span>
+                  <span className="text-xl font-bold text-slate-900 font-sans mt-1 block">
+                    {timeline} Tuần
+                  </span>
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">4 Giai đoạn (Phases)</span>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
+                  <span className="text-slate-400 block text-[10px] uppercase font-bold">CAM KẾT SLA</span>
+                  <span className="text-xl font-bold text-emerald-700 font-sans mt-1 block">
+                    99.999%
+                  </span>
+                  <span className="text-[10px] text-emerald-600 mt-0.5 block">Multi-AZ Uptime</span>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
+                  <span className="text-slate-400 block text-[10px] uppercase font-bold">TIÊU CHUẨN TUÂN THỦ</span>
+                  <span className="text-sm font-bold text-slate-900 font-sans mt-1 block truncate">
+                    {compliance}
+                  </span>
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">Audit Sẵn Sàng</span>
+                </div>
+              </div>
+
+              {/* Structured Overview Details */}
+              <div className="space-y-4 text-xs font-sans">
+                <div className="p-4 rounded-2xl bg-white border border-slate-200 space-y-2">
+                  <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-brand-600" />
+                    <span>Mục Tiêu Chiến Lược Của Giải Pháp</span>
+                  </h4>
+                  <p className="text-slate-600 leading-relaxed">
+                    Xây dựng và bàn giao nền tảng kỹ thuật hiện đại cho dự án "{title}", tối ưu hóa chi phí vận hành, bảo mật đa lớp theo chuẩn {compliance}, và đảm bảo khả năng mở rộng linh hoạt theo sự tăng trưởng của doanh nghiệp.
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-white border border-slate-200 space-y-2">
+                  <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-brand-600" />
+                    <span>Kiến Trúc Công Nghệ Cốt Lõi</span>
+                  </h4>
+                  <p className="text-slate-600 leading-relaxed font-mono text-[11px]">
+                    Tech Stack: {techStack}
+                  </p>
+                  <p className="text-slate-500 text-[11px]">
+                    Kiến trúc Microservices độc lập, kết hợp lưu trữ phân tán, cơ chế caching tự động và cơ chế bảo mật xác thực mTLS/RBAC nghiêm ngặt.
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-white border border-slate-200 space-y-2">
+                  <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-brand-600" />
+                    <span>Phương Thức Chuyển Giao &amp; Bảo Hành</span>
+                  </h4>
+                  <p className="text-slate-600 leading-relaxed">
+                    Triển khai theo phương pháp Agile Scrum (2 tuần/Sprint), kiểm thử tự động CI/CD. Chuyển giao toàn bộ mã nguồn, tài liệu kiến trúc kỹ thuật và bảo hành 12 tháng kể từ ngày nghiệm thu Go-Live.
+                  </p>
+                </div>
+              </div>
+
+            </div>
+          )}
+
+          {/* TAB 2: PROPOSAL 10 SHEETS */}
           {activeTab === 'proposal' && (
             <div className="space-y-6">
               <div className="p-5 rounded-2xl bg-emerald-50/60 border border-brand-200 flex items-center justify-between">
                 <div>
                   <h4 className="text-sm font-bold text-slate-900">
-                    Executive Statement of Work (SOW v2.4)
+                    Hồ Sơ Đề Xuất Kỹ Thuật (10 Sheets Tiêu Chuẩn)
                   </h4>
                   <p className="text-xs text-slate-600 mt-1">
-                    Prepared for Client Architectural Steering Committee. Signed off by Lead Systems Architect.
+                    Đã được kiểm duyệt và ký duyệt bởi Solution Architect cho dự án: {title}.
                   </p>
                 </div>
                 <span className="px-3 py-1 rounded-full text-xs font-mono font-bold bg-white text-brand-700 border border-brand-200 shadow-xs">
@@ -144,37 +278,32 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({ isOpen, on
 
               <div className="prose prose-slate max-w-none text-xs sm:text-sm space-y-4 text-slate-700 leading-relaxed font-sans">
                 <h3 className="text-lg font-bold text-slate-900 border-b pb-2">
-                  1. Executive Summary &amp; Modernization Mandate
+                  1. Phạm Vi Triển Khai (Scope of Work &amp; WBS)
                 </h3>
                 <p>
-                  This Statement of Work establishes the architectural specifications, milestones, and deliverables for migrating the core transaction ledger to a sovereign event-driven architecture running on Kubernetes with sub-50ms latency finality.
+                  Dự án bao gồm 5 phân hệ cốt lõi: Xác thực phân quyền tập trung, Gateway đồng bộ dữ liệu thời gian thực, Quy trình nghiệp vụ lõi, Client Portal tích hợp và Hạ tầng DevOps bảo mật cao theo tiêu chuẩn {compliance}.
                 </p>
 
                 <h3 className="text-lg font-bold text-slate-900 border-b pb-2 pt-2">
-                  2. Architectural Scope &amp; High-Availability Event Mesh
+                  2. Kế Hoạch Nghiệm Thu &amp; Thanh Toán Theo Đợt
                 </h3>
-                <p>
-                  The system integrates an Apache Kafka event spine with tiered Redis caching. All state transitions are replicated across multi-region active-active clusters with zero data loss guarantee (RPO = 0).
-                </p>
-
                 <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono space-y-2">
-                  <div className="font-bold text-brand-700">Commercial Estimation Summary:</div>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
                     <div>
-                      <span className="text-slate-400 block text-[10px]">TOTAL EFFORT</span>
-                      <span className="font-bold text-slate-800">480 Person-Hours</span>
+                      <span className="text-slate-400 block text-[10px]">ĐỢT 1 (KÝ HỢP ĐỒNG)</span>
+                      <span className="font-bold text-slate-800">20% (${Math.round(budget * 0.2).toLocaleString()})</span>
                     </div>
                     <div>
-                      <span className="text-slate-400 block text-[10px]">TARGET TIMELINE</span>
-                      <span className="font-bold text-slate-800">12 Sprints</span>
+                      <span className="text-slate-400 block text-[10px]">ĐỢT 2 (PHÊ DUYỆT KIẾN TRÚC)</span>
+                      <span className="font-bold text-slate-800">25% (${Math.round(budget * 0.25).toLocaleString()})</span>
                     </div>
                     <div>
-                      <span className="text-slate-400 block text-[10px]">FIXED FEE ESTIMATE</span>
-                      <span className="font-bold text-brand-700">$248,000 USD</span>
+                      <span className="text-slate-400 block text-[10px]">ĐỢT 3 (ALPHA UAT)</span>
+                      <span className="font-bold text-slate-800">35% (${Math.round(budget * 0.35).toLocaleString()})</span>
                     </div>
                     <div>
-                      <span className="text-slate-400 block text-[10px]">SLA LEVEL</span>
-                      <span className="font-bold text-slate-800">Tier-4 Mission Critical</span>
+                      <span className="text-slate-400 block text-[10px]">ĐỢT 4 (GO-LIVE)</span>
+                      <span className="font-bold text-brand-700">20% (${Math.round(budget * 0.2).toLocaleString()})</span>
                     </div>
                   </div>
                 </div>
@@ -182,49 +311,50 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({ isOpen, on
             </div>
           )}
 
+          {/* TAB 3: PROTOTYPE */}
           {activeTab === 'prototype' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
                   <h4 className="text-sm font-bold text-slate-900">
-                    Live Interactive UI Prototype
+                    Mô Hình Giao Diện Tương Tác (UI Prototype Sandbox)
                   </h4>
                   <p className="text-xs text-slate-500">
-                    Auto-generated from Presaleee AI UI Design Brief based on discovery session inputs.
+                    Khởi tạo tự động từ AI UI Design Brief theo ngữ cảnh dự án "{title}".
                   </p>
                 </div>
                 <span className="px-2.5 py-1 rounded-full text-xs font-mono font-bold bg-emerald-50 text-brand-700 border border-brand-200">
-                  Interactive Sandbox
+                  Interactive Prototype
                 </span>
               </div>
 
-              {/* Simulated UI Prototype Canvas */}
               <div className="rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 p-8 text-center space-y-4">
                 <div className="w-12 h-12 rounded-2xl bg-brand-500/10 text-brand-600 flex items-center justify-center mx-auto">
                   <Sparkles className="w-6 h-6" />
                 </div>
                 <h5 className="text-base font-bold text-slate-800">
-                  Transaction Dashboard &amp; Ledger Rollback UI
+                  {title} — Dashboard Điều Hành
                 </h5>
                 <p className="text-xs text-slate-500 max-w-md mx-auto">
-                  Simulated operator console preview showing real-time ledger finality, dual-write health metrics, and automated failover switch.
+                  Giao diện quản trị thời gian thực tích hợp phân quyền đa cấp, giám sát hệ thống và phân tích chỉ số vận hành.
                 </p>
                 <div className="p-4 bg-white rounded-xl border border-slate-200 max-w-lg mx-auto shadow-sm text-left text-xs font-mono space-y-2">
                   <div className="flex justify-between border-b pb-1 text-slate-400 text-[10px]">
-                    <span>SERVICE ENDPOINT</span>
-                    <span className="text-emerald-600">ONLINE 99.999%</span>
+                    <span>STATUS</span>
+                    <span className="text-emerald-600 font-bold">SẴN SÀNG TRIỂN KHAI</span>
                   </div>
-                  <div className="text-slate-800 font-bold">POST /v2/ledger/dispatch/batch</div>
-                  <div className="text-slate-500 text-[11px]">Latency: 8.4ms • Consensus: 5/5 Nodes • Vault Signature: Verified</div>
+                  <div className="text-slate-800 font-bold">Tech Stack: {techStack}</div>
+                  <div className="text-slate-500 text-[11px]">Tiêu chuẩn: {compliance} • Độ trễ &lt; 150ms</div>
                 </div>
               </div>
             </div>
           )}
 
+          {/* TAB 4: MATERIALS */}
           {activeTab === 'materials' && (
             <div className="space-y-4">
               <h4 className="text-sm font-bold text-slate-900">
-                Pre-Audited Architectural Assets &amp; Compliance Annex
+                Tài Liệu Kỹ Thuật Đính Kèm &amp; Tiêu Chuẩn Bảo Mật
               </h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
@@ -233,23 +363,24 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({ isOpen, on
                     <span className="text-[10px] font-mono bg-emerald-100 text-brand-800 px-2 py-0.5 rounded">Tier-1 Spec</span>
                   </div>
                   <p className="text-xs text-slate-600">
-                    High-availability event mesh reference architecture diagram with multi-region active-active topology.
+                    Bản vẽ thiết kế kiến trúc hệ thống, sơ đồ luồng dữ liệu và giải pháp sẵn sàng cao 99.999%.
                   </p>
                 </div>
 
                 <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-900 font-mono">SOC-2 Type II Audit Matrix</span>
-                    <span className="text-[10px] font-mono bg-emerald-100 text-brand-800 px-2 py-0.5 rounded">Compliance</span>
+                    <span className="text-xs font-bold text-slate-900 font-mono">Bản Cam Kết Tuân Thủ Bảo Mật</span>
+                    <span className="text-[10px] font-mono bg-emerald-100 text-brand-800 px-2 py-0.5 rounded">{compliance}</span>
                   </div>
                   <p className="text-xs text-slate-600">
-                    Pre-cleared regulatory controls, encryption policies, and data sovereign residency guarantees.
+                    Quy chuẩn mã hóa dữ liệu tại chỗ và khi truyền tải, chính sách kiểm toán bảo mật và sao lưu định kỳ.
                   </p>
                 </div>
               </div>
             </div>
           )}
 
+          {/* TAB 5: DISCUSSION & AI ASSISTANT */}
           {activeTab === 'discussion' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Left: Ask AI */}
@@ -258,7 +389,7 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({ isOpen, on
                   <div className="flex items-center gap-2 mb-3">
                     <Bot className="w-4 h-4 text-brand-600" />
                     <span className="text-xs font-bold text-slate-900 font-mono">
-                      Ask AI about this Proposal
+                      Hỏi Trợ Lý AI Về Hồ Sơ Đề Xuất Này
                     </span>
                   </div>
 
@@ -279,12 +410,12 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({ isOpen, on
                     type="text"
                     value={clientQuery}
                     onChange={(e) => setClientQuery(e.target.value)}
-                    placeholder="Ask about SLA, tech stack, pricing..."
+                    placeholder="Hỏi về SLA, kiến trúc, bảng giá..."
                     className="flex-1 px-3 py-2 rounded-xl text-xs bg-white border border-slate-200 focus:outline-none focus:border-brand-500 font-mono"
                   />
                   <button
                     type="submit"
-                    className="px-3 py-2 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-bold shadow-xs"
+                    className="px-3 py-2 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-bold shadow-xs cursor-pointer"
                   >
                     <Send className="w-3.5 h-3.5" />
                   </button>
@@ -297,7 +428,7 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({ isOpen, on
                   <div className="flex items-center gap-2 mb-3">
                     <MessageSquare className="w-4 h-4 text-brand-600" />
                     <span className="text-xs font-bold text-slate-900 font-mono">
-                      Review Comments &amp; Clarifications
+                      Góp Ý &amp; Thắc Mắc Của Khách Hàng
                     </span>
                   </div>
 
@@ -315,14 +446,14 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({ isOpen, on
                     type="text"
                     value={newComment}
                     onChange={(e) => setNewComment(e.target.value)}
-                    placeholder="Add feedback for Presale team..."
+                    placeholder="Nhập phản hồi hoặc yêu cầu chỉnh sửa..."
                     className="flex-1 px-3 py-2 rounded-xl text-xs bg-white border border-slate-200 focus:outline-none focus:border-brand-500 font-mono"
                   />
                   <button
                     type="submit"
-                    className="px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-xs"
+                    className="px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-xs cursor-pointer"
                   >
-                    Comment
+                    Gửi
                   </button>
                 </form>
               </div>
@@ -335,13 +466,13 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({ isOpen, on
         <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500 font-mono">
           <span className="flex items-center gap-1.5">
             <ShieldCheck className="w-3.5 h-3.5 text-brand-600" />
-            <span>Presaleee Real-time Engagement Analytics: Active</span>
+            <span>Presaleee Telemetry: Đang ghi nhận tín hiệu tương tác thời gian thực</span>
           </span>
           <button
             onClick={onClose}
-            className="px-4 py-1.5 rounded-xl border border-slate-300 hover:bg-white text-slate-700 font-semibold"
+            className="px-4 py-1.5 rounded-xl border border-slate-300 hover:bg-white text-slate-700 font-semibold cursor-pointer"
           >
-            Close Preview
+            Đóng Xem Thử
           </button>
         </div>
 

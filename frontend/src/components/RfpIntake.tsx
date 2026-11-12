@@ -4,14 +4,11 @@ import {
   Globe,
   FileText,
   Sparkles,
-  BookOpen,
-  CreditCard,
   CheckCircle2,
   AlertCircle,
   HelpCircle,
   ArrowRight,
-  Zap,
-  List
+  Zap
 } from 'lucide-react';
 import { WorkspacePill } from './workspace/WorkspacePill';
 import { UserCard } from './workspace/UserCard';

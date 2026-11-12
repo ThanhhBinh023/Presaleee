@@ -38,6 +38,8 @@ export interface ExtractedMetadata {
   coreFunctionalModules?: string[];
   integrationsRequired?: string[];
   complianceAndSecurity?: string[];
+  techStack?: string[] | string;
+  complianceStandards?: string[] | string;
   priorityLevel?: string | null;
   missing_information?: string[];
   target_sla?: string;
@@ -53,6 +55,12 @@ export interface LeadItem {
   raw_rfp_content?: string;
   extracted_metadata?: ExtractedMetadata;
   created_at?: string;
+  qualification_score?: number | null;
+  qualification_status?: string | null;
+  organization?: string;
+  client_name?: string;
+  requirements_summary?: string;
+  client_request_raw?: string;
 }
 
 export async function fetchLeads(): Promise<LeadItem[]> {

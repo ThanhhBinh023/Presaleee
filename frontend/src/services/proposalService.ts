@@ -17,7 +17,8 @@ export interface ProposalSheetItem {
   sheetName: string;
   sheetOrder: number;
   sheetData: Record<string, any>;
-  aiGenerated: boolean;
+  aiGenerated?: boolean;
+  version?: number;
   createdAt?: string;
   updatedAt?: string;
 }

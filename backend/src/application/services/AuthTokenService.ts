@@ -5,7 +5,7 @@ import { env } from '../../infrastructure/config/env.js';
 
 export type AccessTokenClaims = AuthRequestClaims;
 
-const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
+const ACCESS_TOKEN_TTL_SECONDS = 24 * 60 * 60; // 24 hours to prevent session expiry during working sessions
 export const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 export function toPublicUser(user: AuthUser): PublicAuthUser {

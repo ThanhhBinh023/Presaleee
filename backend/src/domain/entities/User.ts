@@ -1,4 +1,4 @@
-export const USER_ROLES = ['ADMIN', 'PRESALE_LEAD', 'SOLUTION_ARCHITECT', 'SALES_REP', 'VIEWER'] as const;
+export const USER_ROLES = ['ADMIN', 'PRESALE_LEAD', 'PRESALE_CONSULTANT', 'SOLUTION_ARCHITECT', 'SALES_REP', 'VIEWER'] as const;
 export type UserRole = typeof USER_ROLES[number];
 
 /** Roles allowed to mutate shared reference data (clients, rate cards, members). */

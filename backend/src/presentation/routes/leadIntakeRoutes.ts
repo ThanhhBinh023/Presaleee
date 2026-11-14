@@ -1,33 +1,33 @@
 import { Router } from 'express';
 import { LeadIntakeController } from '../controllers/LeadIntakeController.js';
-import { optionalAuth, requireAuth, requireOrganization } from '../middlewares/requireAuth.js';
+import { requireAuth, requireOrganization, requireNotViewer } from '../middlewares/requireAuth.js';
 
 export function createLeadIntakeRouter(controller: LeadIntakeController): Router {
   const router = Router();
 
-  // List existing leads (filtered by user/org if authenticated)
-  router.get('/', optionalAuth, controller.listLeads);
+  // List existing leads (strictly scoped to user's organization)
+  router.get('/', requireAuth, requireOrganization, controller.listLeads);
 
-  // Create a lead from the reviewed intake draft — the only writer of new leads
-  router.post('/', requireAuth, requireOrganization, controller.createLead);
+  // Create a lead from the reviewed intake draft (prohibited for VIEWER)
+  router.post('/', requireAuth, requireOrganization, requireNotViewer, controller.createLead);
 
-  // Analyze RFP text and return an unsaved draft; saving happens on POST /
-  router.post('/intake/analyze', optionalAuth, controller.analyze);
+  // Analyze RFP text and return an unsaved draft
+  router.post('/intake/analyze', requireAuth, requireOrganization, requireNotViewer, controller.analyze);
 
   // Qualify lead with AI BANT evaluation
-  router.post('/:id/qualify', optionalAuth, controller.qualify);
+  router.post('/:id/qualify', requireAuth, requireOrganization, requireNotViewer, controller.qualify);
 
   // BANT scoring: reads the stored RFP, writes bant_score + bant_details, status -> QUALIFIED
-  router.post('/:id/qualifications', requireAuth, requireOrganization, controller.qualifyBant);
+  router.post('/:id/qualifications', requireAuth, requireOrganization, requireNotViewer, controller.qualifyBant);
 
-  // Get single lead
-  router.get('/:id', optionalAuth, controller.getLeadById);
+  // Get single lead (strictly scoped to user's organization)
+  router.get('/:id', requireAuth, requireOrganization, controller.getLeadById);
 
-  // Update lead
-  router.put('/:id', optionalAuth, controller.updateLead);
+  // Update lead (prohibited for VIEWER, strictly scoped to user's organization)
+  router.put('/:id', requireAuth, requireOrganization, requireNotViewer, controller.updateLead);
 
-  // Delete lead
-  router.delete('/:id', optionalAuth, controller.deleteLead);
+  // Delete lead (prohibited for VIEWER, strictly scoped to user's organization)
+  router.delete('/:id', requireAuth, requireOrganization, requireNotViewer, controller.deleteLead);
 
   return router;
 }

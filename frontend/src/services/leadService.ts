@@ -45,6 +45,8 @@ export interface ExtractedMetadata {
   target_sla?: string;
   peak_workload?: string;
   qualification?: QualificationData;
+  assignedRoles?: string[];
+  assigned_roles?: string[];
 }
 
 export interface LeadItem {

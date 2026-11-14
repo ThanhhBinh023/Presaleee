@@ -224,7 +224,7 @@ export const KnowledgeVault: React.FC<KnowledgeVaultProps> = ({
         )}
         {user?.role === 'VIEWER' && (
           <p className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-            VIEWER can ingest, delete, search and ask. Vault routes only check authentication plus organization.
+            VIEWER role is read-only. Search and ask are permitted; document ingestion and deletion are restricted to contributors and administrators.
           </p>
         )}
 
@@ -232,29 +232,35 @@ export const KnowledgeVault: React.FC<KnowledgeVaultProps> = ({
         {actionError && <p className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{actionError}</p>}
         {error && <p className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
 
-        <div className="mb-4 grid gap-2 rounded-2xl border border-slate-200 bg-white p-4 sm:grid-cols-2">
-          <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Title (required, max 255)" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={255} />
-          <select className="rounded-lg border border-slate-300 px-3 py-2 text-sm" value={ingestCategory} onChange={(e) => setIngestCategory(e.target.value)}>
-            <option value="">Category omitted → GENERAL</option>
-            {KNOWLEDGE_CATEGORIES.map((value) => (
-              <option key={value} value={value}>{value}</option>
-            ))}
-          </select>
-          <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Domain omitted → GENERAL (empty string is 400)" value={ingestDomain} onChange={(e) => setIngestDomain(e.target.value)} maxLength={100} />
-          <label className="flex items-center gap-2 text-sm text-slate-600">
-            <input type="checkbox" checked={useRagAlias} onChange={(e) => setUseRagAlias(e.target.checked)} />
-            Use POST /rag/ingest alias
-          </label>
-          <textarea
-            className="min-h-[90px] rounded-lg border border-slate-300 px-3 py-2 text-sm sm:col-span-2"
-            placeholder="Plain text content (required). File upload is not implemented. Identical text creates a second document."
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-          />
-          <button onClick={() => void ingest()} disabled={isWorking || !title.trim() || !content.trim()} className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-50 sm:col-span-2">
-            Ingest and embed
-          </button>
-        </div>
+        {user?.role !== 'VIEWER' ? (
+          <div className="mb-4 grid gap-2 rounded-2xl border border-slate-200 bg-white p-4 sm:grid-cols-2">
+            <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Title (required, max 255)" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={255} />
+            <select className="rounded-lg border border-slate-300 px-3 py-2 text-sm" value={ingestCategory} onChange={(e) => setIngestCategory(e.target.value)}>
+              <option value="">Category omitted → GENERAL</option>
+              {KNOWLEDGE_CATEGORIES.map((value) => (
+                <option key={value} value={value}>{value}</option>
+              ))}
+            </select>
+            <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Domain omitted → GENERAL (empty string is 400)" value={ingestDomain} onChange={(e) => setIngestDomain(e.target.value)} maxLength={100} />
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              <input type="checkbox" checked={useRagAlias} onChange={(e) => setUseRagAlias(e.target.checked)} />
+              Use POST /rag/ingest alias
+            </label>
+            <textarea
+              className="min-h-[90px] rounded-lg border border-slate-300 px-3 py-2 text-sm sm:col-span-2"
+              placeholder="Plain text content (required). File upload is not implemented. Identical text creates a second document."
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+            />
+            <button onClick={() => void ingest()} disabled={isWorking || !title.trim() || !content.trim()} className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-50 sm:col-span-2">
+              Ingest and embed
+            </button>
+          </div>
+        ) : (
+          <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs text-slate-500 font-mono">
+            Document ingestion is disabled in VIEWER (read-only) mode.
+          </div>
+        )}
 
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <input value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder="Search title (metadata only)" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
@@ -326,14 +332,20 @@ export const KnowledgeVault: React.FC<KnowledgeVaultProps> = ({
                     <div><span className="text-slate-400">Uploaded</span><div className="font-mono">{formatDateTime(detail.createdAt)}</div></div>
                     <div><span className="text-slate-400">File</span><div className="font-mono">{detail.fileType || '—'}</div></div>
                   </dl>
-                  {confirmDelete ? (
-                    <button onClick={() => void remove()} disabled={isWorking} className="mt-4 w-full rounded-lg bg-rose-600 px-3 py-2 text-xs font-bold text-white">
-                      Confirm delete (chunks cascade)
-                    </button>
+                  {user?.role !== 'VIEWER' ? (
+                    confirmDelete ? (
+                      <button onClick={() => void remove()} disabled={isWorking} className="mt-4 w-full rounded-lg bg-rose-600 px-3 py-2 text-xs font-bold text-white">
+                        Confirm delete (chunks cascade)
+                      </button>
+                    ) : (
+                      <button onClick={() => setConfirmDelete(true)} className="mt-4 w-full rounded-lg border border-rose-200 px-3 py-2 text-xs font-bold text-rose-600">
+                        Delete document
+                      </button>
+                    )
                   ) : (
-                    <button onClick={() => setConfirmDelete(true)} className="mt-4 w-full rounded-lg border border-rose-200 px-3 py-2 text-xs font-bold text-rose-600">
-                      Delete document
-                    </button>
+                    <div className="mt-4 text-center text-xs text-slate-400 font-mono">
+                      (Delete restricted in VIEWER mode)
+                    </div>
                   )}
                 </>
               )}

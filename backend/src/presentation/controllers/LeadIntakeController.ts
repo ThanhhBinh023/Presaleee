@@ -116,6 +116,16 @@ export class LeadIntakeController {
 
   qualify = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
+      const orgId = req.auth?.organizationId;
+      if (!orgId) {
+        res.status(403).json({ success: false, error: 'An organization is required.' });
+        return;
+      }
+      if (req.auth?.role === 'VIEWER') {
+        res.status(403).json({ success: false, error: 'VIEWER role is read-only. Qualification is not permitted.' });
+        return;
+      }
+
       const leadId = req.params.id;
       const inquiryText = req.body?.inquiryText;
       let leadTitle = 'Dự án Doanh nghiệp';
@@ -123,12 +133,14 @@ export class LeadIntakeController {
       let lead = null;
 
       if (this.dbPool && leadId) {
-        const leadRes = await this.dbPool.query('SELECT * FROM leads WHERE id = $1 LIMIT 1;', [leadId]);
-        if (leadRes.rows.length > 0) {
-          lead = leadRes.rows[0];
-          leadTitle = lead.title || leadTitle;
-          rfpContent = lead.raw_rfp_content || rfpContent;
+        const leadRes = await this.dbPool.query('SELECT * FROM leads WHERE id = $1 AND organization_id = $2 LIMIT 1;', [leadId, orgId]);
+        if (leadRes.rows.length === 0) {
+          res.status(404).json({ success: false, error: 'Lead not found.' });
+          return;
         }
+        lead = leadRes.rows[0];
+        leadTitle = lead.title || leadTitle;
+        rfpContent = lead.raw_rfp_content || rfpContent;
       }
 
       let qualificationData: any = null;
@@ -195,7 +207,7 @@ Yêu cầu trả về định dạng JSON thuần túy (không markdown) với c
       }
 
       // Persist qualification results into lead
-      if (this.dbPool && leadId) {
+      if (this.dbPool && leadId && orgId) {
         const updateRes = await this.dbPool.query(
           `UPDATE leads
            SET status = 'QUALIFIED',
@@ -204,9 +216,9 @@ Yêu cầu trả về định dạng JSON thuần túy (không markdown) với c
                  '{qualification}',
                  $1::jsonb
                )
-           WHERE id = $2
+           WHERE id = $2 AND organization_id = $3
            RETURNING *;`,
-          [JSON.stringify(qualificationData), leadId]
+          [JSON.stringify(qualificationData), leadId, orgId]
         );
         if (updateRes.rows.length > 0) {
           lead = updateRes.rows[0];
@@ -232,30 +244,16 @@ Yêu cầu trả về định dạng JSON thuần túy (không markdown) với c
         res.status(200).json({ success: true, data: [] });
         return;
       }
-      const orgId = req.auth?.organizationId || (req.headers['x-organization-id'] as string) || (req.query.organizationId as string);
-      const userId = req.auth?.sub;
-
-      if (!orgId && !userId) {
-        // Multi-tenant security: Unauthenticated or unscoped request must NEVER leak leads across organizations
-        res.status(200).json({
-          success: true,
-          data: []
-        });
+      const orgId = req.auth?.organizationId;
+      if (!orgId) {
+        res.status(403).json({ success: false, error: 'An organization is required.' });
         return;
       }
 
-      let query = 'SELECT id, title, source, status, raw_rfp_content, extracted_metadata, organization_id, created_by, created_at FROM leads';
-      const params: any[] = [];
-      if (orgId) {
-        params.push(orgId);
-        query += ` WHERE organization_id = $${params.length}`;
-      } else {
-        params.push(userId);
-        query += ` WHERE created_by = $${params.length}`;
-      }
-      query += ' ORDER BY created_at DESC LIMIT 50;';
-
-      const queryResult = await this.dbPool.query(query, params);
+      const queryResult = await this.dbPool.query(
+        'SELECT id, title, source, status, raw_rfp_content, extracted_metadata, organization_id, created_by, created_at FROM leads WHERE organization_id = $1 ORDER BY created_at DESC LIMIT 50;',
+        [orgId]
+      );
       res.status(200).json({
         success: true,
         data: queryResult.rows
@@ -268,13 +266,18 @@ Yêu cầu trả về định dạng JSON thuần túy (không markdown) với c
 
   getLeadById = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
+      const orgId = req.auth?.organizationId;
+      if (!orgId) {
+        res.status(403).json({ success: false, error: 'An organization is required.' });
+        return;
+      }
       if (!this.dbPool) {
         res.status(404).json({ success: false, error: 'Database not connected.' });
         return;
       }
       const queryResult = await this.dbPool.query(
-        'SELECT * FROM leads WHERE id = $1 LIMIT 1;',
-        [req.params.id]
+        'SELECT * FROM leads WHERE id = $1 AND organization_id = $2 LIMIT 1;',
+        [req.params.id, orgId]
       );
       if (queryResult.rows.length === 0) {
         res.status(404).json({ success: false, error: 'Lead not found.' });
@@ -292,14 +295,34 @@ Yêu cầu trả về định dạng JSON thuần túy (không markdown) với c
 
   updateLead = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
+      const orgId = req.auth?.organizationId;
+      if (!orgId) {
+        res.status(403).json({ success: false, error: 'An organization is required.' });
+        return;
+      }
+      if (req.auth?.role === 'VIEWER') {
+        res.status(403).json({ success: false, error: 'VIEWER role is read-only. Modifying leads is not permitted.' });
+        return;
+      }
       if (!this.dbPool) {
         res.status(404).json({ success: false, error: 'Database not connected.' });
         return;
       }
       const leadId = req.params.id;
-      const { title, source, status, rawRfpContent, extractedMetadata } = req.body;
+      const { 
+        title, 
+        source, 
+        status, 
+        rawRfpContent, 
+        raw_rfp_content, 
+        extractedMetadata, 
+        extracted_metadata 
+      } = req.body;
 
-      const existingRes = await this.dbPool.query('SELECT * FROM leads WHERE id = $1 LIMIT 1;', [leadId]);
+      const existingRes = await this.dbPool.query(
+        'SELECT * FROM leads WHERE id = $1 AND organization_id = $2 LIMIT 1;',
+        [leadId, orgId]
+      );
       if (existingRes.rows.length === 0) {
         res.status(404).json({ success: false, error: 'Lead not found.' });
         return;
@@ -309,17 +332,20 @@ Yêu cầu trả về định dạng JSON thuần túy (không markdown) với c
       const newTitle = title !== undefined ? title : current.title;
       const newSource = source !== undefined ? source : current.source;
       const newStatus = status !== undefined ? status : current.status;
-      const newRaw = rawRfpContent !== undefined ? rawRfpContent : current.raw_rfp_content;
-      const newMeta = extractedMetadata !== undefined 
-        ? (typeof extractedMetadata === 'string' ? extractedMetadata : JSON.stringify(extractedMetadata))
+      const rawInput = rawRfpContent !== undefined ? rawRfpContent : raw_rfp_content;
+      const newRaw = rawInput !== undefined ? rawInput : current.raw_rfp_content;
+      
+      const metaInput = extractedMetadata !== undefined ? extractedMetadata : extracted_metadata;
+      const newMeta = metaInput !== undefined 
+        ? (typeof metaInput === 'string' ? metaInput : JSON.stringify(metaInput))
         : JSON.stringify(current.extracted_metadata || {});
 
       const updateRes = await this.dbPool.query(
         `UPDATE leads
          SET title = $1, source = $2, status = $3, raw_rfp_content = $4, extracted_metadata = $5::jsonb, updated_at = NOW()
-         WHERE id = $6
+         WHERE id = $6 AND organization_id = $7
          RETURNING *;`,
-        [newTitle, newSource, newStatus, newRaw, newMeta, leadId]
+        [newTitle, newSource, newStatus, newRaw, newMeta, leadId, orgId]
       );
 
       res.status(200).json({
@@ -334,14 +360,34 @@ Yêu cầu trả về định dạng JSON thuần túy (không markdown) với c
 
   deleteLead = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
+      const orgId = req.auth?.organizationId;
+      if (!orgId) {
+        res.status(403).json({ success: false, error: 'An organization is required.' });
+        return;
+      }
+      if (req.auth?.role === 'VIEWER') {
+        res.status(403).json({ success: false, error: 'VIEWER role is read-only. Deleting leads is not permitted.' });
+        return;
+      }
       if (!this.dbPool) {
         res.status(404).json({ success: false, error: 'Database not connected.' });
         return;
       }
       const leadId = req.params.id;
+      const checkLead = await this.dbPool.query(
+        'SELECT id FROM leads WHERE id = $1 AND organization_id = $2;',
+        [leadId, orgId]
+      );
+      if (checkLead.rows.length === 0) {
+        res.status(404).json({ success: false, error: 'Lead not found.' });
+        return;
+      }
       await this.dbPool.query('DELETE FROM meetings WHERE lead_id = $1;', [leadId]);
       await this.dbPool.query('DELETE FROM proposals WHERE lead_id = $1;', [leadId]);
-      const deleteRes = await this.dbPool.query('DELETE FROM leads WHERE id = $1 RETURNING id;', [leadId]);
+      const deleteRes = await this.dbPool.query(
+        'DELETE FROM leads WHERE id = $1 AND organization_id = $2 RETURNING id;',
+        [leadId, orgId]
+      );
       if (deleteRes.rows.length === 0) {
         res.status(404).json({ success: false, error: 'Lead not found.' });
         return;

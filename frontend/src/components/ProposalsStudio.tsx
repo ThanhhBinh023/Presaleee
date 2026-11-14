@@ -535,14 +535,20 @@ export const ProposalsStudio: React.FC<ProposalsStudioProps> = ({ onBackToOvervi
                   </div>
                 )}
 
-                {confirmDelete ? (
-                  <button onClick={() => void removeProposal()} className="w-full rounded-lg bg-rose-600 px-3 py-2 text-xs font-bold text-white">
-                    Confirm delete (sheets cascade)
-                  </button>
+                {user?.role !== 'VIEWER' ? (
+                  confirmDelete ? (
+                    <button onClick={() => void removeProposal()} className="w-full rounded-lg bg-rose-600 px-3 py-2 text-xs font-bold text-white">
+                      Confirm delete (sheets cascade)
+                    </button>
+                  ) : (
+                    <button onClick={() => setConfirmDelete(true)} className="w-full rounded-lg border border-rose-200 px-3 py-2 text-xs font-bold text-rose-600">
+                      Delete proposal
+                    </button>
+                  )
                 ) : (
-                  <button onClick={() => setConfirmDelete(true)} className="w-full rounded-lg border border-rose-200 px-3 py-2 text-xs font-bold text-rose-600">
-                    Delete proposal
-                  </button>
+                  <div className="w-full py-2 text-center text-xs text-slate-400 font-mono">
+                    (Delete restricted in VIEWER mode)
+                  </div>
                 )}
               </div>
             )}

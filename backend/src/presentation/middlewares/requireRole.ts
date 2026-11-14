@@ -21,3 +21,16 @@ export function requireRole(...roles: UserRole[]) {
     next();
   };
 }
+
+export function requireNotViewer(req: Request, _res: Response, next: NextFunction): void {
+  const claims = req.auth;
+  if (!claims) {
+    next(new UnauthorizedError());
+    return;
+  }
+  if (claims.role === 'VIEWER') {
+    next(new ForbiddenError('VIEWER role is read-only. This operation is not permitted.'));
+    return;
+  }
+  next();
+}

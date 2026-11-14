@@ -1,4 +1,4 @@
-export type UserRole = 'ADMIN' | 'PRESALE_LEAD' | 'SOLUTION_ARCHITECT' | 'SALES_REP' | 'VIEWER';
+export type UserRole = 'ADMIN' | 'PRESALE_LEAD' | 'PRESALE_CONSULTANT' | 'SOLUTION_ARCHITECT' | 'SALES_REP' | 'VIEWER';
 
 export type UserStatus = 'ACTIVE' | 'INVITED' | 'DEACTIVATED';
 

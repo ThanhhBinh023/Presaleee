@@ -10,6 +10,18 @@ export function requireOrganization(req: Request, _res: Response, next: NextFunc
   next();
 }
 
+export function requireNotViewer(req: Request, _res: Response, next: NextFunction): void {
+  if (!req.auth) {
+    next(new UnauthorizedError('Authentication required.'));
+    return;
+  }
+  if (req.auth.role === 'VIEWER') {
+    next(new ForbiddenError('VIEWER role is read-only. This operation is not permitted.'));
+    return;
+  }
+  next();
+}
+
 export function extractToken(req: Request): string | undefined {
   const authorization = req.header('authorization');
   const bearerToken = authorization?.startsWith('Bearer ')

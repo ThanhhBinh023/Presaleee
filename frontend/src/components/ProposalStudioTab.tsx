@@ -9,9 +9,11 @@ import {
   Save, 
   RefreshCw,
   FileText,
-  Globe
+  Globe,
+  Lock
 } from 'lucide-react';
 import type { LeadItem } from '../services/leadService';
+import { useAuth } from '../hooks/useAuth';
 import { useToast } from './common/Toast';
 import type { ProposalItem, UIDesignBrief } from '../services/proposalService';
 import { 
@@ -133,14 +135,43 @@ function buildDefault10SheetsProposal(leadId: string, lead: LeadItem | null): Pr
         sheetData: {
           totalEffortManMonths: Math.round(timeline * 0.8),
           totalTeamCost: Math.round(budget * 0.85),
-          roles: [
-            { role: 'Solution Architect', level: 'Lead', allocation: '50%', manMonths: 2.5, monthlyRate: 7500, totalCost: 18750 },
-            { role: 'Project Manager / Scrum Master', level: 'Senior', allocation: '100%', manMonths: 4.5, monthlyRate: 5500, totalCost: 24750 },
-            { role: 'Senior Backend Engineer', level: 'Senior', allocation: '100%', manMonths: 5.0, monthlyRate: 5000, totalCost: 25000 },
-            { role: 'Senior Frontend Engineer', level: 'Senior', allocation: '100%', manMonths: 4.0, monthlyRate: 4800, totalCost: 19200 },
-            { role: 'DevOps & Security Specialist', level: 'Senior', allocation: '50%', manMonths: 2.5, monthlyRate: 6000, totalCost: 15000 },
-            { role: 'QA & Test Automation Lead', level: 'Mid-Senior', allocation: '100%', manMonths: 3.5, monthlyRate: 3500, totalCost: 12250 }
-          ]
+          roles: (() => {
+            const assigned = (lead?.extracted_metadata as any)?.assigned_roles || (lead?.extracted_metadata as any)?.assignedRoles || [];
+            if (Array.isArray(assigned) && assigned.length > 0) {
+              const list: any[] = [];
+              if (assigned.includes('SOLUTION_ARCHITECT')) {
+                list.push({ role: 'Solution Architect', level: 'Principal/Lead', allocation: '50%', manMonths: 2.5, monthlyRate: 7500, totalCost: 18750 });
+              }
+              if (assigned.includes('PRESALE_LEAD')) {
+                list.push({ role: 'Presale Lead / Bid Director', level: 'Director', allocation: '30%', manMonths: 1.5, monthlyRate: 8000, totalCost: 12000 });
+              }
+              if (assigned.includes('PRESALE_CONSULTANT')) {
+                list.push({ role: 'Presale Consultant & BA', level: 'Senior', allocation: '70%', manMonths: 3.5, monthlyRate: 6000, totalCost: 21000 });
+              }
+              if (assigned.includes('SALES_REP')) {
+                list.push({ role: 'Account Executive / Client Partner', level: 'Senior', allocation: '25%', manMonths: 1.0, monthlyRate: 4500, totalCost: 4500 });
+              }
+              if (assigned.includes('ADMIN')) {
+                list.push({ role: 'Technical Governance & PMO', level: 'Lead', allocation: '20%', manMonths: 1.0, monthlyRate: 5000, totalCost: 5000 });
+              }
+              // Project engineering delivery core
+              list.push(
+                { role: 'Senior Backend Engineer', level: 'Senior', allocation: '100%', manMonths: 5.0, monthlyRate: 5000, totalCost: 25000 },
+                { role: 'Senior Frontend Engineer', level: 'Senior', allocation: '100%', manMonths: 4.0, monthlyRate: 4800, totalCost: 19200 },
+                { role: 'DevOps & Cloud Specialist', level: 'Senior', allocation: '50%', manMonths: 2.5, monthlyRate: 6000, totalCost: 15000 },
+                { role: 'QA Automation Lead', level: 'Mid-Senior', allocation: '100%', manMonths: 3.5, monthlyRate: 3500, totalCost: 12250 }
+              );
+              return list;
+            }
+            return [
+              { role: 'Solution Architect', level: 'Lead', allocation: '50%', manMonths: 2.5, monthlyRate: 7500, totalCost: 18750 },
+              { role: 'Project Manager / Scrum Master', level: 'Senior', allocation: '100%', manMonths: 4.5, monthlyRate: 5500, totalCost: 24750 },
+              { role: 'Senior Backend Engineer', level: 'Senior', allocation: '100%', manMonths: 5.0, monthlyRate: 5000, totalCost: 25000 },
+              { role: 'Senior Frontend Engineer', level: 'Senior', allocation: '100%', manMonths: 4.0, monthlyRate: 4800, totalCost: 19200 },
+              { role: 'DevOps & Security Specialist', level: 'Senior', allocation: '50%', manMonths: 2.5, monthlyRate: 6000, totalCost: 15000 },
+              { role: 'QA & Test Automation Lead', level: 'Mid-Senior', allocation: '100%', manMonths: 3.5, monthlyRate: 3500, totalCost: 12250 }
+            ];
+          })()
         }
       },
       {
@@ -229,6 +260,8 @@ function buildDefault10SheetsProposal(leadId: string, lead: LeadItem | null): Pr
 
 export const ProposalStudioTab: React.FC<ProposalStudioTabProps> = ({ leadId, activeProject }) => {
   const toast = useToast();
+  const { user } = useAuth();
+  const isViewer = user?.role === 'VIEWER';
   const [proposal, setProposal] = useState<ProposalItem | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [generating, setGenerating] = useState<boolean>(false);
@@ -670,14 +703,21 @@ ${uiBrief.interaction_flow}
                   </button>
                 </div>
 
-                <button
-                  onClick={() => handleSaveCurrentSheet()}
-                  disabled={saving}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold shadow-xs cursor-pointer disabled:opacity-50"
-                >
-                  <Save className="w-3.5 h-3.5" />
-                  <span>{saving ? 'Saving...' : 'Save'}</span>
-                </button>
+                {isViewer ? (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 text-slate-500 border border-slate-200 text-xs font-mono font-semibold" title="Tài khoản VIEWER ở chế độ chỉ đọc">
+                    <Lock className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Chỉ đọc</span>
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => handleSaveCurrentSheet()}
+                    disabled={saving}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold shadow-xs cursor-pointer disabled:opacity-50"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    <span>{saving ? 'Saving...' : 'Save'}</span>
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1058,6 +1098,11 @@ ${uiBrief.interaction_flow}
                     <RefreshCw className={`w-3.5 h-3.5 ${generatingBrief ? 'animate-spin' : ''}`} />
                   </button>
                 </div>
+              </div>
+            ) : isViewer ? (
+              <div className="w-full py-2 rounded-xl bg-slate-100 text-slate-500 border border-slate-200 text-xs font-mono font-semibold flex items-center justify-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-slate-400" />
+                <span>UI Brief (Chế độ chỉ đọc)</span>
               </div>
             ) : (
               <button

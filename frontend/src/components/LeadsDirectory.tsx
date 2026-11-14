@@ -621,14 +621,20 @@ export const LeadsDirectory: React.FC<LeadsDirectoryProps> = ({ onBackToOverview
                   )}
                 </div>
 
-                {confirmDelete ? (
-                  <button onClick={() => void removeLead()} className="w-full rounded-lg bg-rose-600 px-3 py-2 text-xs font-bold text-white">
-                    Confirm delete (proposals survive, leadId becomes null)
-                  </button>
+                {user?.role !== 'VIEWER' ? (
+                  confirmDelete ? (
+                    <button onClick={() => void removeLead()} className="w-full rounded-lg bg-rose-600 px-3 py-2 text-xs font-bold text-white">
+                      Confirm delete (proposals survive, leadId becomes null)
+                    </button>
+                  ) : (
+                    <button onClick={() => setConfirmDelete(true)} className="w-full rounded-lg border border-rose-200 px-3 py-2 text-xs font-bold text-rose-600">
+                      Delete lead
+                    </button>
+                  )
                 ) : (
-                  <button onClick={() => setConfirmDelete(true)} className="w-full rounded-lg border border-rose-200 px-3 py-2 text-xs font-bold text-rose-600">
-                    Delete lead
-                  </button>
+                  <div className="w-full py-2 text-center text-xs text-slate-400 font-mono">
+                    (Delete restricted in VIEWER mode)
+                  </div>
                 )}
               </div>
             )}

@@ -8,7 +8,7 @@ import type { MemberListQuery } from '../services/userService';
 import type { MemberDirectoryEntry } from '../types/user';
 import type { UserRole, UserStatus } from '../types/auth';
 
-const ROLES: UserRole[] = ['ADMIN', 'PRESALE_LEAD', 'SOLUTION_ARCHITECT', 'SALES_REP', 'VIEWER'];
+const ROLES: UserRole[] = ['ADMIN', 'PRESALE_LEAD', 'PRESALE_CONSULTANT', 'SOLUTION_ARCHITECT', 'SALES_REP', 'VIEWER'];
 const STATUSES: UserStatus[] = ['ACTIVE', 'INVITED', 'DEACTIVATED'];
 const PAGE_SIZE = 20;
 

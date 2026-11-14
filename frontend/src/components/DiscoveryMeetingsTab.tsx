@@ -1,5 +1,6 @@
 import { useToast } from './common/Toast';
 import React, { useState, useEffect } from 'react';
+import { useAuth } from '../hooks/useAuth';
 import { 
   Sparkles, 
   Plus, 
@@ -41,6 +42,8 @@ interface DiscoveryMeetingsTabProps {
 
 export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({ onProceedToProposals }) => {
   const toast = useToast();
+  const { user } = useAuth();
+  const isViewer = user?.role === 'VIEWER';
   const [leads, setLeads] = useState<LeadItem[]>([]);
   const [selectedLeadId, setSelectedLeadId] = useState<string>('');
   const [meetings, setMeetings] = useState<Meeting[]>([]);
@@ -235,19 +238,26 @@ export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({ onPr
               </div>
             )}
 
-            <button 
-              onClick={() => {
-                const nextOrder = meetings.length + 1;
-                setNewTitle(`Meeting #${nextOrder}: Solution Architecture Discovery`);
-                setNewSourceTool('ZOOM');
-                setNewTranscript(SAMPLE_ZOOM_TRANSCRIPT);
-                setShowCreateModal(true);
-              }}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold shadow-xs transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>New Discovery Meeting</span>
-            </button>
+            {isViewer ? (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 text-slate-500 border border-slate-200 text-xs font-mono font-semibold">
+                <Lock className="w-3.5 h-3.5 text-slate-400" />
+                <span>Chỉ đọc</span>
+              </span>
+            ) : (
+              <button 
+                onClick={() => {
+                  const nextOrder = meetings.length + 1;
+                  setNewTitle(`Meeting #${nextOrder}: Solution Architecture Discovery`);
+                  setNewSourceTool('ZOOM');
+                  setNewTranscript(SAMPLE_ZOOM_TRANSCRIPT);
+                  setShowCreateModal(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>New Discovery Meeting</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -269,16 +279,18 @@ export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({ onPr
               <div className="p-6 rounded-2xl border border-dashed border-slate-200 text-center space-y-3 bg-slate-50/50">
                 <Video className="w-8 h-8 text-slate-300 mx-auto" />
                 <p className="text-xs text-slate-500">Chưa có cuộc họp nào cho Lead này.</p>
-                <button
-                  onClick={() => {
-                    setNewTitle('Meeting #1: Initial Business & Architecture Scope');
-                    setNewTranscript(SAMPLE_ZOOM_TRANSCRIPT);
-                    setShowCreateModal(true);
-                  }}
-                  className="px-3 py-1.5 rounded-xl bg-brand-50 hover:bg-brand-100 text-brand-700 text-xs font-semibold"
-                >
-                  + Khởi tạo Meeting #1
-                </button>
+                {!isViewer && (
+                  <button
+                    onClick={() => {
+                      setNewTitle('Meeting #1: Initial Business & Architecture Scope');
+                      setNewTranscript(SAMPLE_ZOOM_TRANSCRIPT);
+                      setShowCreateModal(true);
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-brand-50 hover:bg-brand-100 text-brand-700 text-xs font-semibold cursor-pointer"
+                  >
+                    + Khởi tạo Meeting #1
+                  </button>
+                )}
               </div>
             ) : (
               meetings.map((m) => {

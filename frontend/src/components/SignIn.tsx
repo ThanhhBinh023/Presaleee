@@ -40,8 +40,9 @@ export const SignIn: React.FC<SignInProps> = ({ onBackToHome, onLoginSuccess }) 
   const { login, register } = useAuth();
   const [mode, setMode] = useState<AuthMode>('signin');
   const [showPassword, setShowPassword] = useState(false);
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(() => localStorage.getItem('presaleee_saved_email') || 'ntbinh1@gmail.com');
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(true);
   const [fullName, setFullName] = useState('');
   const [organizationName, setOrganizationName] = useState('');
   const [organizationDomain, setOrganizationDomain] = useState('');
@@ -66,18 +67,30 @@ export const SignIn: React.FC<SignInProps> = ({ onBackToHome, onLoginSuccess }) 
 
     try {
       if (mode === 'signin') {
-        await login({ email, password });
+        await login({ email: email.trim(), password });
+        if (rememberMe) {
+          localStorage.setItem('presaleee_saved_email', email.trim());
+        } else {
+          localStorage.removeItem('presaleee_saved_email');
+        }
         if (onLoginSuccess) onLoginSuccess();
       } else if (mode === 'register') {
-        await register({ email, password, fullName, organizationName, organizationDomain });
+        await register({ email: email.trim(), password, fullName: fullName.trim(), organizationName: organizationName.trim(), organizationDomain: organizationDomain.trim() });
         if (onLoginSuccess) onLoginSuccess();
       } else {
-        const result = await authService.forgotPassword(email);
+        const result = await authService.forgotPassword(email.trim());
         setNotice(result.message);
         if (result.resetUrl) setDevResetUrl(result.resetUrl);
       }
-    } catch (error) {
-      setFormError(error instanceof Error ? error.message : 'Something went wrong. Please try again.');
+    } catch (error: any) {
+      const msg = error?.message || '';
+      if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('Cannot reach the API')) {
+        setFormError('Không thể kết nối đến máy chủ API (http://localhost:5000). Vui lòng kiểm tra lại dịch vụ backend.');
+      } else if (msg.includes('Invalid email or password') || error?.status === 401) {
+        setFormError('Email hoặc mật khẩu không chính xác. Vui lòng kiểm tra lại.');
+      } else {
+        setFormError(msg || 'Đăng nhập không thành công. Vui lòng thử lại.');
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -251,6 +264,20 @@ export const SignIn: React.FC<SignInProps> = ({ onBackToHome, onLoginSuccess }) 
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
+              </div>
+            )}
+
+            {mode === 'signin' && (
+              <div className="flex items-center justify-between text-xs pt-1">
+                <label className="flex items-center gap-2 cursor-pointer select-none text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    className="w-4 h-4 rounded text-brand-600 focus:ring-brand-500 border-slate-300"
+                  />
+                  <span>Ghi nhớ tài khoản trên thiết bị này</span>
+                </label>
               </div>
             )}
 

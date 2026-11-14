@@ -30,7 +30,9 @@ import {
   Clock,
   MessageSquare,
   ShieldAlert,
-  FileCheck
+  FileCheck,
+  Users,
+  Lock
 } from 'lucide-react';
 import { navigateTo } from '../navigation';
 import { ClientPortalModal } from './ClientPortalModal';
@@ -42,6 +44,8 @@ import type { PortalSessionDetail, PortalMaterialDetail } from '../types/portal'
 import { fetchProposalByLead } from '../services/proposalService';
 import type { ProposalItem } from '../services/proposalService';
 import { formatDateTime } from '../utils/format';
+import { ROLE_DETAILS } from './workspace/UserCard';
+import type { UserRole } from '../types/auth';
 
 interface AIWorkspaceProps {
   onNavigateOverview: () => void;
@@ -76,6 +80,15 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isQualifying, setIsQualifying] = useState(false);
+
+  // Role info & checks
+  const isViewer = user?.role === 'VIEWER';
+  const userRole = (user?.role || 'VIEWER') as UserRole;
+  const roleInfo = ROLE_DETAILS[userRole] || ROLE_DETAILS.VIEWER;
+
+  // Deal Team Allocation state (Requirement: not every lead needs all 6 roles)
+  const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
+  const [selectedDealRoles, setSelectedDealRoles] = useState<UserRole[]>([]);
 
   // Edit Form State
   const [editTitle, setEditTitle] = useState('');
@@ -115,6 +128,53 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
   }, []);
 
   const selectedProject = projects.find(p => p.id === selectedProjectId) || null;
+
+  const assignedRolesList: UserRole[] = React.useMemo(() => {
+    if (!selectedProject) return [];
+    const meta = selectedProject.extracted_metadata as any;
+    const roles = meta?.assigned_roles || meta?.assignedRoles;
+    if (Array.isArray(roles) && roles.length > 0) {
+      return roles as UserRole[];
+    }
+    return ['SALES_REP', 'PRESALE_CONSULTANT', 'SOLUTION_ARCHITECT'];
+  }, [selectedProject]);
+
+  const openTeamModal = () => {
+    setSelectedDealRoles([...assignedRolesList]);
+    setIsTeamModalOpen(true);
+  };
+
+  const toggleDealRole = (role: UserRole) => {
+    setSelectedDealRoles(prev => 
+      prev.includes(role) ? prev.filter(r => r !== role) : [...prev, role]
+    );
+  };
+
+  const handleSaveTeam = async () => {
+    if (!selectedProject) return;
+    if (selectedDealRoles.length === 0) {
+      toast.error('Vui lòng chọn ít nhất 1 vai trò phụ trách lead.', 'Yêu cầu');
+      return;
+    }
+    try {
+      setIsSubmitting(true);
+      const updatedMetadata = {
+        ...(selectedProject.extracted_metadata || {}),
+        assigned_roles: selectedDealRoles,
+        assignedRoles: selectedDealRoles
+      };
+      const updated = await updateLead(selectedProject.id, {
+        extracted_metadata: updatedMetadata
+      });
+      setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
+      toast.success(`Đã cập nhật đội ngũ (${selectedDealRoles.length} vai trò) cho lead "${updated.title}"!`, 'Đội ngũ phụ trách');
+      setIsTeamModalOpen(false);
+    } catch (err: any) {
+      toast.error(err.message || 'Lỗi cập nhật đội ngũ', 'Thất bại');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   // Real Client Intelligence State (Không dùng dữ liệu giả định)
   const [realProposal, setRealProposal] = useState<ProposalItem | null>(null);
@@ -386,6 +446,43 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
           
           <div className="max-w-7xl mx-auto space-y-3">
             
+            {/* Dynamic Role Banner for All 6 Roles */}
+            <div className={`px-4 py-2.5 rounded-2xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+              userRole === 'ADMIN' ? 'bg-purple-50/70 border-purple-200 text-purple-900' :
+              userRole === 'PRESALE_LEAD' ? 'bg-amber-50/70 border-amber-200 text-amber-900' :
+              userRole === 'PRESALE_CONSULTANT' ? 'bg-emerald-50/70 border-brand-200 text-brand-950' :
+              userRole === 'SOLUTION_ARCHITECT' ? 'bg-sky-50/70 border-sky-200 text-sky-950' :
+              userRole === 'SALES_REP' ? 'bg-indigo-50/70 border-indigo-200 text-indigo-950' :
+              'bg-slate-100 border-slate-300 text-slate-800'
+            }`}>
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span className={`px-2 py-0.5 rounded-md font-mono font-bold text-[10px] uppercase border shrink-0 ${roleInfo.badgeClass}`}>
+                  {userRole}
+                </span>
+                <span className="font-semibold text-xs truncate sm:whitespace-normal">
+                  {userRole === 'ADMIN' && '👑 Quản trị viên: Toàn quyền phê duyệt, quản lý thành viên, cấu hình và xóa dữ liệu.'}
+                  {userRole === 'PRESALE_LEAD' && '⭐ Presale Lead: Phê duyệt Proposal (DRAFT -> APPROVED), cấu hình Rate Cards, duyệt gửi Client Portal.'}
+                  {userRole === 'PRESALE_CONSULTANT' && '💡 Presale Consultant: Tiếp nhận AI Intake, điều phối Discovery và hoàn thiện ma trận 10-Sheet Proposal.'}
+                  {userRole === 'SOLUTION_ARCHITECT' && '📐 Solution Architect: Thiết kế Kiến trúc, Tech Stack, Technical Sessions và rà soát RAID Log.'}
+                  {userRole === 'SALES_REP' && '🚀 Sales Rep: Tiếp nhận RFP ban đầu, thẩm định BANT AI, theo dõi Pipeline và chia sẻ Client Portal.'}
+                  {userRole === 'VIEWER' && '🔒 Chế độ Chỉ đọc: Được phép xem mọi tài liệu và xuất Excel/PDF. Các thao tác chỉnh sửa/xóa bị khóa an toàn.'}
+                </span>
+              </div>
+              <div className="text-[11px] font-mono text-slate-500 shrink-0 flex items-center gap-1.5">
+                {isViewer ? (
+                  <>
+                    <Lock className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Chỉ đọc (Read-Only)</span>
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-3.5 h-3.5 text-brand-600" />
+                    <span>Toàn quyền chỉnh sửa</span>
+                  </>
+                )}
+              </div>
+            </div>
+
             {/* Top Row: Path & Status */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-xs font-mono">
@@ -401,13 +498,20 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
 
               {selectedProject && (
                 <div className="flex items-center gap-2">
-                  <button 
-                    onClick={() => toast.info('Hồ sơ đề xuất đã gửi để xét duyệt nội bộ.', 'Trình duyệt')}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold shadow-sm transition-all cursor-pointer"
-                  >
-                    <Send className="w-3.5 h-3.5" />
-                    <span>Submit for Review</span>
-                  </button>
+                  {isViewer ? (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 text-slate-500 border border-slate-200 text-xs font-mono font-semibold" title="Tài khoản VIEWER không có quyền nộp phê duyệt">
+                      <Lock className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Submit for Review (Chỉ đọc)</span>
+                    </span>
+                  ) : (
+                    <button 
+                      onClick={() => toast.info('Hồ sơ đề xuất đã gửi để xét duyệt nội bộ.', 'Trình duyệt')}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold shadow-sm transition-all cursor-pointer"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span>Submit for Review</span>
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -567,13 +671,15 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                             </option>
                           ))}
                         </select>
-                        <button
-                          onClick={handleDeleteLead}
-                          title="Xóa Intake này"
-                          className="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-all shrink-0"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {!isViewer && (
+                          <button
+                            onClick={handleDeleteLead}
+                            title="Xóa Intake này"
+                            className="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-all shrink-0"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     ) : (
                       <span className="text-xs font-mono text-slate-400">
@@ -585,25 +691,34 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
 
                 {/* Right Actions: Qualify BANT & Direct Link to AI Intake */}
                 <div className="flex items-center gap-2 shrink-0">
-                  {selectedProject && (
-                    <button
-                      onClick={handleQualifyActiveLead}
-                      disabled={isQualifying}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-brand-200 bg-emerald-50 hover:bg-emerald-100 text-brand-800 text-xs font-mono font-semibold transition-all disabled:opacity-50"
-                    >
-                      <RefreshCw className={`w-3.5 h-3.5 text-brand-600 ${isQualifying ? 'animate-spin' : ''}`} />
-                      <span>{isQualifying ? 'Đang chấm điểm...' : 'Thẩm Định BANT AI'}</span>
-                    </button>
-                  )}
+                  {isViewer ? (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 text-slate-500 border border-slate-200 text-xs font-mono font-semibold">
+                      <Lock className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Chế độ chỉ đọc</span>
+                    </span>
+                  ) : (
+                    <>
+                      {selectedProject && (
+                        <button
+                          onClick={handleQualifyActiveLead}
+                          disabled={isQualifying}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-brand-200 bg-emerald-50 hover:bg-emerald-100 text-brand-800 text-xs font-mono font-semibold transition-all disabled:opacity-50"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 text-brand-600 ${isQualifying ? 'animate-spin' : ''}`} />
+                          <span>{isQualifying ? 'Đang chấm điểm...' : 'Thẩm Định BANT AI'}</span>
+                        </button>
+                      )}
 
-                  <button
-                    onClick={onNavigateRfps}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-mono font-semibold transition-all"
-                    title="Chuyển sang RFPs & Specs để chạy AI Intake"
-                  >
-                    <Sparkles className="w-3.5 h-3.5 text-brand-600" />
-                    <span>Chạy AI Intake</span>
-                  </button>
+                      <button
+                        onClick={onNavigateRfps}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-mono font-semibold transition-all"
+                        title="Chuyển sang RFPs & Specs để chạy AI Intake"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-brand-600" />
+                        <span>Chạy AI Intake</span>
+                      </button>
+                    </>
+                  )}
                 </div>
 
               </div>
@@ -655,13 +770,15 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                         Lead Status: {selectedProject.status}
                       </span>
                       {/* Update button placed directly in the Lead Intake card */}
-                      <button
-                        onClick={openEditModal}
-                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-mono font-semibold shadow-2xs transition-all"
-                      >
-                        <Edit3 className="w-3.5 h-3.5 text-brand-600" />
-                        <span>Chỉnh sửa (Update)</span>
-                      </button>
+                      {!isViewer && (
+                        <button
+                          onClick={openEditModal}
+                          className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-mono font-semibold shadow-2xs transition-all cursor-pointer"
+                        >
+                          <Edit3 className="w-3.5 h-3.5 text-brand-600" />
+                          <span>Chỉnh sửa (Update)</span>
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -782,6 +899,60 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                         </button>
                       </div>
 
+                    </div>
+                  </div>
+
+                  {/* PRESALE DEAL TEAM ALLOCATION CARD (Requirement: "Coding chức năng theo cả 6 role... Lưu ý: không phải lead nào cũng cần có cả 6 role") */}
+                  <div className="bg-white rounded-3xl border border-slate-200 shadow-card p-6 space-y-5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <Users className="w-5 h-5 text-brand-600" />
+                          <h3 className="text-base font-bold text-slate-900">
+                            Đội ngũ Phụ trách Lead (Presale Deal Team)
+                          </h3>
+                          <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-semibold border border-slate-200">
+                            {assignedRolesList.length} / 6 Vai trò
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 font-mono mt-1">
+                          Lưu ý: Không phải lead nào cũng cần có cả 6 role. Tùy biến đội ngũ linh hoạt theo quy mô và tính chất dự án.
+                        </p>
+                      </div>
+                      {!isViewer && (
+                        <button
+                          onClick={openTeamModal}
+                          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-brand-200 bg-emerald-50 hover:bg-emerald-100 text-brand-800 text-xs font-mono font-semibold transition-all shrink-0 cursor-pointer shadow-2xs"
+                        >
+                          <Edit3 className="w-3.5 h-3.5 text-brand-600" />
+                          <span>Tùy biến Đội ngũ</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Active Roles Display */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                      {assignedRolesList.map((r) => {
+                        const info = ROLE_DETAILS[r as UserRole] || ROLE_DETAILS.VIEWER;
+                        return (
+                          <div key={r} className="p-3.5 rounded-2xl border border-slate-200/80 bg-slate-50/70 flex items-start gap-3">
+                            <div className={`w-8 h-8 rounded-xl ${info.iconBg} text-white flex items-center justify-center font-bold font-mono text-xs shrink-0 shadow-xs mt-0.5`}>
+                              {r.slice(0, 2)}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5 mb-1">
+                                <span className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded border ${info.badgeClass}`}>
+                                  {r}
+                                </span>
+                              </div>
+                              <div className="text-xs font-bold text-slate-800 line-clamp-1">{info.nameVi.split('(')[0]}</div>
+                              <p className="text-[11px] text-slate-500 line-clamp-2 mt-1 leading-snug">
+                                {info.description}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
 
@@ -1605,6 +1776,154 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* PRESALE DEAL TEAM CUSTOMIZATION MODAL */}
+      {isTeamModalOpen && selectedProject && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-2xl w-full p-6 space-y-5 max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-brand-50 border border-brand-200 text-brand-700 flex items-center justify-center font-bold">
+                  <Users className="w-5 h-5 text-brand-600" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    Tùy biến Đội ngũ Phụ trách Lead (Presale Deal Team)
+                  </h3>
+                  <p className="text-xs text-slate-500 font-mono">
+                    Lead: <strong className="text-slate-800">{selectedProject.title}</strong>
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsTeamModalOpen(false)}
+                className="text-slate-400 hover:text-slate-700 p-1.5 rounded-xl hover:bg-slate-100 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Note on 6 roles */}
+            <div className="p-3.5 rounded-2xl bg-amber-50/80 border border-amber-200/80 text-xs text-amber-900 flex items-start gap-2.5">
+              <Sparkles className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+              <div className="leading-relaxed">
+                <strong>Lưu ý quan trọng:</strong> Không phải lead nào cũng cần có cả 6 role. Hãy tùy chọn các vai trò tham gia phù hợp với quy mô cơ hội, tiến độ và ngân sách dự án.
+              </div>
+            </div>
+
+            {/* Quick Presets */}
+            <div className="space-y-2">
+              <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider block">
+                GỢI Ý PHÂN BỔ NHANH THEO QUY MÔ DEAL:
+              </span>
+              <div className="flex flex-wrap gap-2 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setSelectedDealRoles(['SALES_REP', 'SOLUTION_ARCHITECT'])}
+                  className="px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 font-medium transition-colors cursor-pointer"
+                >
+                  ⚡ Deal Nhỏ (Fast-Track: 2 vai trò)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedDealRoles(['SALES_REP', 'PRESALE_CONSULTANT', 'SOLUTION_ARCHITECT'])}
+                  className="px-3 py-1.5 rounded-xl border border-brand-200 bg-brand-50 hover:bg-brand-100 text-brand-800 font-semibold transition-colors cursor-pointer"
+                >
+                  💼 Tiêu Chuẩn (Standard: 3 vai trò)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedDealRoles(['PRESALE_LEAD', 'PRESALE_CONSULTANT', 'SOLUTION_ARCHITECT', 'SALES_REP'])}
+                  className="px-3 py-1.5 rounded-xl border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-800 font-semibold transition-colors cursor-pointer"
+                >
+                  🏢 Doanh Nghiệp Lớn (Enterprise: 4 vai trò)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedDealRoles(['ADMIN', 'PRESALE_LEAD', 'PRESALE_CONSULTANT', 'SOLUTION_ARCHITECT', 'SALES_REP', 'VIEWER'])}
+                  className="px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold transition-colors cursor-pointer"
+                >
+                  🌐 Đầy Đủ (Tất cả 6 vai trò)
+                </button>
+              </div>
+            </div>
+
+            {/* 6 Role Selection Cards */}
+            <div className="space-y-2.5 pt-1">
+              <div className="flex items-center justify-between text-xs font-mono">
+                <span className="font-bold text-slate-600 uppercase text-[10px]">
+                  DANH SÁCH 6 VAI TRÒ HỆ THỐNG:
+                </span>
+                <span className="text-brand-700 font-bold">
+                  Đã chọn: {selectedDealRoles.length} / 6 vai trò
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {(Object.keys(ROLE_DETAILS) as UserRole[]).map((r) => {
+                  const info = ROLE_DETAILS[r];
+                  const isSelected = selectedDealRoles.includes(r);
+                  return (
+                    <div
+                      key={r}
+                      onClick={() => toggleDealRole(r)}
+                      className={`p-3 rounded-2xl border cursor-pointer transition-all flex items-start gap-3 select-none ${
+                        isSelected
+                          ? 'border-brand-500 bg-emerald-50/50 shadow-xs ring-1 ring-brand-500'
+                          : 'border-slate-200 bg-white hover:bg-slate-50'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => {}}
+                        className="mt-1 w-4 h-4 rounded text-brand-600 focus:ring-brand-500 border-slate-300"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded border ${info.badgeClass}`}>
+                            {r}
+                          </span>
+                        </div>
+                        <div className="text-xs font-bold text-slate-800">{info.nameVi.split('(')[0]}</div>
+                        <p className="text-[11px] text-slate-500 mt-1 leading-snug">
+                          {info.description}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Footer Actions */}
+            <div className="flex items-center justify-between pt-4 border-t border-slate-100 text-xs">
+              <span className="text-slate-400 font-mono text-[11px]">
+                Cập nhật vào metadata của Lead
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsTeamModalOpen(false)}
+                  className="px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 font-semibold cursor-pointer"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveTeam}
+                  disabled={isSubmitting}
+                  className="px-5 py-2 rounded-xl bg-brand-500 hover:bg-brand-600 text-white font-bold shadow-sm transition-all disabled:opacity-50 cursor-pointer"
+                >
+                  {isSubmitting ? 'Đang lưu...' : 'Lưu Đội Ngũ Lead'}
+                </button>
+              </div>
+            </div>
+
           </div>
         </div>
       )}

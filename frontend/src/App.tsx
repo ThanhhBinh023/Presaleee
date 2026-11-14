@@ -78,6 +78,12 @@ const AppShell: React.FC = () => {
     return () => window.removeEventListener('hashchange', handleHash);
   }, []);
 
+  useEffect(() => {
+    if (status === 'authenticated' && (currentPage === 'home' || currentPage === 'signin' || !window.location.hash || window.location.hash === '#')) {
+      goTo('overview');
+    }
+  }, [status, currentPage]);
+
   const goTo = (page: Page) => {
     window.location.hash = page === 'home' ? '' : `#${page}`;
     setCurrentPage(page);

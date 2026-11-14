@@ -3,6 +3,8 @@ import { AppError, ForbiddenError, UnauthorizedError, ValidationError } from '..
 import { GetCurrentUserUseCase, LoginUseCase, RefreshSessionUseCase, LogoutUseCase, ForgotPasswordUseCase, ResetPasswordUseCase } from '../../application/use-cases/AuthUseCases.js';
 import { RegisterUseCase } from '../../application/use-cases/UserUseCases.js';
 import { AuthSessionContext } from '../../domain/entities/AuthUser.js';
+import { IAuthRepository } from '../../domain/repositories/IAuthRepository.js';
+import { createOpaqueToken, hashToken, issueAccessToken, toPublicUser, REFRESH_TOKEN_TTL_MS } from '../../application/services/AuthTokenService.js';
 import { env } from '../../infrastructure/config/env.js';
 
 const ACCESS_COOKIE = 'presaleee_access';
@@ -80,8 +82,28 @@ export class AuthController {
     private readonly currentUserUseCase: GetCurrentUserUseCase,
     private readonly forgotPasswordUseCase: ForgotPasswordUseCase,
     private readonly resetPasswordUseCase: ResetPasswordUseCase,
-    private readonly registerUseCase: RegisterUseCase
+    private readonly registerUseCase: RegisterUseCase,
+    private readonly authRepository?: IAuthRepository
   ) {}
+
+  devLogin = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      validateCsrfOrigin(req);
+      const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : 'ntbinh1@gmail.com';
+      if (!this.authRepository) {
+        throw new AppError('Dev login not configured.', 500);
+      }
+      const user = await this.authRepository.findUserByEmail(email);
+      if (!user) {
+        throw new UnauthorizedError(`User ${email} not found.`);
+      }
+      const refreshToken = createOpaqueToken();
+      const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
+      await this.authRepository.createRefreshToken(user.id, hashToken(refreshToken), expiresAt, sessionContext(req));
+      setSessionCookies(res, issueAccessToken(user), refreshToken);
+      res.status(200).json({ success: true, data: { user: toPublicUser(user) } });
+    } catch (error) { next(error); }
+  };
 
   register = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {

@@ -28,6 +28,9 @@ export const authService = {
   login: (input: LoginInput) =>
     apiRequest<SessionData>(`${AUTH_PREFIX}/login`, { method: 'POST', body: input }),
 
+  devLogin: (email: string = 'ntbinh1@gmail.com') =>
+    apiRequest<SessionData>(`${AUTH_PREFIX}/dev-login`, { method: 'POST', body: { email } }),
+
   refresh: () => apiRequest<SessionData>(`${AUTH_PREFIX}/refresh`, { method: 'POST' }),
 
   logout: () => apiRequest<MessageData>(`${AUTH_PREFIX}/logout`, { method: 'POST' }),

@@ -2,10 +2,6 @@ import { dbPool } from './infrastructure/database/connection.js';
 import { PostgresKnowledgeRepository } from './infrastructure/database/repositories/PostgresKnowledgeRepository.js';
 import { PostgresProposalRepository } from './infrastructure/database/repositories/PostgresProposalRepository.js';
 import { PostgresMeetingRepository } from './infrastructure/database/repositories/PostgresMeetingRepository.js';
-import { PostgresAuthRepository } from './infrastructure/database/repositories/PostgresAuthRepository.js';
-import { PostgresUserRepository } from './infrastructure/database/repositories/PostgresUserRepository.js';
-import { PostgresAuditRepository } from './infrastructure/database/repositories/PostgresAuditRepository.js';
-import { PostgresDashboardRepository } from './infrastructure/database/repositories/PostgresDashboardRepository.js';
 
 import { GeminiEmbeddingGateway } from './infrastructure/ai/GeminiEmbeddingGateway.js';
 import { FastAPILMGateway } from './infrastructure/ai/FastAPILMGateway.js';
@@ -26,6 +22,7 @@ import { ExportProposalToExcelUseCase } from './application/use-cases/ExportProp
 import { CreateProposalFromLeadUseCase } from './application/use-cases/CreateProposalFromLeadUseCase.js';
 import { GenerateProposalSheetsUseCase } from './application/use-cases/GenerateProposalSheetsUseCase.js';
 import { ExportProposalToPdfUseCase } from './application/use-cases/ExportProposalToPdfUseCase.js';
+import { GenerateProposalFromLeadUseCase } from './application/use-cases/GenerateProposalFromLeadUseCase.js';
 
 import { RAGController } from './presentation/controllers/RAGController.js';
 import { ProposalController } from './presentation/controllers/ProposalController.js';
@@ -122,6 +119,7 @@ export interface ServiceContainer {
   exportProposalToExcelUseCase: ExportProposalToExcelUseCase;
   exportProposalToPdfUseCase: ExportProposalToPdfUseCase;
   generateProposalSheetsUseCase: GenerateProposalSheetsUseCase;
+  generateProposalFromLeadUseCase: GenerateProposalFromLeadUseCase;
 
   // Presentation Controllers
   ragController: RAGController;
@@ -199,6 +197,13 @@ export function createContainer(): ServiceContainer {
     generateProposalUseCase
   );
 
+  const generateProposalFromLeadUseCase = new GenerateProposalFromLeadUseCase(
+    proposalRepository,
+    searchHybridRAGUseCase,
+    llmGateway,
+    dbPool
+  );
+
   const proposalController = new ProposalController(
     createProposalUseCase,
     createProposalFromLeadUseCase,
@@ -210,7 +215,8 @@ export function createContainer(): ServiceContainer {
     exportProposalToExcelUseCase,
     generateProposalSheetsUseCase,
     exportProposalToPdfUseCase,
-    submitProposalForReviewUseCase
+    submitProposalForReviewUseCase,
+    generateProposalFromLeadUseCase
   );
   const leadIntakeController = new LeadIntakeController(analyzeLeadIntakeUseCase, createLeadUseCase, qualifyLeadUseCase, dbPool, llmGateway);
   const authController = new AuthController(
@@ -220,7 +226,8 @@ export function createContainer(): ServiceContainer {
     getCurrentUserUseCase,
     forgotPasswordUseCase,
     resetPasswordUseCase,
-    registerUseCase
+    registerUseCase,
+    authRepository
   );
   const dashboardController = new DashboardController(
     new GetDashboardOverviewUseCase(dashboardRepository),
@@ -308,6 +315,7 @@ export function createContainer(): ServiceContainer {
     exportProposalToExcelUseCase,
     exportProposalToPdfUseCase,
     generateProposalSheetsUseCase,
+    generateProposalFromLeadUseCase,
 
     ragController,
     proposalController,

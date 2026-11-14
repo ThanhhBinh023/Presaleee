@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useToast } from './common/Toast';
 import type { LeadItem } from '../services/leadService';
 import type { ProposalItem } from '../services/proposalService';
+import { proposalService } from '../services/proposalService';
 import { 
   X, 
   ShieldCheck, 
@@ -13,7 +14,8 @@ import {
   Sparkles,
   Download,
   Printer,
-  CheckCircle2
+  CheckCircle2,
+  RefreshCw
 } from 'lucide-react';
 
 interface ClientPortalModalProps {
@@ -35,8 +37,8 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({
   const title = activeProject?.title || proposal?.title || 'Giải pháp Doanh nghiệp Presaleee';
   const org = activeProject?.organization || 'DUT';
   const meta = activeProject?.extracted_metadata || {};
-  const budget = meta.budgetUsd || proposal?.totalCost || 120000;
-  const timeline = meta.timelineWeeks || proposal?.estimatedTimelineWeeks || 20;
+  const budget = Number(meta.budgetUsd || proposal?.totalCost) || 120000;
+  const timeline = Number(meta.timelineWeeks || proposal?.estimatedTimelineWeeks) || 20;
   const techStack = Array.isArray(meta.techStack) ? meta.techStack.join(', ') : (meta.techStack || 'Node.js, PostgreSQL, Redis, Kubernetes, Kafka');
   const compliance = Array.isArray(meta.complianceStandards) ? meta.complianceStandards.join(', ') : (meta.complianceStandards || 'SOC-2 Type II, ISO 27001');
 
@@ -51,6 +53,7 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({
     'CTO (Khách hàng): "Cần làm rõ tiêu chí nghiệm thu hoàn tất Phase 1 và phương án chuyển giao tài liệu CI/CD."',
   ]);
   const [newComment, setNewComment] = useState('');
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
 
   if (!isOpen) return null;
 
@@ -73,6 +76,66 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({
     setComments([...comments, `Khách hàng (Client Reviewer): "${newComment}"`]);
     setNewComment('');
     toast.success('Đã gửi phản hồi thành công đến đội ngũ Presale!', 'Client Feedback');
+  };
+
+  const handleDownloadPdf = async () => {
+    const targetId = proposal?.id || activeProject?.id;
+    if (!targetId) {
+      toast.warning('Chưa có thông tin dự án để tải PDF.', 'Tải PDF');
+      return;
+    }
+    try {
+      setIsDownloadingPdf(true);
+      await proposalService.exportPdf(targetId);
+      toast.success('Đã tải xuống Proposal PDF (10 Sheets) thành công!', 'Client Portal');
+    } catch (err: any) {
+      toast.error(`Lỗi tải Proposal PDF: ${err.message}`, 'Lỗi Tải File');
+    } finally {
+      setIsDownloadingPdf(false);
+    }
+  };
+
+  const handleDownloadOverviewFile = () => {
+    const overviewText = [
+      '============================================================',
+      'BẢN TÓM TẮT DỰ ÁN DÀNH CHO KHÁCH HÀNG (EXECUTIVE OVERVIEW)',
+      '============================================================',
+      `Dự án: ${title}`,
+      `Khách hàng / Tổ chức: ${org}`,
+      `Ngày xuất: ${new Date().toLocaleDateString('vi-VN')}`,
+      '',
+      '1. CHỈ SỐ QUAN TRỌNG (KEY METRICS)',
+      `- Ngân sách đề xuất: $${budget.toLocaleString()} USD (Trọn gói chuyển giao)`,
+      `- Tiến độ thực hiện: ${timeline} tuần (4 Giai đoạn)`,
+      '- Cam kết SLA: 99.999% Multi-AZ Uptime',
+      `- Tiêu chuẩn tuân thủ: ${compliance}`,
+      '',
+      '2. MỤC TIÊU CHIẾN LƯỢC',
+      `Xây dựng và bàn giao nền tảng kỹ thuật hiện đại cho dự án "${title}", tối ưu hóa chi phí vận hành, bảo mật đa lớp theo chuẩn ${compliance}, và đảm bảo khả năng mở rộng linh hoạt theo sự tăng trưởng của doanh nghiệp.`,
+      '',
+      '3. KIẾN TRÚC CÔNG NGHỆ CỐT LÕI',
+      `Tech Stack: ${techStack}`,
+      'Quy chuẩn: Microservices, Containerization, CI/CD Pipeline tự động hóa.',
+      '',
+      '4. CÁC MỐC TRIỂN KHAI CHÍNH (MILESTONES)',
+      '- Phase 1: Khảo sát, kiến trúc hệ thống & Thiết lập hạ tầng (Tuần 1 - 4)',
+      '- Phase 2: Phát triển các module cốt lõi & Tích hợp API (Tuần 5 - 10)',
+      '- Phase 3: Kiểm thử tải, UAT & Đánh giá an toàn thông tin (Tuần 11 - 14)',
+      '- Phase 4: Triển khai sản xuất (Go-live) & Chuyển giao vận hành (Tuần 15 - 16)',
+      '============================================================',
+      'Presaleee Enterprise Solutions Platform'
+    ].join('\n');
+
+    const blob = new Blob([overviewText], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${title.replace(/[^a-zA-Z0-9_\u00C0-\u024F\u1E00-\u1EFF]/g, '_')}_Executive_Overview.txt`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    toast.success('Đã tải xuống tệp Bản Tóm Tắt Dự Án (Overview) thành công!', 'Xuất Overview');
   };
 
   const handleExportOverview = () => {
@@ -109,16 +172,23 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({
             <button
               onClick={handleExportOverview}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-2xs cursor-pointer"
+              title="In hoặc lưu dạng PDF qua hộp thoại Print"
             >
               <Printer className="w-3.5 h-3.5 text-slate-600" />
               <span>Xuất / In Overview</span>
             </button>
             <button
-              onClick={() => toast.success('Đã xuất thành công gói hồ sơ đề xuất Proposal PDF!', 'Client Portal')}
-              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 text-xs font-semibold text-white hover:bg-slate-800 shadow-xs cursor-pointer"
+              onClick={handleDownloadPdf}
+              disabled={isDownloadingPdf}
+              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-50 shadow-xs cursor-pointer"
+              title="Tải về bộ hồ sơ kỹ thuật Proposal PDF 10 Sheets"
             >
-              <Download className="w-3.5 h-3.5 text-white" />
-              <span>Download Full PDF</span>
+              {isDownloadingPdf ? (
+                <RefreshCw className="w-3.5 h-3.5 text-white animate-spin" />
+              ) : (
+                <Download className="w-3.5 h-3.5 text-white" />
+              )}
+              <span>{isDownloadingPdf ? 'Đang tải PDF...' : 'Download Full PDF'}</span>
             </button>
             <button
               onClick={onClose}
@@ -177,8 +247,9 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({
                   </p>
                 </div>
                 <button
-                  onClick={handleExportOverview}
+                  onClick={handleDownloadOverviewFile}
                   className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold shadow-xs cursor-pointer self-start sm:self-auto"
+                  title="Tải về file văn bản tóm tắt Executive Overview"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>Xuất File Overview</span>

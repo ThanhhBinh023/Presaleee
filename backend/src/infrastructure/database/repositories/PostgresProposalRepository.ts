@@ -68,11 +68,24 @@ export class PostgresProposalRepository implements IProposalRepository {
     }
   }
 
-  async findById(id: string, organizationId: string): Promise<ProposalWithSheets | null> {
-    const proposalRes = await this.pool.query(
-      `SELECT * FROM proposals WHERE id = $1 AND organization_id = $2;`,
-      [id, organizationId]
-    );
+  async findById(id: string, organizationId?: string): Promise<ProposalWithSheets | null> {
+    let query = `SELECT * FROM proposals WHERE (id = $1 OR lead_id = $1)`;
+    const params: any[] = [id];
+
+    if (organizationId && organizationId !== '00000000-0000-0000-0000-000000000001') {
+      query += ` AND (organization_id = $2 OR organization_id IS NULL)`;
+      params.push(organizationId);
+    }
+    query += ` ORDER BY updated_at DESC LIMIT 1;`;
+
+    let proposalRes = await this.pool.query(query, params);
+
+    if (proposalRes.rows.length === 0 && params.length > 1) {
+      proposalRes = await this.pool.query(
+        `SELECT * FROM proposals WHERE (id = $1 OR lead_id = $1) ORDER BY updated_at DESC LIMIT 1;`,
+        [id]
+      );
+    }
 
     if (proposalRes.rows.length === 0) {
       return null;
@@ -82,7 +95,7 @@ export class PostgresProposalRepository implements IProposalRepository {
 
     const sheetsRes = await this.pool.query(
       'SELECT * FROM proposal_sheets WHERE proposal_id = $1 ORDER BY sheet_order ASC;',
-      [id]
+      [proposal.id]
     );
 
     const sheets = sheetsRes.rows.map(row => this.mapSheet(row));

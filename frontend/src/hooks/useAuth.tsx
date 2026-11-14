@@ -11,6 +11,7 @@ interface AuthContextValue {
   status: AuthStatus;
   user: AuthUser | null;
   login: (input: LoginInput) => Promise<AuthUser>;
+  devLogin: (email?: string) => Promise<AuthUser>;
   register: (input: RegisterInput) => Promise<AuthUser>;
   logout: () => Promise<void>;
   syncUser: (user: AuthUser) => void;
@@ -58,6 +59,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return session.user;
   }, []);
 
+  const devLogin = useCallback(async (email: string = 'ntbinh1@gmail.com') => {
+    const session = await authService.devLogin(email);
+    setUser(session.user);
+    setStatus('authenticated');
+    return session.user;
+  }, []);
+
   const register = useCallback(async (input: RegisterInput) => {
     const created = await authService.register(input);
     setUser(created.user);
@@ -79,8 +87,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, []);
 
   const value = useMemo(
-    () => ({ status, user, login, register, logout, syncUser }),
-    [status, user, login, register, logout, syncUser]
+    () => ({ status, user, login, devLogin, register, logout, syncUser }),
+    [status, user, login, devLogin, register, logout, syncUser]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

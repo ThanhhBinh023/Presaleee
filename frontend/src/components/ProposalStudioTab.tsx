@@ -20,8 +20,7 @@ import {
   updateProposalSheet, 
   updateProposalLifecycle, 
   generateProposalUIDesignBrief,
-  getProposalExcelDownloadUrl,
-  getProposalPdfDownloadUrl
+  proposalService
 } from '../services/proposalService';
 
 interface ProposalStudioTabProps {
@@ -245,6 +244,8 @@ export const ProposalStudioTab: React.FC<ProposalStudioTabProps> = ({ leadId, ac
   const [uiBrief, setUiBrief] = useState<UIDesignBrief | null>(null);
   const [generatingBrief, setGeneratingBrief] = useState<boolean>(false);
   const [copiedBrief, setCopiedBrief] = useState<boolean>(false);
+  const [exportingExcel, setExportingExcel] = useState<boolean>(false);
+  const [exportingPdf, setExportingPdf] = useState<boolean>(false);
 
   // Load proposal for active lead - Tự động tải hoặc sinh 10 sheets trực tiếp khi chọn dự án
   useEffect(() => {
@@ -488,23 +489,51 @@ ${uiBrief.interaction_flow}
             </button>
           )}
 
-          <a
-            href={getProposalExcelDownloadUrl(proposalData.id)}
-            download
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold shadow-sm shadow-brand-500/20 transition-all cursor-pointer"
+          <button
+            onClick={async () => {
+              try {
+                setExportingExcel(true);
+                await proposalService.exportExcel(proposalData.id);
+                toast.success('Đã xuất và tải file Excel (.xlsx) 10 Sheets thành công!', 'Proposal Studio');
+              } catch (err: any) {
+                toast.error(`Lỗi xuất file Excel: ${err.message}`, 'Lỗi Xuất File');
+              } finally {
+                setExportingExcel(false);
+              }
+            }}
+            disabled={exportingExcel}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white text-xs font-semibold shadow-sm shadow-brand-500/20 transition-all cursor-pointer"
           >
-            <FileSpreadsheet className="w-4 h-4" />
-            <span>Export to Excel (.xlsx)</span>
-          </a>
+            {exportingExcel ? (
+              <RefreshCw className="w-4 h-4 animate-spin" />
+            ) : (
+              <FileSpreadsheet className="w-4 h-4" />
+            )}
+            <span>{exportingExcel ? 'Đang xuất Excel...' : 'Export to Excel (.xlsx)'}</span>
+          </button>
 
-          <a
-            href={getProposalPdfDownloadUrl(proposalData.id)}
-            download
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-sm transition-all cursor-pointer"
+          <button
+            onClick={async () => {
+              try {
+                setExportingPdf(true);
+                await proposalService.exportPdf(proposalData.id);
+                toast.success('Đã xuất và tải file PDF (.pdf) đề xuất kỹ thuật thành công!', 'Proposal Studio');
+              } catch (err: any) {
+                toast.error(`Lỗi xuất file PDF: ${err.message}`, 'Lỗi Xuất File');
+              } finally {
+                setExportingPdf(false);
+              }
+            }}
+            disabled={exportingPdf}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-semibold shadow-sm transition-all cursor-pointer"
           >
-            <FileText className="w-4 h-4 text-brand-400" />
-            <span>Export to PDF (.pdf)</span>
-          </a>
+            {exportingPdf ? (
+              <RefreshCw className="w-4 h-4 animate-spin text-brand-400" />
+            ) : (
+              <FileText className="w-4 h-4 text-brand-400" />
+            )}
+            <span>{exportingPdf ? 'Đang xuất PDF...' : 'Export to PDF (.pdf)'}</span>
+          </button>
 
           <button
             onClick={() => {

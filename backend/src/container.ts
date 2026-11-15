@@ -79,7 +79,7 @@ import { PostgresAuditRepository } from './infrastructure/database/repositories/
 import { ReferenceValidator } from './application/services/ReferenceValidator.js';
 import {
   CreateClientUseCase, DeleteClientUseCase, GetClientUseCase,
-  ListClientsUseCase, ListClientLeadsUseCase, UpdateClientUseCase
+  ListClientsUseCase, ListClientLeadsUseCase, UpdateClientContactUseCase, UpdateClientUseCase
 } from './application/use-cases/ClientUseCases.js';
 import { ClientController } from './presentation/controllers/ClientController.js';
 import {
@@ -234,7 +234,6 @@ export function createContainer(): ServiceContainer {
     analyzeLeadIntakeUseCase,
     createLeadUseCase,
     qualifyLeadUseCase,
-    saveQualificationUseCase,
     listLeadsUseCase,
     getLeadUseCase,
     updateLeadUseCase,
@@ -242,7 +241,6 @@ export function createContainer(): ServiceContainer {
     deleteLeadUseCase,
     getLatestQualificationUseCase,
     dbPool,
-    llmGateway,
     auditRepository
   );
   const authController = new AuthController(
@@ -296,6 +294,7 @@ export function createContainer(): ServiceContainer {
     new ListClientsUseCase(clientRepository),
     new GetClientUseCase(clientRepository),
     new UpdateClientUseCase(clientRepository, auditRepository),
+    new UpdateClientContactUseCase(clientRepository, auditRepository),
     new DeleteClientUseCase(clientRepository, auditRepository),
     new ListClientLeadsUseCase(clientRepository, leadRepository)
   );

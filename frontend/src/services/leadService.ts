@@ -15,17 +15,10 @@ import type {
 const LEADS_PREFIX = '/api/v1/leads';
 const AI_TIMEOUT_MS = 90_000;
 
-export interface QualificationBreakdown {
-  type: 'positive' | 'warning' | 'neutral';
-  title: string;
-  detail: string;
-}
-
-export interface QualificationData {
-  qualification_score: number;
-  readiness_level: string;
-  breakdown: QualificationBreakdown[];
-  project_brief: string;
+/** Both `/qualify` and `/qualifications` run the same use case and answer with this envelope. */
+export interface QualifyResult {
+  qualification: LeadQualification;
+  lead: LeadItem;
 }
 
 export interface ExtractedMetadata {
@@ -44,7 +37,7 @@ export interface ExtractedMetadata {
   missing_information?: string[];
   target_sla?: string;
   peak_workload?: string;
-  qualification?: QualificationData;
+  qualification?: LeadQualification;
   assignedRoles?: string[];
   assigned_roles?: string[];
 }
@@ -87,10 +80,10 @@ export async function analyzeAndSaveLead(
   });
 }
 
-export async function qualifyLead(leadId: string, inquiryText?: string): Promise<{ qualification: QualificationData; lead: LeadItem }> {
-  return await apiRequest<{ qualification: QualificationData; lead: LeadItem }>(`${LEADS_PREFIX}/${encodeURIComponent(leadId)}/qualify`, {
+/** Scores from the stored RFP only — the body used to carry `inquiryText`, which no handler reads anymore. */
+export async function qualifyLead(leadId: string): Promise<QualifyResult> {
+  return await apiRequest<QualifyResult>(`${LEADS_PREFIX}/${encodeURIComponent(leadId)}/qualify`, {
     method: 'POST',
-    body: { leadId, inquiryText },
     timeoutMs: AI_TIMEOUT_MS
   });
 }
@@ -188,11 +181,13 @@ export const leadService = {
   deleteLead: (id: string) =>
     apiRequest<void>(`${LEADS_PREFIX}/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
-  qualify: (id: string) =>
-    apiRequest<LeadQualification>(`${LEADS_PREFIX}/${encodeURIComponent(id)}/qualifications`, {
+  qualify: async (id: string): Promise<LeadQualification> => {
+    const result = await apiRequest<QualifyResult>(`${LEADS_PREFIX}/${encodeURIComponent(id)}/qualifications`, {
       method: 'POST',
       timeoutMs: AI_TIMEOUT_MS
-    }),
+    });
+    return result.qualification;
+  },
 
   getLatestQualification: (id: string) =>
     apiRequest<LeadQualification>(`${LEADS_PREFIX}/${encodeURIComponent(id)}/qualifications/latest`),

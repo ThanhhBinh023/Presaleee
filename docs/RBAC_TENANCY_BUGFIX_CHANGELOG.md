@@ -571,4 +571,75 @@ Thêm nữa, **nguyên nhân pipeline tắc không phải schema** mà là *heur
   - Mục 6 **15** (N22) cập nhật bằng chứng mới: census DB **133 rỗng / 4 camelCase / 1 snake_case** (7 dòng có `bant_score` mà details rỗng tới từ file seed), hai producer khác nhau (`qualify` bịa 88), hai consumer trái ngược (`isLeadQualification` vs `QualificationData` snake_case) và chuỗi 409 tắc 3 suite.
   - Thêm mục 6 **17** = giải thích **N17** (một dòng `writeAccess`, không có đường vòng, frontend đã thành thật, 3 hướng chờ chọn) và mục 6 **18** = nhóm C đã đóng (projection, thread isolation, status gate ở cửa phiên, rate limit 300/20, audit hành động khách, `requireLiveModel`, V1, V2 + residual 24h).
 
+# ĐỢT 7 — đóng **N22** và **N17** theo hướng (a), không bật heuristic offline (15/11/2026)
+
+Phạm vi bạn chốt: *"sửa lại luôn cả 2 giúp mình, **không làm 2b**"* → **N22** = hướng (a) (một nguồn sự thật camelCase, `requireLiveModel` cho qualify, **không** thêm nhánh heuristic offline); **N17** = hướng (a) (endpoint ghi riêng 3 contact field, gate `requireNotViewer`). **Có ghi DB**: dữ liệu suite tự sinh + một lần probe tự seed vào chính lead nó tạo rồi xoá (mục 52).
+
+## 48. N22 — một producer, một envelope, một shape đọc
+
+| Chỗ | Trước | Sau |
+|---|---|---|
+| **Số đường qualify** | `POST /:id/qualifications` → `QualifyLeadUseCase` (có normaliser); `POST /:id/qualify` → **khối inline 131 dòng** trong `LeadIntakeController` với prompt tiếng Việt riêng, tự map sang snake_case | Khối inline bị **xoá**. `LeadIntakeController.qualify:116` là handler duy nhất; `leadIntakeRoutes.ts:19-20` gắn **cả hai route** vào nó ⇒ một lead không thể nhận hai hình dạng dữ liệu |
+| **Envelope** | `/qualify` → `data:{qualification, lead}`, `/qualifications` → `data: qualification` (trần) | Cả hai → `data:{qualification, lead}` (`QualifyLeadUseCase.execute` trả lead đã lưu — `LeadUseCases.ts:354-385`). Đo: 2 response **giống nhau từng byte** (mục 51) |
+| **Khi AI offline** | `/qualifications` → **409** (heuristic không có `criteria`); `/qualify` → **200 với `qualification_score: 88` bịa sẵn** | `requireLiveModel: true` (`:380`) ⇒ cả hai → **502** `"No AI model answered this request; the placeholder response is not sent to clients."` Không còn đường nào tự sinh điểm. heuristic vẫn còn cho route staff (đúng chính sách 43.4) |
+| **`GET /:id/qualifications/latest`** | `return lead.bantDetails as unknown as LeadQualification` — cast, không map, shape nào trả shape đó | Hai nhánh (`:387-396`): row canonical trả nguyên trạng; row legacy đi qua `legacyQualification():136` |
+| **`legacyQualification`** | *(không tồn tại)* | Pillar `score = 0` + `maxScore = 25`, **tổng lấy từ cột `bant_score`** chứ không cộng pillar. Không có `nextSteps`, `evidence` rỗng. Chỗ đứng của từng note do **chính nhãn `type` trong row cũ** quyết định: `type` = tên pillar → `criteria[pillar].assessment`; `warning`/`risk` → `risks[]`; còn lại nối vào `summary` ⇒ **không rơi mất chữ nào**. `readiness_level` high/medium/low → QUALIFY/REVIEW/DISQUALIFY (row thật ghi `"Mức độ sẵn sàng cao (High Readiness • Tier-1 Lead)"` → QUALIFY, không còn bị ép thành REVIEW) |
+| **Frontend** | `leadService.QualificationData` khai **snake_case**; `AIWorkspace` đọc `readiness_level/project_brief/breakdown`, `LeadsDirectory` dùng guard camelCase ⇒ hai bên trái ngược trên cùng một cột | `QualificationData` bị xoá; hợp đồng duy nhất là `QualifyResult {qualification, lead}` (`leadService.ts:19`), `qualifyLead():84` và `leadService.qualify:185` cùng kiểu; `AIWorkspace.tsx:59,142,887-901` render 4 pillar + `risks`; `isLeadQualification` (`types/lead.ts:137`) giờ **đúng với mọi row đã lưu** vì `latest` luôn trả camelCase |
+| **File seed** | payload snake_case legacy trong `frontend/docs/api_integration/G4_SEED_UI_TEST.sql`, 1 dòng G13/G14 | 7 literal JSON đổi sang canonical (có `bant_details` trong column list). Validator tạm: cả 7 parse được **và** `score == Σ 4 pillar` (45/62/92/21/88/55/22). **Không chạy vào DB** — đó là file bạn tự chạy |
+
+**Một hướng đã thử và bỏ (ghi lại để sau này đừng làm lại):** lần đầu mình map note cũ vào pillar bằng **keyword** trong câu text (kể cả alias Việt: `budget/ngân sách`, `timeline/thời gian`…). Đo trên dữ liệu thật: câu `"Quy mô Đầu tư: Giám sát **thời gian** thực và tự động phát hiện sự cố"` bị gán vào **Timeline** — tức là đi **bịa quan hệ** mà row gốc không nói. Đã bỏ, chỉ còn cách dùng nhãn `type` có sẵn trong row.
+
+## 49. N17 — `PATCH /clients/:id/contact`, tier "ghi được contact" đầu tiên
+
+- **Use case mới** `UpdateClientContactUseCase` (`ClientUseCases.ts:145-181`): chỉ nhận `contactPerson`/`contactEmail`/`contactPhone`; findById + update + delete đều đóng dấu `organizationId` ⇒ không có đường_cross-tenant. Audit `CLIENT_CONTACT_UPDATED` với `payload.changedFields` (đúng những cột vừa đổi) — `audit_logs` **không có CHECK** trên `action`/`entity_type` nên **không cần migration**.
+- **Thứ tự validate đã sửa trong đợt này**: khoá lạ bị từ chối **trước** kiểm "rỗng", nên `PATCH …/contact {companyName:"Hijacked"}` trả 400 **nêu đúng tên field** chứ không phải "At least one contact field is required.". Field ngoài 3 contact **không âm thầm bị bỏ** — người dùng không thể gõ tên công ty vào form contact rồi mất dữ liệu.
+- **Route** (`clientRoutes.ts:18`): `requireAuth, requireOrganization, requireNotViewer` — **không** đụng `writeAccess`; `POST`/`PATCH /:id`/`DELETE /:id` vẫn `ADMIN, PRESALE_LEAD`.
+- **Repository không đổi**: `PostgresClientRepository.update:87-116` đã dựng `SET` động theo key được cung cấp và giữ `AND organization_id = $n`.
+- **Frontend**: `clientService.ClientContactInput` (`:32`) + `updateClientContact` (`:69`); `ClientsDirectory` thêm `canEditContact = role !== 'VIEWER'` (`:82`), nút **Contact** chỉ hiện cho role không phải admin (`:456`), submit rẽ nhánh theo mode (`:198`), và ở chế độ contact thì 3 field không được ghi (`companyName`/`industry`/`country`) bị **disabled** xám (`:310,316,351`) chứ không phải hiện ra rồi nhận 403.
+
+## 50. File đã sửa
+
+17 file, **+428/−229** (`git diff --stat` lúc commit, chưa tính 4 thư mục report mới). Backend: `LeadUseCases.ts`, `LeadIntakeController.ts`, `leadIntakeRoutes.ts`, `ClientUseCases.ts`, `ClientController.ts`, `clientRoutes.ts`, `container.ts`. Frontend: `leadService.ts`, `clientService.ts`, `AIWorkspace.tsx`, `ClientsDirectory.tsx`. Seeds: `G4_SEED_UI_TEST.sql`, `G13_G14_SEED_UI_TEST.sql`. e2e: `g3_g4_directory.e2e.mjs` (+`G4-13`), `g5_g6_pricing_and_leads.e2e.mjs` (`G6-15` theo envelope mới + `skipIfNoLiveModel` cho `G6-08/09/10`).
+
+## 51. Kiểm chứng
+
+**Probe N22** (script tạm `.tmp_n22_probe.mjs`, chạy trên backend `tsx` thật `:5099` + DB thật — đã xoá script):
+
+| Bước | Kết quả đo |
+|---|---|
+| Census `bant_details` trước/sau | `139 {}` / `4 canonical` / `1 legacy` / `12 có bant_score` — **giống hệt nhau trước và sau**, probe không để lại dòng nào |
+| `POST /:id/qualify` và `POST /:id/qualifications` trên cùng một lead | cả hai **502**, text **giống nhau từng byte**; không có `"Automated Presale Analysis"`; không có `88`; không lộ `gemini/api_key/ECONNREFUSED/localhost:8000` |
+| `latest` khi chưa lưu gì | **404** `"Lead has no qualification result."` |
+| `latest` trên row legacy (tự seed đúng hình dạng row `3cd4f3da…`) | **200**, 7 khoá `criteria, evaluatedAt, nextSteps, recommendation, risks, score, summary`; **0 khoá snake_case**; `score = 85` lấy từ `bant_score`; pillar scores `[0,0,0,0]`, `maxScore` `[25,25,25,25]`; `recommendation = QUALIFY`; `risks` giữ nguyên câu "Rủi ro Tích hợp & Bảo mật Dữ liệu…"; `summary` giữ 2 câu positive còn lại (240 ký tự) |
+| Đọc có ghi ngược không? | `bant_details ? 'criteria' = false` sau khi đọc ⇒ mapper **không rewrite** dữ liệu cũ |
+| `DELETE /leads/:id` | **200** `{"success":true,"message":"Lead deleted successfully."}` ⇒ nguồn của fail `G6-12` (F2, mục 53) |
+
+**Suite** (backend `:5099`, DB thật, report sinh trong `backend/api_test_report/`; 4 thư mục run của đợt này **không** commit — các đợt 2..6 cũng để nguyên như vậy):
+
+| Suite | Trước đợt 7 | Sau đợt 7 | Diễn giải |
+|---|---|---|---|
+| `g3_g4_directory` | 29 pass / 0 fail | **30 pass / 0 fail / 0 skip** | `G4-13` mới: SALES_REP `PATCH …/contact` 200 + **persist thật** (đọc lại bằng GET), `companyName`/`industry`/`country` không đổi; 4 field ngoài contact → 400 **nêu tên**; `{}` → 400; phone 120 ký tự → 400; `PATCH /clients/:id` + `POST` + `DELETE` → 403 `"…roles: ADMIN, PRESALE_LEAD"`; VIEWER → 403 `"VIEWER role is read-only."`; anonymous → 401; org B → **404 và row không đổi**; đúng **1** dòng `CLIENT_CONTACT_UPDATED` cho client đó |
+| `g5_g6_pricing_and_leads` | 25 pass / 6 fail | **25 pass / 2 fail / 4 skip** | 4 skip = `G6-08/09/10/15`, lý do in rõ trong report ("cần BANT score, AI offline"). `G6-15` vẫn assert đủ 5 guard 404/400 **trước** khi gọi model. 2 fail còn lại = **F1 + F2**, có từ trước đợt 7 (mục 53) |
+| `g13_g14_dashboard_audit` | 11 pass / 13 fail | **11 pass / 13 fail** (không đổi) | vẫn là **một** nguyên nhân: bootstrap `G13/G14-00` dừng ở `L4 → QUALIFIED` 409 ⇒ fixture thiếu ⇒ 10 fail dây chuyền. Xem F3 |
+| tĩnh | backend 34 / frontend 0 | **backend 34 / frontend 0** | `npx tsc --noEmit`; `grep -vi meeting` trên danh sách lỗi cho kết quả **rỗng** ⇒ không lỗi nào thuộc file đã sửa |
+
+## 52. DB đã ghi trong đợt này
+
+- Suite `g3_g4` + `g5_g6` (2 lần chạy) tự sinh org/user/client/lead `E2E …` và các dòng `audit_logs` (`CLIENT_CONTACT_UPDATED`, `LEAD_*`, `RATE_CARD_*`…).
+- Probe N22: **UPDATE `bant_score`, `bant_details` trên đúng lead nó tự tạo** (lead `5c9a0eaa…`), rồi xoá qua `DELETE /leads/:id` — `SELECT COUNT(*) … WHERE id = …` = 0, census trước/sau khớp từng số.
+- **Không** đụng vào 4 row canonical và 1 row legacy `3cd4f3da…` đang có; **không** áp 2 file seed vào DB; **không** sửa dữ liệu nghiệp vụ nào.
+
+## 53. Ba điểm cần bạn quyết (đã đo, **không** tự gom vào đợt này)
+
+1. **F1 — `G5-14`: `proposals.total_cost` đang là tổng **đã gồm VAT**, không phải total của bảng giá.** Đợt 6 ghi "buffer 10%" nhưng chưa gọi tên được nguồn. Nay đã dò ra: `RateCardUseCases.ts:299 VAT_PERCENTAGE = 10`, và `PostgresProposalRepository.ts:300-305` — khi ghi sheet `Pricing & Quotation` thì `UPDATE proposals SET total_cost = grandTotal`. Nên 2 × 4800 = **9600** (đúng, nằm trong `pricing.totalCost`) nhưng cột thành **10560**. Hai hướng: (a) giữ sản phẩm, sửa test thành `total_cost = 10560` **và** assert thêm `sheet.subtotal = 9600` để peg cả hai số; (b) `total_cost` là net, VAT chỉ sống trong sheet ⇒ sửa repository. **Mình nghiêng (a)** vì "giá chào khách" vốn là tổng thanh toán, nhưng đây là hợp đồng dữ liệu nên bạn chốt.
+2. **F2 — `G6-12` + `G14-09`: `DELETE /api/v1/leads/:id` trả 200 + body, 6 handler DELETE còn lại trả 204 rỗng** (`ClientController:89`, `KnowledgeController:68`, `PortalController:59,83`, `ProposalController:322`, `RateCardController:80`). Route lead không có trong `openapi.yaml`, và `frontend deleteLead(): Promise<void>` bỏ qua body ⇒ đổi sang 204 **an toàn** cho frontend. Hướng: (a) sửa handler về 204 (đồng nhất, hết 2 fail); (b) chấp nhận 200+message và sửa 2 test + ghi vào docs. Mình nghiêng (a).
+3. **F3 — `g13_g14` cần model sống mới dựng được fixture.** `QUALIFICATION_REQUIRED_STATUSES` (`LeadUseCases.ts:38`) chặn `QUALIFIED`/`APPROVED` khi chưa có điểm, và từ đợt này **chỉ model sống** mới tạo được điểm. Ba hướng: (a) nâng cấp `skipIfNoLiveModel` (đã viết cho `g5_g6`) thành guard cho cả bootstrap `g13_g14` — hết 13 fail giả nhưng **mất luôn coverage dashboard/audit khi AI offline**; (b) cho fixture tự seed `bant_score` bằng SQL (có tiền lệ: chính 2 file seed); (c) chạy AI service. Mình nghiêng (b) vì nó giữ nguyên số lượng assertion mà không đòi hạ tầng.
+
+**Những điểm còn tồn khác (kế từ đợt 6, không đổi):** `G9-04` (43.1), residual 24h của V2 (43.2), `G11-13` (43.3), heuristic-200-cho-staff (43.4), 12 fail `g7_g8` + 2 `g1_g2` + 4 `g11_g12`, cluster meeting 34 lỗi tsc, 139 dòng `bant_details` rỗng + 12 dòng có `bant_score` mà details rỗng (đợt này chỉ sửa **đường đọc** và **file seed**, không migrate dữ liệu cũ), 2 proposal orphan, 4 portal session chưa thu hồi, và **chưa bấm thử UI** cho nút Contact / panel BANT mới.
+
+## 54. Tài liệu đã cập nhật (đợt 7)
+
+- File này: thêm `# ĐỢT 7` (48 N22, 49 N17, 50 file đã sửa, 51 kiểm chứng, 52 DB đã ghi, 53 ba điểm chờ quyết, 54 mục này).
+- `docs/RBAC_ROLES_AND_PERMISSIONS_GUIDE.md` **v2.11 → v2.12**: mục 6 **15** (N22) và **17** (N17) chuyển sang "đã đóng" kèm cách đóng; ma trận thêm dòng **7.2b** cho `PATCH /clients/:id/contact`; các dòng 7.1–7.3 của client ghi rõ tier contact mới.
+
 

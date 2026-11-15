@@ -7,6 +7,7 @@ import {
   GetClientUseCase,
   ListClientsUseCase,
   ListClientLeadsUseCase,
+  UpdateClientContactUseCase,
   UpdateClientUseCase
 } from '../../application/use-cases/ClientUseCases.js';
 
@@ -26,6 +27,7 @@ export class ClientController {
     private readonly listUseCase: ListClientsUseCase,
     private readonly getUseCase: GetClientUseCase,
     private readonly updateUseCase: UpdateClientUseCase,
+    private readonly updateContactUseCase: UpdateClientContactUseCase,
     private readonly deleteUseCase: DeleteClientUseCase,
     private readonly listLeadsUseCase: ListClientLeadsUseCase
   ) {}
@@ -70,6 +72,13 @@ export class ClientController {
   update = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const client = await this.updateUseCase.execute(this.scope(req), routeParam(req, 'id'), body(req));
+      res.status(200).json({ success: true, data: client });
+    } catch (error) { next(error); }
+  };
+
+  updateContact = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const client = await this.updateContactUseCase.execute(this.scope(req), routeParam(req, 'id'), body(req));
       res.status(200).json({ success: true, data: client });
     } catch (error) { next(error); }
   };

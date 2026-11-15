@@ -21,7 +21,7 @@ INSERT INTO leads (id, organization_id, client_id, created_by, assigned_to, titl
     'Inbound form closed after the buyer chose an incumbent TOS vendor.',
     '{"projectName":"Seasonal TOS overlay","priorityLevel":"Low"}'::jsonb,
     22,
-    '{}'::jsonb
+    '{"score":22,"recommendation":"DISQUALIFY","summary":"Seasonal overlay lost to the incumbent vendor; kept only so the REJECTED stage has a scored row.","criteria":{"budget":{"score":4,"maxScore":25,"assessment":"No budget line survived the incumbent decision.","evidence":[]},"authority":{"score":3,"maxScore":25,"assessment":"Inbound form, no decision maker named.","evidence":[]},"need":{"score":9,"maxScore":25,"assessment":"Seasonal demand only.","evidence":["Seasonal TOS overlay"]},"timeline":{"score":6,"maxScore":25,"assessment":"Window closed with the season.","evidence":["priorityLevel: Low"]}},"risks":["Win/loss note only — no follow-up."],"nextSteps":["Archive."],"evaluatedAt":"2026-10-09T09:00:00.000Z"}'::jsonb
   )
 ON CONFLICT DO NOTHING;
 

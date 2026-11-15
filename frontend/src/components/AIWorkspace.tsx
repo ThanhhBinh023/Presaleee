@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import type { LeadItem, QualificationData } from '../services/leadService';
-import type { LeadStatus } from '../types/lead';
-import { LEAD_TRANSITIONS } from '../types/lead';
+import type { LeadItem } from '../services/leadService';
+import type { LeadQualification, LeadStatus } from '../types/lead';
+import { LEAD_TRANSITIONS, isLeadQualification } from '../types/lead';
 import { fetchLeads, qualifyLead, updateLead, updateLeadStatus, deleteLead } from '../services/leadService';
 import { useAuth } from '../hooks/useAuth';
 import { useOrganizations } from '../hooks/useOrganizations';
@@ -55,6 +55,8 @@ interface AIWorkspaceProps {
   onNavigateRfps?: () => void;
   onNavigateVault?: () => void;
 }
+
+const BANT_PILLARS = ['budget', 'authority', 'need', 'timeline'] as const;
 
 export const AIWorkspace: React.FC<AIWorkspaceProps> = ({ 
   onNavigateOverview, 
@@ -133,10 +135,11 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
   const selectedProject = projects.find(p => p.id === selectedProjectId) || null;
 
   /**
-   * The stored BANT result. `POST /leads/:id/qualify` persists it into `bant_details`, and the list
-   * endpoint returns that column, so this is the only place a saved qualification is read from.
+   * The stored BANT result. `/qualify` and `/qualifications` both persist the canonical
+   * `{score, criteria, …}` shape into `bant_details`, so one guard covers every saved row.
    */
-  const storedQualification = selectedProject?.bantDetails as Partial<QualificationData> | null | undefined;
+  const storedDetails = selectedProject?.bantDetails;
+  const storedQualification: LeadQualification | null = isLeadQualification(storedDetails) ? storedDetails : null;
 
   const assignedRolesList: UserRole[] = React.useMemo(() => {
     if (!selectedProject) return [];
@@ -327,9 +330,9 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
     if (!selectedProject) return;
     try {
       setIsQualifying(true);
-      const res = await qualifyLead(selectedProject.id, selectedProject.rawRfpContent);
+      const res = await qualifyLead(selectedProject.id);
       setProjects(prev => prev.map(p => p.id === res.lead.id ? res.lead : p));
-      toast.success(`Thẩm định BANT thành công! Điểm: ${res.qualification.qualification_score}/100`, 'AI BANT Engine');
+      toast.success(`Thẩm định BANT thành công! Điểm: ${res.qualification.score}/100`, 'AI BANT Engine');
     } catch (err: any) {
       toast.error(err.message || 'Lỗi thẩm định AI', 'Thất bại');
     } finally {
@@ -885,23 +888,36 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                         <div className="p-4 rounded-2xl bg-emerald-50/70 border border-brand-200 space-y-2.5">
                           <div className="flex justify-between items-center text-xs font-mono">
                             <span className="font-bold text-brand-900 text-sm">
-                              Score: {selectedProject.bantScore ?? storedQualification.qualification_score} / 100
+                              Score: {storedQualification.score} / 100
                             </span>
                             <span className="text-brand-700 font-bold">
-                              {storedQualification.readiness_level}
+                              {storedQualification.recommendation}
                             </span>
                           </div>
                           <p className="text-xs text-slate-700 leading-relaxed">
-                            {storedQualification.project_brief}
+                            {storedQualification.summary}
                           </p>
 
-                          {/* Breakdown tags */}
-                          {storedQualification.breakdown && (
-                            <div className="space-y-1.5 pt-2 border-t border-brand-200/60">
-                              {storedQualification.breakdown.slice(0, 3).map((item, idx) => (
-                                <div key={idx} className="text-[11px] font-mono text-slate-700 flex items-start gap-1.5">
-                                  <span className="text-brand-600 font-bold">•</span>
-                                  <span><strong>{item.title}:</strong> {item.detail}</span>
+                          {/* BANT pillars, each scored 0-25 by the qualification service */}
+                          <div className="space-y-1.5 pt-2 border-t border-brand-200/60">
+                            {BANT_PILLARS.map(pillar => (
+                              <div key={pillar} className="text-[11px] font-mono text-slate-700 flex items-start gap-1.5">
+                                <span className="text-brand-600 font-bold">•</span>
+                                <span>
+                                  <strong className="capitalize">{pillar}</strong> ({storedQualification.criteria[pillar].score}/25):{' '}
+                                  {storedQualification.criteria[pillar].assessment}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+
+                          {storedQualification.risks.length > 0 && (
+                            <div className="space-y-1 pt-2 border-t border-brand-200/60">
+                              <span className="text-[10px] font-bold text-amber-700 block">RỦI RO CẦN LÀM RÕ</span>
+                              {storedQualification.risks.map((risk, idx) => (
+                                <div key={idx} className="text-[11px] font-mono text-slate-600 flex items-start gap-1.5">
+                                  <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0 text-amber-600" />
+                                  <span>{risk}</span>
                                 </div>
                               ))}
                             </div>
@@ -1487,7 +1503,7 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                           {selectedProject.bantScore == null ? 'N/A' : `${selectedProject.bantScore}%`}
                         </div>
                         <span className="text-[10px] text-emerald-700 font-semibold mt-0.5 block">
-                          {storedQualification?.readiness_level || 'Chưa phân loại'}
+                          {storedQualification ? storedQualification.recommendation : 'Chưa phân loại'}
                         </span>
                       </div>
 

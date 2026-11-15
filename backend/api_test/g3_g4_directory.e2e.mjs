@@ -563,6 +563,73 @@ await suite.test('G4-12', 'Audit read is ADMIN/PRESALE_LEAD-only and never writa
   return ['no POST/DELETE route on /audit-logs'];
 });
 
+await suite.test('G4-13', 'PATCH /clients/:id/contact is the only non-admin client write and touches only the three contact columns', async () => {
+  const created = await http(adminA, 'POST', '/api/v1/clients', {
+    body: { companyName: `${COMPANY} Contact`, industry: 'Fintech', contactPerson: 'First Contact', contactEmail: 'first@example.test', country: 'Vietnam' }
+  });
+  expect(created.status === 201, `fixture failed: ${created.status} ${created.text.slice(0, 200)}`);
+  const clientId = created.json.data.id;
+
+  const rep = new CookieJar();
+  const member = await addMember(email('contact-rep'), 'SALES_REP', 'E2E Contact Rep');
+  expect(member.status === 201, `SALES_REP fixture failed: ${member.status} ${member.text.slice(0, 200)}`);
+  await login(rep, email('contact-rep'));
+
+  const patched = await http(rep, 'PATCH', `/api/v1/clients/${clientId}/contact`, {
+    body: { contactPerson: 'Deal Owner', contactEmail: 'deal@example.test', contactPhone: '+84 900 111 222' }
+  });
+  expect(patched.status === 200, `SALES_REP contact write expected 200, got ${patched.status} ${patched.text.slice(0, 200)}`);
+  expect(patched.json.data.contactPerson === 'Deal Owner' && patched.json.data.contactEmail === 'deal@example.test', 'contact fields not written');
+  expectNoCredentialLeak(patched);
+  const reread = await http(rep, 'GET', `/api/v1/clients/${clientId}`);
+  expect(reread.status === 200, `expected 200, got ${reread.status}`);
+  expect(reread.json.data.contactPhone === '+84 900 111 222', 'the contact write was not persisted');
+  expect(reread.json.data.companyName === `${COMPANY} Contact`, 'the contact endpoint must not rename the client');
+
+  const contactFields = ['contactPerson', 'contactEmail', 'contactPhone'];
+  for (const probe of [{ companyName: 'Hijacked' }, { industry: 'Healthcare' }, { country: 'Japan' }, { contactPerson: 'x', organizationId: ids.orgB }]) {
+    const rejected = await http(rep, 'PATCH', `/api/v1/clients/${clientId}/contact`, { body: probe });
+    expectEnvelope(rejected, 400);
+    const named = Object.keys(probe).find(key => !contactFields.includes(key));
+    expect(rejected.json.error.includes(named), `400 should name ${named}, got ${rejected.json.error}`);
+  }
+  const empty = await http(rep, 'PATCH', `/api/v1/clients/${clientId}/contact`, { body: {} });
+  expectEnvelope(empty, 400);
+  const longPhone = await http(rep, 'PATCH', `/api/v1/clients/${clientId}/contact`, { body: { contactPhone: '+84'.repeat(40) } });
+  expectEnvelope(longPhone, 400);
+  const unchanged = await http(rep, 'GET', `/api/v1/clients/${clientId}`);
+  expect(unchanged.json.data.industry === 'Fintech' && unchanged.json.data.country === 'Vietnam', 'a rejected field still reached the row');
+
+  const fullPatch = await http(rep, 'PATCH', `/api/v1/clients/${clientId}`, { body: { industry: 'Healthcare' } });
+  expectEnvelope(fullPatch, 403);
+  expect(/ADMIN, PRESALE_LEAD/.test(fullPatch.json.error), `403 must list the allowed roles, got ${fullPatch.json.error}`);
+  const asCreate = await http(rep, 'POST', '/api/v1/clients', { body: { companyName: `${COMPANY} Rep Created` } });
+  expectEnvelope(asCreate, 403);
+  const asDelete = await http(rep, 'DELETE', `/api/v1/clients/${clientId}`);
+  expectEnvelope(asDelete, 403);
+
+  const asViewer = await http(viewer, 'PATCH', `/api/v1/clients/${clientId}/contact`, { body: { contactPerson: 'Read Only' } });
+  expectEnvelope(asViewer, 403);
+  expect(/read-only/i.test(asViewer.json.error), `VIEWER must be refused with the read-only message, got ${asViewer.json.error}`);
+  const anonymous = await http(new CookieJar(), 'PATCH', `/api/v1/clients/${clientId}/contact`, { body: { contactPerson: 'Anonymous' } });
+  expectEnvelope(anonymous, 401);
+
+  const foreign = await http(adminB, 'PATCH', `/api/v1/clients/${clientId}/contact`, { body: { contactPerson: 'Cross Tenant' } });
+  expectEnvelope(foreign, 404);
+  const afterForeign = await http(adminA, 'GET', `/api/v1/clients/${clientId}`);
+  expect(afterForeign.json.data.contactPerson === 'Deal Owner', 'cross-tenant contact write succeeded');
+
+  const audit = await http(adminA, 'GET', '/api/v1/audit-logs?entityType=client&limit=50');
+  expect(audit.status === 200, `audit read failed with ${audit.status}`);
+  const contactEntries = audit.json.data.filter(item => item.action === 'CLIENT_CONTACT_UPDATED' && item.entityId === clientId);
+  expect(contactEntries.length === 1, `expected one CLIENT_CONTACT_UPDATED for this client, got ${contactEntries.length}`);
+  expect(JSON.stringify(contactEntries[0].payload.changedFields).includes('contactPerson'), 'the audit payload must say what changed');
+
+  const cleaned = await http(adminA, 'DELETE', `/api/v1/clients/${clientId}`);
+  expect(cleaned.status === 204, `cleanup failed: ${cleaned.status}`);
+  return ['SALES_REP writes contacts only', '4 non-contact fields refused by name', 'VIEWER 403 / anonymous 401', 'cross-tenant 404', 'CLIENT_CONTACT_UPDATED audited'];
+});
+
 suite.note('G3/G4 run also confirms the multi-tenant fix: member and client reads from another organization answer 404, and allOrganizations=true is ADMIN-scoped to the caller own tenants.');
 
 const defectsSection = [

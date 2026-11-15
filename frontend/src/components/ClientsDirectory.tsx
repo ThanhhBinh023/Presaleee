@@ -3,7 +3,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useClientDirectory } from '../hooks/useClientDirectory';
 import { useClientLeads } from '../hooks/useClientLeads';
 import { clientService } from '../services/clientService';
-import type { UpdateClientInput } from '../services/clientService';
+import type { UpdateClientInput, ClientContactInput } from '../services/clientService';
 import { navigateTo } from '../navigation';
 import { formatDateTime } from '../utils/format';
 import { CLIENT_INDUSTRIES, LEAD_STATUSES } from '../types/client';
@@ -58,6 +58,20 @@ function buildPatch(original: ClientRecord, form: FormState): UpdateClientInput 
   return patch;
 }
 
+function buildContactPatch(original: ClientRecord, form: FormState): ClientContactInput {
+  const patch: ClientContactInput = {};
+  const contactPerson = form.contactPerson.trim() || null;
+  if (contactPerson !== (original.contactPerson ?? null)) patch.contactPerson = contactPerson;
+
+  const contactEmail = form.contactEmail.trim() || null;
+  if (contactEmail !== (original.contactEmail ?? null)) patch.contactEmail = contactEmail;
+
+  const contactPhone = form.contactPhone.trim() || null;
+  if (contactPhone !== (original.contactPhone ?? null)) patch.contactPhone = contactPhone;
+
+  return patch;
+}
+
 interface ClientsDirectoryProps {
   onBackToOverview: () => void;
 }
@@ -65,13 +79,14 @@ interface ClientsDirectoryProps {
 export const ClientsDirectory: React.FC<ClientsDirectoryProps> = ({ onBackToOverview }) => {
   const { user } = useAuth();
   const canManage = user?.role === 'ADMIN' || user?.role === 'PRESALE_LEAD';
+  const canEditContact = !!user?.role && user.role !== 'VIEWER';
 
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
   const [industry, setIndustry] = useState('');
   const [page, setPage] = useState(1);
 
-  const [mode, setMode] = useState<'none' | 'create' | 'edit'>('none');
+  const [mode, setMode] = useState<'none' | 'create' | 'edit' | 'contact'>('none');
   const [editing, setEditing] = useState<ClientRecord | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -120,7 +135,12 @@ export const ClientsDirectory: React.FC<ClientsDirectoryProps> = ({ onBackToOver
       ? [form.industry, ...CLIENT_INDUSTRIES]
       : [...CLIENT_INDUSTRIES];
 
-  const pendingPatch = mode === 'edit' && editing ? buildPatch(editing, form) : null;
+  const pendingPatch =
+    mode === 'edit' && editing
+      ? buildPatch(editing, form)
+      : mode === 'contact' && editing
+        ? buildContactPatch(editing, form)
+        : null;
 
   const openDetail = async (id: string) => {
     setDetailLoading(true);
@@ -156,6 +176,14 @@ export const ClientsDirectory: React.FC<ClientsDirectoryProps> = ({ onBackToOver
     setNotice(null);
   };
 
+  const openContact = (client: ClientRecord) => {
+    setMode('contact');
+    setEditing(client);
+    setForm(toForm(client));
+    setActionError(null);
+    setNotice(null);
+  };
+
   const closeForm = () => {
     setMode('none');
     setEditing(null);
@@ -167,7 +195,16 @@ export const ClientsDirectory: React.FC<ClientsDirectoryProps> = ({ onBackToOver
     setActionError(null);
     setNotice(null);
     try {
-      if (mode === 'edit' && editing) {
+      if (mode === 'contact' && editing) {
+        const patch = buildContactPatch(editing, form);
+        if (Object.keys(patch).length === 0) {
+          setActionError('Nothing to save — change at least one contact field.');
+          return;
+        }
+        const updated = await clientService.updateClientContact(editing.id, patch);
+        setNotice(`Saved the contact details of ${updated.companyName}.`);
+        if (detail?.id === updated.id) setDetail(updated);
+      } else if (mode === 'edit' && editing) {
         const patch = buildPatch(editing, form);
         if (Object.keys(patch).length === 0) {
           setActionError('Nothing to save — change at least one field.');
@@ -258,7 +295,11 @@ export const ClientsDirectory: React.FC<ClientsDirectoryProps> = ({ onBackToOver
         {mode !== 'none' && (
           <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
             <h2 className="mb-3 text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400">
-              {mode === 'create' ? 'New client' : `Editing ${editing?.companyName ?? ''}`}
+              {mode === 'create'
+                ? 'New client'
+                : mode === 'contact'
+                  ? `Contact details — ${editing?.companyName ?? ''}`
+                  : `Editing ${editing?.companyName ?? ''}`}
             </h2>
             <div className="grid gap-3 md:grid-cols-2">
               <input
@@ -266,12 +307,14 @@ export const ClientsDirectory: React.FC<ClientsDirectoryProps> = ({ onBackToOver
                 onChange={(e) => setForm({ ...form, companyName: e.target.value })}
                 placeholder="Company name"
                 maxLength={255}
-                className={fieldClass}
+                disabled={mode === 'contact'}
+                className={`${fieldClass} disabled:bg-slate-100 disabled:text-slate-500`}
               />
               <select
                 value={form.industry}
                 onChange={(e) => setForm({ ...form, industry: e.target.value })}
-                className={fieldClass}
+                disabled={mode === 'contact'}
+                className={`${fieldClass} disabled:bg-slate-100 disabled:text-slate-500`}
               >
                 <option value="">— No industry —</option>
                 {industryOptions.map((value) => (
@@ -305,7 +348,8 @@ export const ClientsDirectory: React.FC<ClientsDirectoryProps> = ({ onBackToOver
                 onChange={(e) => setForm({ ...form, country: e.target.value })}
                 placeholder="Country"
                 maxLength={100}
-                className={fieldClass}
+                disabled={mode === 'contact'}
+                className={`${fieldClass} disabled:bg-slate-100 disabled:text-slate-500`}
               />
             </div>
             <div className="mt-3 flex items-center gap-2">
@@ -314,7 +358,7 @@ export const ClientsDirectory: React.FC<ClientsDirectoryProps> = ({ onBackToOver
                 disabled={isSubmitting || form.companyName.trim().length === 0}
                 className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-bold text-white disabled:bg-slate-300"
               >
-                {mode === 'create' ? 'Create client' : 'Save changes'}
+                {mode === 'create' ? 'Create client' : mode === 'contact' ? 'Save contact' : 'Save changes'}
               </button>
               <button
                 onClick={closeForm}
@@ -322,8 +366,10 @@ export const ClientsDirectory: React.FC<ClientsDirectoryProps> = ({ onBackToOver
               >
                 Cancel
               </button>
-              {mode === 'edit' && pendingPatch && Object.keys(pendingPatch).length === 0 && (
-                <span className="text-xs text-slate-400">Edit a field to enable saving.</span>
+              {pendingPatch && Object.keys(pendingPatch).length === 0 && (
+                <span className="text-xs text-slate-400">
+                  {mode === 'contact' ? 'Edit a contact field to enable saving.' : 'Edit a field to enable saving.'}
+                </span>
               )}
             </div>
           </div>
@@ -407,6 +453,15 @@ export const ClientsDirectory: React.FC<ClientsDirectoryProps> = ({ onBackToOver
                       >
                         Details
                       </button>
+                      {!canManage && canEditContact && (
+                        <button
+                          onClick={() => openContact(client)}
+                          title="Full client editing belongs to ADMIN and PRESALE_LEAD"
+                          className="mr-2 rounded border border-slate-300 px-2 py-1 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                        >
+                          Contact
+                        </button>
+                      )}
                       {canManage && (
                         <>
                           <button

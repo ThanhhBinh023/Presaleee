@@ -28,6 +28,9 @@ export interface CreateClientInput {
 
 export type UpdateClientInput = Partial<CreateClientInput>;
 
+/** PATCH /clients/:id/contact rejects anything outside these three fields. */
+export type ClientContactInput = Pick<CreateClientInput, 'contactPerson' | 'contactEmail' | 'contactPhone'>;
+
 function clientQueryToString(query: ClientListQuery): string {
   const params = new URLSearchParams();
   if (query.page !== undefined) params.set('page', String(query.page));
@@ -62,6 +65,9 @@ export const clientService = {
 
   updateClient: (id: string, patch: UpdateClientInput) =>
     apiRequest<ClientRecord>(`${CLIENTS_PREFIX}/${encodeURIComponent(id)}`, { method: 'PATCH', body: patch }),
+
+  updateClientContact: (id: string, patch: ClientContactInput) =>
+    apiRequest<ClientRecord>(`${CLIENTS_PREFIX}/${encodeURIComponent(id)}/contact`, { method: 'PATCH', body: patch }),
 
   deleteClient: (id: string) =>
     apiRequest<void>(`${CLIENTS_PREFIX}/${encodeURIComponent(id)}`, { method: 'DELETE' }),

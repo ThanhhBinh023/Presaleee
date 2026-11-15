@@ -124,6 +124,50 @@ function normalizeQualification(data: Record<string, unknown>): LeadQualificatio
   };
 }
 
+/**
+ * Rows written before the canonical schema stored `{qualification_score, readiness_level, breakdown[],
+ * project_brief}`. The legacy breakdown carried no per-pillar number, so pillar scores stay 0 and the
+ * total comes from `bant_score` — filling a pillar in would mean inventing its number. A note is filed
+ * under a BANT pillar only when the legacy row labelled it that way; warning/risk notes become risks and
+ * the rest stay in the summary, so no analyst text is dropped or re-attribute by keyword guesswork.
+ */
+const BANT_PILLARS = ['budget', 'authority', 'need', 'timeline'] as const;
+
+function legacyQualification(raw: Record<string, unknown>, score: number | null, evaluatedAt: string): LeadQualification {
+  const breakdown = (Array.isArray(raw.breakdown) ? raw.breakdown : []) as { type?: unknown; title?: unknown; detail?: unknown }[];
+  const notes = breakdown
+    .map(item => ({
+      type: typeof item.type === 'string' ? item.type.trim().toLowerCase() : '',
+      text: [item.title, item.detail].filter(value => typeof value === 'string' && value.trim()).join(': ')
+    }))
+    .filter(note => note.text);
+  const pillarOf = (type: string) => BANT_PILLARS.find(pillar => pillar === type);
+  const isRisk = (type: string) => type === 'warning' || type === 'risk';
+  const criteria = Object.fromEntries(BANT_PILLARS.map(pillar => [pillar, {
+    score: 0,
+    maxScore: 25,
+    assessment: notes.filter(note => pillarOf(note.type) === pillar).map(note => note.text).join(' '),
+    evidence: []
+  }])) as unknown as LeadQualification['criteria'];
+  const summary = [raw.project_brief, raw.summary, ...notes.filter(note => !pillarOf(note.type) && !isRisk(note.type)).map(note => note.text)]
+    .filter(value => typeof value === 'string' && value.trim())
+    .join(' ');
+  const readiness = typeof raw.readiness_level === 'string' ? raw.readiness_level.trim() : '';
+  const direct = readiness.toUpperCase();
+  const level = (['high', 'medium', 'low'] as const).find(name => new RegExp(`\\b${name}\\b`, 'i').test(readiness));
+  return {
+    score: score ?? 0,
+    recommendation: ['QUALIFY', 'REVIEW', 'DISQUALIFY'].includes(direct)
+      ? direct
+      : level === 'high' ? 'QUALIFY' : level === 'low' ? 'DISQUALIFY' : 'REVIEW',
+    summary,
+    criteria,
+    risks: notes.filter(note => isRisk(note.type)).map(note => note.text),
+    nextSteps: [],
+    evaluatedAt
+  };
+}
+
 function listFilterValue<T extends string>(value: unknown, allowed: readonly T[], field: string): T | undefined {
   if (value === undefined || value === '') return undefined;
   if (typeof value !== 'string' || !allowed.includes(value as T)) throw new ValidationError(`${field} is invalid.`);
@@ -313,7 +357,7 @@ export class QualifyLeadUseCase {
     private readonly llmGateway: ILLMGateway,
     private readonly saveQualification: SaveQualificationUseCase
   ) {}
-  async execute(id: string, scope: AuthenticatedLeadScope): Promise<LeadQualification> {
+  async execute(id: string, scope: AuthenticatedLeadScope): Promise<{ qualification: LeadQualification; lead: Lead }> {
     const leadId = requiredUuid(id, 'id');
     const lead = await this.leadRepository.findById(leadId, { organizationId: scope.organizationId });
     if (!lead) throw new NotFoundError('Lead not found.');
@@ -331,10 +375,12 @@ export class QualifyLeadUseCase {
       lead.rawRfpContent,
       '</rfp_content>'
     ].join('\n\n');
-    const output = await this.llmGateway.generate({ taskMode: LLMTaskMode.LEAD_QUALIFICATION, prompt, temperature: 0.1, maxTokens: 1400 });
+    // Qualification is the gate every downstream stage trusts, so a made-up score is worse than an
+    // outage: requireLiveModel makes an offline model answer 502 instead of a placeholder result.
+    const output = await this.llmGateway.generate({ taskMode: LLMTaskMode.LEAD_QUALIFICATION, prompt, temperature: 0.1, maxTokens: 1400, requireLiveModel: true });
     const qualification = normalizeQualification(parseJsonObject(output));
-    await this.saveQualification.execute(leadId, scope, { score: qualification.score, details: qualification });
-    return qualification;
+    const saved = await this.saveQualification.execute(leadId, scope, { score: qualification.score, details: qualification });
+    return { qualification, lead: saved };
   }
 }
 
@@ -344,6 +390,8 @@ export class GetLatestQualificationUseCase {
     const lead = await this.leadRepository.findById(requiredUuid(id, 'id'), { organizationId });
     if (!lead) throw new NotFoundError('Lead not found.');
     if (lead.bantScore === null || !Object.keys(lead.bantDetails).length) throw new NotFoundError('Lead has no qualification result.');
-    return lead.bantDetails as unknown as LeadQualification;
+    const raw = lead.bantDetails as Record<string, unknown>;
+    if (typeof raw.score === 'number' && raw.criteria) return raw as unknown as LeadQualification;
+    return legacyQualification(raw, lead.bantScore, lead.updatedAt);
   }
 }

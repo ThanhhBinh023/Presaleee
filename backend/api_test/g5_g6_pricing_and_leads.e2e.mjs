@@ -92,6 +92,19 @@ async function aiServiceAvailable() {
   }
 }
 
+/**
+ * QUALIFIED and APPROVED are gated on a stored BANT score, and since N22 the only producer of one is a
+ * live model (`requireLiveModel` replaced the placeholder the old qualify path used to invent). With the
+ * AI service offline there is no honest score to walk on, so those steps report a skip instead of a
+ * failure or a faked pass.
+ */
+async function skipIfNoLiveModel(response) {
+  const gated = response.status === 409 && /requires a stored BANT score|must be qualified or approved/i.test(response.json?.error ?? '');
+  if (gated && !(await aiServiceAvailable())) {
+    throw new SkipError(`${response.json.error} The AI service on ${AI_URL} is offline, so no honest BANT score exists to unlock this step.`);
+  }
+}
+
 // ---------------------------------------------------------------- G5 fixtures
 
 await suite.test('G5-01', 'Bootstrap: two organizations, a member and the rate-card fixtures used by the pricing matrix', async () => {
@@ -669,13 +682,17 @@ await suite.test('G6-08', 'The lead status endpoint enforces the state machine',
   const qualifying = await setStatus(leadOwner, ids.lead, 'QUALIFYING');
   expect(qualifying.status === 200, `IN_REVIEW -> QUALIFYING expected 200, got ${qualifying.status}`);
   const qualified = await setStatus(leadOwner, ids.lead, 'QUALIFIED');
+  await skipIfNoLiveModel(qualified);
   expect(qualified.status === 200 && qualified.json.data.status === 'QUALIFIED', `QUALIFYING -> QUALIFIED expected 200, got ${qualified.status} ${qualified.text.slice(0, 160)}`);
 
-  const approvedWithoutBant = await setStatus(leadOwner, ids.lead, 'APPROVED');
+  // A second, unqualified lead proves the APPROVED gate without moving ids.lead out of QUALIFIED.
+  const gateLead = await createLead(leadOwner, { title: `E2E Approved gate ${RUN}`, rawRfpContent: 'gate probe' });
+  expect(gateLead.status === 201, `APPROVED gate fixture expected 201, got ${gateLead.status}`);
+  await setStatus(leadOwner, gateLead.json.data.id, 'IN_REVIEW');
+  const approvedWithoutBant = await setStatus(leadOwner, gateLead.json.data.id, 'APPROVED');
   expectEnvelope(approvedWithoutBant, 409);
-  expect(/qualification is missing/i.test(approvedWithoutBant.json.error), `expected the BANT gate message, got ${approvedWithoutBant.json.error}`);
-  return ['illegal jumps 409', 'same status is a no-op', 'APPROVED gated on a BANT score'];
-});
+  expect(/stored BANT score/i.test(approvedWithoutBant.json.error), `expected the BANT gate message, got ${approvedWithoutBant.json.error}`);
+  return ['illegal jumps 409', 'same status is a no-op', 'APPROVED gated on a BANT score'];});
 
 await suite.test('G6-09', 'A lead can be closed as WON or LOST only from a drafting or approved stage', async () => {
   const tooEarly = await setStatus(leadOwner, ids.lead, 'WON');
@@ -685,6 +702,7 @@ await suite.test('G6-09', 'A lead can be closed as WON or LOST only from a draft
   const walk = async (leadId, steps) => {
     for (const step of steps) {
       const moved = await setStatus(leadOwner, leadId, step);
+      await skipIfNoLiveModel(moved);
       expect(moved.status === 200 && moved.json.data.status === step, `${step} expected 200, got ${moved.status} ${moved.text.slice(0, 160)}`);
     }
   };
@@ -717,6 +735,7 @@ await suite.test('G6-10', 'A lead can only become a proposal once it is qualifie
   expect(/qualified or approved/i.test(early.json.error), `expected the gate message, got ${early.json.error}`);
 
   const created = await http(leadOwner, 'POST', `/api/v1/leads/${ids.lead}/proposals`, { body: { title: `E2E G6 Proposal ${RUN}` } });
+  await skipIfNoLiveModel(created);
   expect(created.status === 201, `qualified lead expected 201, got ${created.status} ${created.text.slice(0, 220)}`);
   expect(created.headers.location === `/api/v1/proposals/${created.json.data.id}`, `Location wrong: ${created.headers.location}`);
   ids.leadProposal = created.json.data.id;
@@ -859,7 +878,8 @@ await suite.test('G6-15', 'Qualification endpoints guard authorization and tenan
     if (!(await aiServiceAvailable())) throw new SkipError('AI service offline: the /qualifications 502 path was asserted, the score shape was not');
   }
   expect(attempt.status === 200, `qualification expected 200 or a documented 502, got ${attempt.status} ${attempt.text.slice(0, 200)}`);
-  const qualification = attempt.json.data;
+  expect(attempt.json.data.lead?.id === ids.refLead, `the qualify envelope must carry the saved lead, got ${JSON.stringify(Object.keys(attempt.json.data))}`);
+  const qualification = attempt.json.data.qualification;
   expect(qualification.score === [qualification.criteria.budget, qualification.criteria.authority, qualification.criteria.need, qualification.criteria.timeline]
     .reduce((sum, item) => sum + item.score, 0), 'BANT total must equal the sum of the four criteria');
   for (const item of Object.values(qualification.criteria)) {

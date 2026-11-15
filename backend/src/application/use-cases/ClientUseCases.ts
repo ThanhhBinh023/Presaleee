@@ -138,6 +138,42 @@ export class UpdateClientUseCase {
   }
 }
 
+/**
+ * SALES_REP and the other delivery roles own the commercial relationship but must not reshape the
+ * directory, so this writes only the three contact columns. `PATCH /clients/:id` stays admin-only.
+ */
+export class UpdateClientContactUseCase {
+  constructor(
+    private readonly clientRepository: IClientRepository,
+    private readonly auditRepository: IAuditRepository
+  ) {}
+
+  async execute(scope: AuthenticatedScope, id: string, dto: Record<string, unknown>): Promise<Client> {
+    const targetId = requiredUuid(id, 'id');
+    const existing = await this.clientRepository.findById(targetId, { organizationId: scope.organizationId });
+    if (!existing) throw new NotFoundError('Client not found.');
+    const rejected = Object.keys(dto).find(key => !['contactPerson', 'contactEmail', 'contactPhone'].includes(key));
+    if (rejected) throw new ValidationError(`${rejected} is not a contact field. Use PATCH /clients/:id.`);
+    const updates: UpdateClientInput = {};
+    assignIfPresent(dto, updates, 'contactPerson', value => nullableText(value, 'contactPerson', 255));
+    assignIfPresent(dto, updates, 'contactEmail', value => nullableText(value, 'contactEmail', 255));
+    assignIfPresent(dto, updates, 'contactPhone', value => nullableText(value, 'contactPhone', 50));
+    if (Object.keys(updates).length === 0) throw new ValidationError('At least one contact field is required.');
+    const client = await this.clientRepository.update(targetId, { organizationId: scope.organizationId }, updates);
+    if (!client) throw new NotFoundError('Client not found.');
+    await this.auditRepository.record({
+      organizationId: scope.organizationId,
+      actorId: scope.userId,
+      action: 'CLIENT_CONTACT_UPDATED',
+      entityType: 'client',
+      entityId: client.id,
+      payload: { changedFields: Object.keys(updates), companyName: client.companyName },
+      ipAddress: scope.ipAddress
+    });
+    return client;
+  }
+}
+
 export class DeleteClientUseCase {
   constructor(
     private readonly clientRepository: IClientRepository,

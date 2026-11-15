@@ -19,7 +19,7 @@ export interface IPortalRepository {
     proposalId: string; organizationId: string; createdBy: string; title: string;
     description: string | null; fileName: string; fileUrl: string; mimeType: string | null; isShared: boolean;
   }): Promise<PortalMaterial | null>;
-  deleteMaterial(proposalId: string, materialId: string, organizationId: string): Promise<boolean>;
+  deleteMaterial(proposalId: string, materialId: string, organizationId: string, actorId: string): Promise<boolean>;
   listSessionsForProposal(proposalId: string, organizationId: string): Promise<PortalSessionDetail[]>;
   listMaterialsForStaff(proposalId: string, organizationId: string): Promise<PortalMaterialDetail[]>;
 }

@@ -1,4 +1,4 @@
-import { ILLMGateway } from '../../domain/repositories/ILLMGateway.js';
+import { ILLMGateway, LLMTaskMode } from '../../domain/repositories/ILLMGateway.js';
 import { SearchHybridRAGUseCase } from './SearchHybridRAGUseCase.js';
 import { ValidationError } from '../../domain/errors/AppError.js';
 
@@ -47,7 +47,7 @@ export class AskKnowledgeUseCase {
     }));
     const evidence = citations.map(source => `${source.label} ${source.title}\n${source.excerpt}`).join('\n\n');
     const answer = await this.llmGateway.generate({
-      taskMode: 5,
+      taskMode: LLMTaskMode.TECH_ARCHITECTURE,
       temperature: 0.1,
       maxTokens: 1200,
       prompt: [

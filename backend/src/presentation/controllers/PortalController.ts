@@ -45,7 +45,7 @@ export class PortalController {
       const body = objectBody(req);
       const session = await this.createSessionUseCase.execute({
         proposalId: typeof body.proposalId === 'string' ? body.proposalId : '',
-        organizationId: req.auth.organizationId, userId: req.auth.sub, role: req.auth.role,
+        organizationId: req.auth.organizationId, userId: req.auth.sub,
         clientEmail: body.clientEmail, clientName: body.clientName, expiresInHours: body.expiresInHours
       });
       res.status(201).json({ success: true, data: session });
@@ -75,10 +75,10 @@ export class PortalController {
 
   deleteMaterial = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      if (!req.auth?.organizationId) throw new ForbiddenError('Authenticated organization is required.');
+      if (!req.auth?.sub || !req.auth.organizationId) throw new ForbiddenError('Authenticated user and organization are required.');
       await this.deleteMaterialUseCase.execute({
         proposalId: routeParam(req, 'proposalId'), materialId: routeParam(req, 'materialId'),
-        organizationId: req.auth.organizationId, role: req.auth.role
+        organizationId: req.auth.organizationId, actorId: req.auth.sub, role: req.auth.role
       });
       res.status(204).end();
     } catch (error) { next(error); }

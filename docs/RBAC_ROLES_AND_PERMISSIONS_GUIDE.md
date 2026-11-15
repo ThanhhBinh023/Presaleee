@@ -3,7 +3,7 @@
 > **Tài liệu đặc tả kiến trúc:** Role-Based Access Control (RBAC) & Multi-Tenant Data Isolation  
 > **Dự án:** Presaleee Platform (AI-Powered Presale & Proposal Engineering)  
 > **Ngày cập nhật:** 15/11/2026  
-> **Phiên bản tài liệu:** v2.6  
+> **Phiên bản tài liệu:** v2.7 *(đợt 3 — khảo sát `SOLUTION_ARCHITECT`: thêm mục 10–12 của phần 6 về audit material Portal, hợp đồng `task_mode` và `ui-brief`; vá danh sách lỗ hổng đa tenant bằng `findById`; đính chính phát biểu "tạo phiên Portal không cần Proposal APPROVED" — xem `RBAC_TENANCY_BUGFIX_CHANGELOG.md` mục 18)*  
 > **Quy tắc đọc bảng ma trận:** một quyền chỉ được ghi là giới hạn theo role khi code **thực sự enforce** giới hạn đó (middleware hoặc use case). Ngoài `VIEWER` và `ORGANIZATION_ADMIN_ROLES = ['ADMIN','PRESALE_LEAD']`, hệ thống **không có** giới hạn nào khác giữa 4 role nghiệp vụ còn lại.
 
 ---
@@ -68,8 +68,9 @@ Hệ thống bảo vệ tài nguyên dựa trên 2 tầng kiểm soát đồng t
 * **Quyền hạn & Thao tác:**
   - **Kiến trúc & Công nghệ:** Trực tiếp hoàn thiện Sheet 3 (`Architecture, Non-FR & Tech Stack`) và Sheet 8 (`Risk Management - RAID Log`).
   - **Kho tri thức (`Knowledge Vault`):** Nạp tài liệu giải pháp mẫu, kiến trúc hạ tầng (`POST /knowledge/documents` & `/rag/ingest`). Hệ thống tự động phân đoạn (chunking) và vector hóa dữ liệu bằng mô hình embedding.
-  - **UI Prototype Brief:** Sinh bản tóm tắt giao diện (AI UI Design Brief) phục vụ dựng mô hình Sandbox tương tác trên Client Portal.
+  - **UI Prototype Brief:** Sinh bản tóm tắt giao diện (`POST /proposals/:id/ui-brief`) phục vụ dựng mô hình Sandbox tương tác trên Client Portal. Từ đợt 3 endpoint này **mới thật sự gọi AI** (mode 6); trước đó nó trả văn mẫu hard-code nhưng vẫn báo "generated successfully". Nếu sheet `Overview` đã có `uiDesignBrief` hợp lệ thì đọc lại, không gọi model — `meta.source` cho biết nguồn nào.
   - **Tương tác Portal:** Trả lời trực tiếp các câu hỏi kỹ thuật chuyên sâu của khách hàng trên Portal.
+  - ⚠️ **Chiếu theo code (đợt 3, 15/11/2026):** 4 gạch đầu dòng trên là **mô tả nghiệp vụ**, không phải giới hạn kỹ thuật. Không có một middleware hay guard nào nhắc riêng tới `SOLUTION_ARCHITECT`; hệ thống chỉ có 2 tầng enforce (`requireNotViewer` và `ORGANIZATION_ADMIN_ROLES`). Vì vậy về mặt API, `SOLUTION_ARCHITECT` **giống hệt** `PRESALE_CONSULTANT` và `SALES_REP`, và **kém** `ADMIN`/`PRESALE_LEAD` đúng 6 nhóm: CRUD khách hàng, CRUD rate card, mời/đổi role thành viên, đọc audit log, 4 chuyển trạng thái đề xuất đặc quyền, và duyệt thư mục chéo tổ chức.
 
 ### 3.5. Role `SALES_REP` (Đại diện Kinh doanh / Account Executive)
 * **Mục tiêu:** Theo dõi và thúc đẩy cơ hội kinh doanh, duy trì kết nối với khách hàng.
@@ -96,7 +97,7 @@ Hệ thống bảo vệ tài nguyên dựa trên 2 tầng kiểm soát đồng t
     - ❌ Không được nạp thêm (`Ingest`) hoặc xóa tài liệu khỏi Knowledge Vault (`DELETE /knowledge/documents/:id`).
     - ❌ Không được phê duyệt đề xuất, không được **áp** kết quả tính giá vào Proposal (`apply:true` — chặn tại `RateCardUseCases.ts:237`), không được nạp/chỉnh sửa transcript họp.
     - ❌ Không được quản lý Rate Cards, Client Profiles, thành viên, Audit Log, hay thu hồi phiên Portal.
-    - ⚠️ **Ngoại lệ chưa siết:** `POST /portal/sessions` (tạo link chia sẻ) vẫn mở cho `VIEWER` — xem ghi chú ma trận mục 4.
+    - ⚠️ **Ngoại lệ chưa siết:** `POST /portal/sessions` (tạo link chia sẻ) vẫn mở cho `VIEWER`, dù chỉ với Proposal đã `APPROVED`/`SENT_TO_CLIENT`/`ACCEPTED` — xem ghi chú ma trận mục 4.
     - ✅ Giao diện Frontend tự động ẩn các nút ghi: **Delete**, **Confirm Delete**, **Ingest**, **Chạy AI Intake**, và từ 15/11/2026 bổ sung **Submit for Review**, **Approve Proposal**, **Sinh lại 10 Sheets**, **Tạo/Làm mới AI UI Brief**.
 
 ---
@@ -148,8 +149,8 @@ Hệ thống bảo vệ tài nguyên dựa trên 2 tầng kiểm soát đồng t
 
 **Ghi chú ma trận (đối chiếu code, 15/11/2026):**
 - Cột `❌` ở các dòng 2.x–5.x, 6.2, 7.7 là do `requireNotViewer` (middleware) hoặc guard trong use case; **không có dòng nào** phân biệt `PRESALE_CONSULTANT` / `SOLUTION_ARCHITECT` / `SALES_REP`.
-- Dòng 6.1: `POST /portal/sessions` **không** kiểm tra role và **không** kiểm tra trạng thái Proposal (`PortalUseCases.ts:39` ghi rõ đây là quyết định sản phẩm). Vì vậy `VIEWER` vẫn tạo được link — đây là điểm **rò rỉ ý đồ "VIEWER chỉ đọc"**, cần quyết định có siết lại hay không.
-- `PORTAL_FIRST_SHARE_ROLES` chỉ tồn tại ở frontend (`types/portal.ts:71`) và **không được tham chiếu ở bất kỳ đâu**; backend khai báo `APPROVED_PROPOSAL_SHARE_ROLES` (`PortalUseCases.ts:11`) nhưng chưa dùng. Không còn dòng "ký duyệt chia sẻ lần đầu" nào trong API.
+- Dòng 6.1: `POST /portal/sessions` **không** kiểm tra role, nên `VIEWER` vẫn tạo được link — đây là điểm **rò rỉ ý đồ "VIEWER chỉ đọc"**, cần quyết định có siết lại hay không. **Nhưng nó có kiểm tra trạng thái Proposal**, ở tầng repository: `PostgresPortalRepository.createSession:27` chỉ nhận `APPROVED` / `SENT_TO_CLIENT` / `ACCEPTED` (và `:31-32` tự đổi `APPROVED → SENT_TO_CLIENT` kèm audit `PROPOSAL_SHARED_WITH_CLIENT`). Bản in trước của tài liệu này ghi "không kiểm tra trạng thái" là **sai** — đã đính chính 15/11/2026, xem `RBAC_TENANCY_BUGFIX_CHANGELOG.md` mục 18.1.
+- Không còn hằng số role "ký duyệt chia sẻ lần đầu" nào: `PORTAL_FIRST_SHARE_ROLES` và `PORTAL_MANAGER_ROLES` bản frontend (`types/portal.ts`) đã **xoá** vì không component nào tham chiếu; `APPROVED_PROPOSAL_SHARE_ROLES` backend (`PortalUseCases.ts:11` bản cũ) cũng đã xoá vì khai báo mà không dùng.
 - `GET /users` (dòng 7.3) mở cho mọi thành viên đã đăng nhập; chỉ riêng tra cứu **cross-organization** mới giới hạn `ADMIN` (`UserUseCases.ts:108`).
 
 ---
@@ -214,25 +215,38 @@ Hệ thống bảo vệ tài nguyên dựa trên 2 tầng kiểm soát đồng t
    DELETE FROM leads WHERE id = $1 AND organization_id = $2;
    ```
    Điều này đảm bảo ngăn chặn hoàn toàn việc người dùng can thiệp dữ liệu chéo tổ chức.
-   Đã kiểm chứng lại 15/11/2026 và vá hai chỗ lọt lưới:
+   Đã kiểm chứng lại 15/11/2026 (đợt 1–2) và vá 4 chỗ lọt lưới, đợt 3 vá thêm chỗ thứ 5:
    - `POST /proposals/generate-from-lead`: `SELECT` lead + meetings **không** có mệnh đề org → đọc được RFP và biên bản họp của tổ chức khác nếu biết UUID. Nay dùng `GenerateProposalFromLeadInput.organizationId` (bắt buộc) và scope meetings qua `JOIN leads`.
    - `IProposalRepository.findByLeadId(leadId, organizationId)` bổ sung tham số org, `PostgresProposalRepository.ts:111` thêm `AND organization_id = $2`.
    - Nhánh fallback của `GET /proposals/:id/export-excel|export-pdf` không còn dùng org mặc định hard-code `00000000-…-001`, mà lấy từ token (`ProposalController.exportExcel/exportPdf`).
    - `GenerateProposalFromLeadUseCase` gọi RAG **không truyền org**. Câu SQL trong `hybrid_search` là `(filter_organization_id IS NULL OR kd.organization_id = filter_organization_id)`, tức tham số org NULL **tắt luôn bộ lọc**, nên tài liệu (RFP, hợp đồng đã ký) của tổ chức khác lọt vào context prompt. Nay truyền `organizationId: input.organizationId` (đợt 2, 15/11/2026).
+   - `PostgresProposalRepository.findById` — **đường đọc proposal phổ biến nhất (24 call site)** — có nhánh retry *bỏ hẳn* điều kiện tổ chức khi query đầu tiên trả rỗng, cộng thêm `OR organization_id IS NULL` và bypass cho org sentinel `00000000-…-001`. Ai biết một UUID/leadId của tổ chức khác là đọc được nguyên hồ sơ **kèm cả 10 sheet**. Đợt 3 (15/11/2026) ép `organizationId` thành tham số bắt buộc và chỉ còn đúng một câu SQL `AND organization_id = $2` (`PostgresProposalRepository.ts:71-79`). Hệ quả đã đo: 4/156 proposal `organization_id IS NULL` giờ **không route nào đọc được**, kể cả org chủ — cần backfill (chưa làm, chờ duyệt vì là ghi DB).
 4. **Không nhận tenant từ phía client:**
    Bản cũ cho phép `x-organization-id` hoặc `body.organizationId` làm giá trị dự phòng khi token không có org. Cả hai đường này đã bị gỡ tại `LeadIntakeController.analyze`; `organizationId`/`userId` bây giờ **chỉ** đến từ `req.auth`.
    Đợt 2 (15/11/2026) gỡ thêm đường cuối cùng còn sót: `GET /proposals?organizationId=<uuid>` cho phép liệt kê đề xuất của tổ chức khác (`ProposalController.list` bản cũ), cùng giá trị mặc định `00000000-…-001` khi tham số trống.
 5. **Gate theo mode môi trường:**
    `POST /auth/dev-login` (đăng nhập không cần mật khẩu theo email) trả `403 Forbidden` khi `NODE_ENV=production`; trước 15/11/2026 endpoint này mở ở mọi môi trường.
 6. **Đồng bộ phân quyền Portal (`PORTAL_MANAGER_ROLES`):**
-   Danh sách `['ADMIN', 'PRESALE_LEAD', 'SALES_REP', 'PRESALE_CONSULTANT', 'SOLUTION_ARCHITECT']` được khai báo ở `PortalUseCases.ts:10` và **chỉ enforce ở backend** cho: thu hồi phiên (`:151`), tạo material (`:162`), xóa material (`:187`). Bản sao trong `frontend/src/types/portal.ts:64,71` hiện **không được component nào tham chiếu**, nên không thể coi là lớp kiểm soát thứ hai.
-   `POST /portal/sessions` (phát hành token truy cập portal cho khách) **không** có `requireNotViewer` và cũng không kiểm tra role — đây là quyết định sản phẩm ghi rõ trong `PortalUseCases.ts:39`, không phải chỗ quên; UI `PortalDesk` vì vậy để trống thao tác này cho mọi role và chỉ gate revoke/material.
+   Danh sách `['ADMIN', 'PRESALE_LEAD', 'SALES_REP', 'PRESALE_CONSULTANT', 'SOLUTION_ARCHITECT']` được khai báo ở `PortalUseCases.ts:10` và **chỉ enforce ở backend** cho: thu hồi phiên (`:151`), tạo material (`:162`), xóa material (`:187`). Lưu ý bản chất: danh sách này là **mọi role trừ `VIEWER`**, nên nó tương đương `requireNotViewer` chứ không phải một tầng "quản trị portal" riêng. Bản sao trong `frontend/src/types/portal.ts` đã xoá ở đợt 3 vì không component nào tham chiếu.
+   `POST /portal/sessions` (phát hành token truy cập portal cho khách) **không** có `requireNotViewer` và cũng không kiểm tra role — đây là quyết định sản phẩm, không phải chỗ quên. Cửa **trạng thái** thì có thật, nằm ở `PostgresPortalRepository.createSession:27` (`APPROVED`/`SENT_TO_CLIENT`/`ACCEPTED`, và tự đổi `APPROVED → SENT_TO_CLIENT`). Vì vậy `PortalDesk` gate form tạo phiên theo **trạng thái hồ sơ** (`shareable`, `:188`) chứ không gate theo role — hai loại gate khác nhau, đừng nhầm.
 7. **Hai route con bị quên middleware (đợt 2):**
    `POST /leads/:leadId/meetings` và `POST /leads/:leadId/proposals` (`routes/index.ts:51-52`) trước đây chỉ có `requireAuth + requireOrganization`, trong khi mọi route ghi khác cùng nhóm đều có `requireNotViewer` → `VIEWER` tạo được meeting và proposal. Đã bổ sung `requireNotViewer`.
 8. **Vòng đời Proposal không còn cửa sau (đợt 2):**
    `POST /proposals/generate-from-lead` trước đây vô điều kiện ghi đè tiêu đề, `total_cost`, timeline và **toàn bộ 10 sheet** rồi kéo Proposal về `DRAFT`, kể cả bản đã `APPROVED`/`SENT_TO_CLIENT`/`ACCEPTED` — tức đi vòng qua state machine trong `UpdateProposalUseCase.ts:69-76`. Nay ba trạng thái khoá đó trả `409 Conflict`, yêu cầu đưa về `DRAFT` bằng PATCH chuẩn (có kiểm tra role) trước khi sinh lại.
 9. **Audit log của luồng Lead trực tiếp (đợt 2):**
    Bốn handler viết raw SQL trong `LeadIntakeController` (analyze-persist, qualify, update, delete) không ghi `audit_log` dù đi ngược lại quy ước của các use case. Nay ghi `LEAD_CREATED / LEAD_QUALIFIED / LEAD_UPDATED / LEAD_DELETED` qua `recordLeadAudit()`; `container.ts:221` truyền `auditRepository` vào controller.
+10. **Audit log của Material Portal (đợt 3):**
+    Thêm/xoá material trước đó **không** lưu dấu vết nào, dù mọi hành động portal khác đều có (`CLIENT_PORTAL_SESSION_CREATED/REVOKED`, `PROPOSAL_SHARED_WITH_CLIENT`). Nay ghi `CLIENT_PORTAL_MATERIAL_ADDED` / `CLIENT_PORTAL_MATERIAL_DELETED` với `entity_type='portal_material'` (`PostgresPortalRepository.ts:156-181`). `DeletePortalMaterialUseCase` phải nhận thêm `actorId` thì mới truy vết được ai xoá — chuỗi tham số đã xuyên suốt từ `PortalController.deleteMaterial:79` xuống repository. `audit_logs` không có CHECK trên `action`/`entity_type` (`001_initial_schema.sql:216-229`) nên không cần migration.
+11. **Hợp đồng `task_mode` với service AI (đợt 3):**
+    `ai/server.py:173-235` định nghĩa 6 system prompt theo khoá 1..6, và `.get(req.task_mode, default)` (`:237`) **âm thầm** rơi về "helpful IT Presale Assistant" nếu gửi số ngoài phạm vi. Backend trước đây truyền **số thô** nên không ai phát hiện chỗ lệch. Nay mọi call site dùng `LLMTaskMode`:
+    | Nơi gọi | Cũ | Mới | Đổi hành vi? |
+    |---|---|---|---|
+    | `AskKnowledgeUseCase.ts:50` | `5` = "synthesize executive overview" — đối ngược yêu cầu "trả lời kèm trích dẫn [1]" | `TECH_ARCHITECTURE` (6) | **Có** |
+    | `GenerateProposalSheetsUseCase.ts:137` | `5` | `PROPOSAL_BUILDER` (cũng 5) | Không, chỉ bỏ số thô |
+    | `PortalUseCases.ts:90` (khách hỏi proposal) | `5` | `PROPOSAL_BUILDER` (cũng 5) | Không |
+    | `GenerateUIDesignBriefUseCase.ts:68` (mới) | — | `TECH_ARCHITECTURE` (6) | Lần đầu tiên mode 6 có caller |
+12. **`POST /proposals/:id/ui-brief` trước đây không gọi AI (đợt 3):**
+    Bản cũ dựng sẵn 5 trường văn mẫu tiếng Việt (`title`, `target_users`, `key_screens`, `ui_style_guide`, `interaction_flow`) khi sheet `Overview` thiếu `uiDesignBrief`, rồi trả `message: 'AI UI Design Brief generated successfully.'` — **mọi role** đều nhận thông báo sai, và `LLMTaskMode.TECH_ARCHITECTURE` vì thế không có ai gọi. Nay use case riêng (`GenerateUIDesignBriefUseCase`) đọc sheet theo org, gọi AI mode 6, **kiểm tra hình JSON** rồi mới nhận; AI trả rác thì `409` "Nothing was generated" chứ không âm thầm dựng mẫu. Response có thêm `meta.source` = `'sheet'` hay `'ai'` để UI nói đúng nguồn.
 
 ---
 *Presaleee Enterprise Solutions Platform — Tài liệu kỹ thuật lưu hành nội bộ.*

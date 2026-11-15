@@ -154,18 +154,31 @@ export class PostgresPortalRepository implements IPortalRepository {
         input.fileName, input.fileUrl, input.mimeType, input.isShared]
     );
     const row = result.rows[0];
-    return row ? {
+    if (!row) return null;
+    await this.pool.query(
+      `INSERT INTO audit_logs (organization_id, user_id, action, entity_type, entity_id, payload)
+       VALUES ($1, $2, 'CLIENT_PORTAL_MATERIAL_ADDED', 'portal_material', $3, $4::jsonb);`,
+      [input.organizationId, input.createdBy, row.id,
+        JSON.stringify({ proposalId: input.proposalId, title: input.title, fileName: input.fileName, isShared: input.isShared })]
+    );
+    return {
       id: row.id, title: row.title, description: row.description, fileName: row.file_name,
       fileUrl: row.file_url, mimeType: row.mime_type, createdAt: new Date(row.created_at).toISOString()
-    } : null;
+    };
   }
 
-  async deleteMaterial(proposalId: string, materialId: string, organizationId: string): Promise<boolean> {
+  async deleteMaterial(proposalId: string, materialId: string, organizationId: string, actorId: string): Promise<boolean> {
     const result = await this.pool.query(
-      `DELETE FROM proposal_portal_materials WHERE proposal_id = $1 AND id = $2 AND organization_id = $3 RETURNING id;`,
+      `DELETE FROM proposal_portal_materials WHERE proposal_id = $1 AND id = $2 AND organization_id = $3 RETURNING id, title;`,
       [proposalId, materialId, organizationId]
     );
-    return (result.rowCount ?? 0) > 0;
+    if ((result.rowCount ?? 0) === 0) return false;
+    await this.pool.query(
+      `INSERT INTO audit_logs (organization_id, user_id, action, entity_type, entity_id, payload)
+       VALUES ($1, $2, 'CLIENT_PORTAL_MATERIAL_DELETED', 'portal_material', $3, $4::jsonb);`,
+      [organizationId, actorId, materialId, JSON.stringify({ proposalId, title: result.rows[0].title })]
+    );
+    return true;
   }
 
   async listSessionsForProposal(proposalId: string, organizationId: string): Promise<PortalSessionDetail[]> {

@@ -43,15 +43,8 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({
   const compliance = Array.isArray(meta.complianceStandards) ? meta.complianceStandards.join(', ') : (meta.complianceStandards || 'SOC-2 Type II, ISO 27001');
 
   const [clientQuery, setClientQuery] = useState('');
-  const [aiAnswers, setAiAnswers] = useState<Array<{ q: string; a: string }>>([
-    {
-      q: 'Hệ thống có cam kết khả năng chịu tải và thời gian sẵn sàng SLA bao nhiêu?',
-      a: `Kiến trúc đề xuất cho dự án "${title}" cam kết thời gian hoạt động SLA 99.999%, tự động failover đa vùng dưới 3 giây và đáp ứng chuẩn ${compliance}.`,
-    },
-  ]);
-  const [comments, setComments] = useState<string[]>([
-    'CTO (Khách hàng): "Cần làm rõ tiêu chí nghiệm thu hoàn tất Phase 1 và phương án chuyển giao tài liệu CI/CD."',
-  ]);
+  const [aiAnswers, setAiAnswers] = useState<Array<{ q: string; a: string }>>([]);
+  const [comments, setComments] = useState<string[]>([]);
   const [newComment, setNewComment] = useState('');
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
 
@@ -64,7 +57,7 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({
       ...aiAnswers,
       {
         q: clientQuery,
-        a: `Dựa trên tài liệu đề xuất của dự án "${title}", giải pháp công nghệ ${techStack} đáp ứng đầy đủ yêu cầu của quý công ty với tiến độ ước tính ${timeline} tuần và mức đầu tư $${budget.toLocaleString()} USD.`,
+        a: `[Xem thử] Dự án "${title}" được đề xuất với ${techStack}, tiến độ ${timeline} tuần, mức đầu tư ${budget.toLocaleString()} USD. Đây là bản nháp sinh tại trình duyệt — khách hàng thật phải hỏi qua đường dẫn portal, câu trả lời mới đi qua AI và trích dẫn source.`,
       },
     ]);
     setClientQuery('');
@@ -73,9 +66,9 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({
   const handleAddComment = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newComment.trim()) return;
-    setComments([...comments, `Khách hàng (Client Reviewer): "${newComment}"`]);
+    setComments([...comments, `[Xem thử, chưa gửi] Khách hàng (Client Reviewer): "${newComment}"`]);
     setNewComment('');
-    toast.success('Đã gửi phản hồi thành công đến đội ngũ Presale!', 'Client Feedback');
+    toast.info('Bản xem thử: phản hồi chỉ hiển thị ở trình duyệt, chưa được gửi về đội Presale.', 'Client Feedback');
   };
 
   const handleDownloadPdf = async () => {
@@ -465,6 +458,9 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({
                   </div>
 
                   <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
+                    {aiAnswers.length === 0 && (
+                      <p className="text-[11px] text-slate-500 font-mono">Chưa có câu hỏi nào. Câu trả lời ở đây chỉ là văn bản mẫu tạo tại trình duyệt, không gọi AI.</p>
+                    )}
                     {aiAnswers.map((item, i) => (
                       <div key={i} className="text-xs space-y-1">
                         <div className="font-semibold text-slate-800">Q: {item.q}</div>
@@ -504,6 +500,9 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({
                   </div>
 
                   <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                    {comments.length === 0 && (
+                      <p className="text-[11px] text-slate-500 font-mono">Chưa có góp ý. Phản hồi khách hàng thật đi qua POST /portal/proposals/:id/comments và chỉ ghi được khi có token portal.</p>
+                    )}
                     {comments.map((c, i) => (
                       <div key={i} className="p-2.5 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 leading-relaxed font-mono text-[11px]">
                         {c}
@@ -537,7 +536,7 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({
         <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500 font-mono">
           <span className="flex items-center gap-1.5">
             <ShieldCheck className="w-3.5 h-3.5 text-brand-600" />
-            <span>Presaleee Telemetry: Đang ghi nhận tín hiệu tương tác thời gian thực</span>
+            <span>Bản xem thử Client Portal — không ghi nhận telemetry, không lưu câu hỏi/góp ý vào hệ thống</span>
           </span>
           <button
             onClick={onClose}

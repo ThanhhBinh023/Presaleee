@@ -217,6 +217,13 @@ export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({ onPr
             <p className="text-xs text-slate-500 mt-1">
               Recorded transcripts from 3rd-party software (Zoom, Teams, Meet). AI accumulates context to generate sharp follow-up questions for subsequent meetings.
             </p>
+            <p className="mt-2 text-[11px] font-mono leading-relaxed text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 max-w-2xl">
+              Tab này chưa đấu nối được với backend: nó gọi POST /meetings, GET /meetings/lead/:id,
+              PATCH /meetings/:id/lifecycle, POST /meetings/:id/inspect, PUT /meetings/:id — backend chỉ có
+              POST /leads/:leadId/meetings, GET /leads/:leadId/meetings, PATCH /meetings/:id/status,
+              POST /meetings/:id/analyze. Mọi nút ở đây hiện trả về 404 và danh sách luôn trống.
+              Bản đấu nối thật nằm ở tab MeetingsWorkspace (/meetings).
+            </p>
           </div>
 
           <div className="flex items-center gap-3">
@@ -476,14 +483,16 @@ export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({ onPr
                     <div className="p-4 rounded-xl bg-white border border-slate-200 space-y-3">
                       <div className="text-xs font-mono font-bold text-slate-800 flex items-center justify-between">
                         <span>ACTION ITEMS &amp; OWNERSHIP:</span>
-                        <span className="text-[11px] text-slate-400">Click để toggle hoàn thành</span>
+                        <span className="text-[11px] text-slate-400">{isViewer ? 'Chỉ đọc' : 'Click để toggle hoàn thành'}</span>
                       </div>
                       <div className="space-y-2">
                         {selectedMeeting.actionItems.map((item, idx) => (
                           <div 
                             key={idx}
-                            onClick={() => handleToggleActionItem(idx)}
-                            className={`p-2.5 rounded-lg border text-xs font-mono cursor-pointer flex items-center justify-between transition-colors ${
+                            onClick={isViewer ? undefined : () => handleToggleActionItem(idx)}
+                            className={`p-2.5 rounded-lg border text-xs font-mono flex items-center justify-between transition-colors ${
+                              isViewer ? 'cursor-default' : 'cursor-pointer'
+                            } ${
                               item.completed ? 'bg-slate-50 border-slate-200 text-slate-400 line-through' : 'bg-white border-slate-200 hover:border-brand-300'
                             }`}
                           >
@@ -492,6 +501,7 @@ export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({ onPr
                                 type="checkbox" 
                                 checked={!!item.completed} 
                                 onChange={() => {}} 
+                                disabled={isViewer}
                                 className="rounded text-brand-600 cursor-pointer"
                               />
                               <span>{item.task}</span>
@@ -545,7 +555,9 @@ export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({ onPr
                       <div className="pt-2 flex justify-end">
                         <button
                           onClick={openScheduleFollowupModal}
-                          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold font-mono shadow-xs transition-colors"
+                          disabled={isViewer}
+                          title={isViewer ? 'VIEWER không được tạo cuộc họp mới (403)' : undefined}
+                          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold font-mono shadow-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <span>Tạo Meeting #{selectedMeeting.meetingOrder + 1} Kế Thừa Câu Hỏi Này</span>
                           <ArrowRight className="w-4 h-4" />
@@ -576,8 +588,9 @@ export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({ onPr
                   {selectedMeeting.status === 'OPEN' && (
                     <button
                       onClick={() => handleLifecycleChange('LOCKED')}
-                      disabled={isTransitioning}
-                      className="px-3.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 font-mono text-slate-700 flex items-center gap-1.5"
+                      disabled={isTransitioning || isViewer}
+                      title={isViewer ? 'VIEWER bị backend chặn ghi (403)' : undefined}
+                      className="px-3.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 font-mono text-slate-700 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Lock className="w-3.5 h-3.5 text-slate-500" />
                       <span>Lock Meeting</span>
@@ -587,8 +600,9 @@ export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({ onPr
                   {selectedMeeting.status === 'LOCKED' && (
                     <button
                       onClick={() => handleLifecycleChange('OPEN')}
-                      disabled={isTransitioning}
-                      className="px-3.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 font-mono text-slate-700 flex items-center gap-1.5"
+                      disabled={isTransitioning || isViewer}
+                      title={isViewer ? 'VIEWER bị backend chặn ghi (403)' : undefined}
+                      className="px-3.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 font-mono text-slate-700 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Unlock className="w-3.5 h-3.5 text-slate-500" />
                       <span>Reopen Meeting</span>
@@ -598,8 +612,9 @@ export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({ onPr
                   {selectedMeeting.status === 'INSPECTED' && (
                     <button
                       onClick={() => handleLifecycleChange('REOPENED')}
-                      disabled={isTransitioning}
-                      className="px-3.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 font-mono text-slate-700 flex items-center gap-1.5"
+                      disabled={isTransitioning || isViewer}
+                      title={isViewer ? 'VIEWER bị backend chặn ghi (403)' : undefined}
+                      className="px-3.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 font-mono text-slate-700 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Unlock className="w-3.5 h-3.5 text-slate-500" />
                       <span>Reopen For Notes</span>
@@ -609,8 +624,9 @@ export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({ onPr
                   {selectedMeeting.status === 'REOPENED' && (
                     <button
                       onClick={() => handleLifecycleChange('LOCKED')}
-                      disabled={isTransitioning}
-                      className="px-3.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 font-mono text-slate-700 flex items-center gap-1.5"
+                      disabled={isTransitioning || isViewer}
+                      title={isViewer ? 'VIEWER bị backend chặn ghi (403)' : undefined}
+                      className="px-3.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 font-mono text-slate-700 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Lock className="w-3.5 h-3.5 text-slate-500" />
                       <span>Re-lock Meeting</span>
@@ -619,8 +635,9 @@ export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({ onPr
 
                   <button
                     onClick={handleRunAIInspect}
-                    disabled={isInspecting}
-                    className="px-4 py-2 rounded-xl bg-brand-500 hover:bg-brand-600 text-white font-mono font-semibold flex items-center gap-2 shadow-xs transition-colors"
+                    disabled={isInspecting || isViewer}
+                    title={isViewer ? 'VIEWER bị backend chặn gọi AI trên meeting (403)' : undefined}
+                    className="px-4 py-2 rounded-xl bg-brand-500 hover:bg-brand-600 text-white font-mono font-semibold flex items-center gap-2 shadow-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Sparkles className={`w-4 h-4 ${isInspecting ? 'animate-spin' : ''}`} />
                     <span>{isInspecting ? 'AI Inspecting...' : 'Run AI Inspect'}</span>

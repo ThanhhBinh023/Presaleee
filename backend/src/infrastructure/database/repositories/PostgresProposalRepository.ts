@@ -68,24 +68,11 @@ export class PostgresProposalRepository implements IProposalRepository {
     }
   }
 
-  async findById(id: string, organizationId?: string): Promise<ProposalWithSheets | null> {
-    let query = `SELECT * FROM proposals WHERE (id = $1 OR lead_id = $1)`;
-    const params: any[] = [id];
-
-    if (organizationId && organizationId !== '00000000-0000-0000-0000-000000000001') {
-      query += ` AND (organization_id = $2 OR organization_id IS NULL)`;
-      params.push(organizationId);
-    }
-    query += ` ORDER BY updated_at DESC LIMIT 1;`;
-
-    let proposalRes = await this.pool.query(query, params);
-
-    if (proposalRes.rows.length === 0 && params.length > 1) {
-      proposalRes = await this.pool.query(
-        `SELECT * FROM proposals WHERE (id = $1 OR lead_id = $1) ORDER BY updated_at DESC LIMIT 1;`,
-        [id]
-      );
-    }
+  async findById(id: string, organizationId: string): Promise<ProposalWithSheets | null> {
+    const proposalRes = await this.pool.query(
+      `SELECT * FROM proposals WHERE (id = $1 OR lead_id = $1) AND organization_id = $2 ORDER BY updated_at DESC LIMIT 1;`,
+      [id, organizationId]
+    );
 
     if (proposalRes.rows.length === 0) {
       return null;

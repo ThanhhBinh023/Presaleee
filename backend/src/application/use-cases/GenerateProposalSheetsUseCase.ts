@@ -1,4 +1,4 @@
-import { ILLMGateway } from '../../domain/repositories/ILLMGateway.js';
+import { ILLMGateway, LLMTaskMode } from '../../domain/repositories/ILLMGateway.js';
 import { IProposalRepository } from '../../domain/repositories/IProposalRepository.js';
 import { ILeadRepository } from '../../domain/repositories/ILeadRepository.js';
 import { ConflictError, NotFoundError, ValidationError } from '../../domain/errors/AppError.js';
@@ -134,7 +134,7 @@ export class GenerateProposalSheetsUseCase {
         `Verified knowledge references:\n${referenceContext || '(No organization knowledge references found.)'}`,
         `Additional user instructions:\n${instructions || '(None)'}`
       ].join('\n\n');
-      const output = await this.llmGateway.generate({ taskMode: 5, prompt, temperature: 0.15, maxTokens: 2200 });
+      const output = await this.llmGateway.generate({ taskMode: LLMTaskMode.PROPOSAL_BUILDER, prompt, temperature: 0.15, maxTokens: 2200 });
       const sheetData = parseObject(output);
       if (name === 'Overview' && client) sheetData.clientName = client.companyName;
       if (name === 'Pricing & Quotation' && sheetData.grandTotal !== undefined &&

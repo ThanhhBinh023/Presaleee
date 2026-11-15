@@ -23,6 +23,7 @@ import { CreateProposalFromLeadUseCase } from './application/use-cases/CreatePro
 import { GenerateProposalSheetsUseCase } from './application/use-cases/GenerateProposalSheetsUseCase.js';
 import { ExportProposalToPdfUseCase } from './application/use-cases/ExportProposalToPdfUseCase.js';
 import { GenerateProposalFromLeadUseCase } from './application/use-cases/GenerateProposalFromLeadUseCase.js';
+import { GenerateUIDesignBriefUseCase } from './application/use-cases/GenerateUIDesignBriefUseCase.js';
 
 import { RAGController } from './presentation/controllers/RAGController.js';
 import { ProposalController } from './presentation/controllers/ProposalController.js';
@@ -204,6 +205,8 @@ export function createContainer(): ServiceContainer {
     dbPool
   );
 
+  const generateUIDesignBriefUseCase = new GenerateUIDesignBriefUseCase(proposalRepository, llmGateway);
+
   const proposalController = new ProposalController(
     createProposalUseCase,
     createProposalFromLeadUseCase,
@@ -216,7 +219,8 @@ export function createContainer(): ServiceContainer {
     generateProposalSheetsUseCase,
     exportProposalToPdfUseCase,
     submitProposalForReviewUseCase,
-    generateProposalFromLeadUseCase
+    generateProposalFromLeadUseCase,
+    generateUIDesignBriefUseCase
   );
   const leadIntakeController = new LeadIntakeController(analyzeLeadIntakeUseCase, createLeadUseCase, qualifyLeadUseCase, dbPool, llmGateway, auditRepository);
   const authController = new AuthController(

@@ -84,6 +84,7 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
   // Role info & checks
   const isViewer = user?.role === 'VIEWER';
   const userRole = (user?.role || 'VIEWER') as UserRole;
+  const isOrganizationAdmin = userRole === 'ADMIN' || userRole === 'PRESALE_LEAD';
   const roleInfo = ROLE_DETAILS[userRole] || ROLE_DETAILS.VIEWER;
 
   // Deal Team Allocation state (Requirement: not every lead needs all 6 roles)
@@ -460,12 +461,12 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                   {userRole}
                 </span>
                 <span className="font-semibold text-xs truncate sm:whitespace-normal">
-                  {userRole === 'ADMIN' && '👑 Quản trị viên: Toàn quyền phê duyệt, quản lý thành viên, cấu hình và xóa dữ liệu.'}
-                  {userRole === 'PRESALE_LEAD' && '⭐ Presale Lead: Phê duyệt Proposal (DRAFT -> APPROVED), cấu hình Rate Cards, duyệt gửi Client Portal.'}
-                  {userRole === 'PRESALE_CONSULTANT' && '💡 Presale Consultant: Tiếp nhận AI Intake, điều phối Discovery và hoàn thiện ma trận 10-Sheet Proposal.'}
-                  {userRole === 'SOLUTION_ARCHITECT' && '📐 Solution Architect: Thiết kế Kiến trúc, Tech Stack, Technical Sessions và rà soát RAID Log.'}
-                  {userRole === 'SALES_REP' && '🚀 Sales Rep: Tiếp nhận RFP ban đầu, thẩm định BANT AI, theo dõi Pipeline và chia sẻ Client Portal.'}
-                  {userRole === 'VIEWER' && '🔒 Chế độ Chỉ đọc: Được phép xem mọi tài liệu và xuất Excel/PDF. Các thao tác chỉnh sửa/xóa bị khóa an toàn.'}
+                  {userRole === 'ADMIN' && '👑 Quản trị viên: toàn quyền trong tổ chức — phê duyệt Proposal, Clients, Rate Cards, thành viên, audit log.'}
+                  {userRole === 'PRESALE_LEAD' && '⭐ Presale Lead: backend cấp quyền y hệt ADMIN trong tổ chức — Phê duyệt Proposal, Rate Cards, Clients, thành viên.'}
+                  {userRole === 'PRESALE_CONSULTANT' && '💡 Presale Consultant: tạo/sửa Lead, Proposal, Cuộc họp, Knowledge. Không được Approve, Rate Cards, Clients, thành viên.'}
+                  {userRole === 'SOLUTION_ARCHITECT' && '📐 Solution Architect: backend không phân biệt với Consultant — được các quyền ghi nghiệp vụ, mất Approve, Rate Cards, Clients, thành viên.'}
+                  {userRole === 'SALES_REP' && '🚀 Sales Rep: backend không phân biệt với Consultant — toàn bộ quyền ghi nghiệp vụ trừ các endpoint chỉ ADMIN/PRESALE_LEAD.'}
+                  {userRole === 'VIEWER' && '🔒 Chỉ đọc: mọi API ghi nghiệp vụ chặn 403, riêng POST /portal/sessions (tạo phiên chia sẻ) chưa gate role. Xem và xuất Excel/PDF bình thường.'}
                 </span>
               </div>
               <div className="text-[11px] font-mono text-slate-500 shrink-0 flex items-center gap-1.5">
@@ -474,10 +475,15 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                     <Lock className="w-3.5 h-3.5 text-slate-400" />
                     <span>Chỉ đọc (Read-Only)</span>
                   </>
+                ) : isOrganizationAdmin ? (
+                  <>
+                    <Zap className="w-3.5 h-3.5 text-brand-600" />
+                    <span>Toàn quyền trong tổ chức</span>
+                  </>
                 ) : (
                   <>
                     <Zap className="w-3.5 h-3.5 text-brand-600" />
-                    <span>Toàn quyền chỉnh sửa</span>
+                    <span>Chỉnh sửa nghiệp vụ — không có quyền quản trị tổ chức</span>
                   </>
                 )}
               </div>
@@ -1017,19 +1023,22 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                       Technical Deep Dive &amp; Technical Summary
                     </h2>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      AI tổng hợp toàn bộ các session kỹ thuật thành một Technical Summary trực tiếp cấp dữ liệu cho Proposal Builder.
+                      Khung mẫu 6 mục cố định. Nội dung bên dưới là dữ liệu demo dựng sẵn trong trình duyệt — chưa được tổng hợp từ session kỹ thuật thật và không được lưu vào Proposal.
                     </p>
                   </div>
 
                   <button
                     onClick={() => {
                       setActiveSubnav('Proposal Builder v2.4');
-                      toast.success('Technical Summary synced directly to Proposal Builder!', 'Đồng bộ Discovery');
+                      toast.info(
+                        'Không có dữ liệu nào được đồng bộ. Nội dung 6 mục ở đây là mẫu tĩnh; hồ sơ 10 Sheets lấy từ API, không nhận thông tin này.',
+                        'Mở Proposal Builder'
+                      );
                     }}
                     className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold shadow-xs"
                   >
                     <Zap className="w-3.5 h-3.5" />
-                    <span>Sync to Proposal Builder →</span>
+                    <span>Mở Proposal Builder →</span>
                   </button>
                 </div>
 

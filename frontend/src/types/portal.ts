@@ -60,12 +60,3 @@ export interface PortalQuestionAnswer {
   answer: string;
   citations: Array<{ label: string; sheetName: string; excerpt: string }>;
 }
-
-export const PORTAL_MANAGER_ROLES = [
-  'ADMIN',
-  'PRESALE_LEAD',
-  'SALES_REP',
-  'PRESALE_CONSULTANT',
-  'SOLUTION_ARCHITECT'
-] as const;
-export const PORTAL_FIRST_SHARE_ROLES = ['ADMIN', 'PRESALE_LEAD'] as const;

@@ -26,8 +26,9 @@ function statusClass(status: ProposalStatus): string {
 export const PortalDesk: React.FC<PortalDeskProps> = ({ onBackToOverview, onLogout }) => {
   const { user, logout } = useAuth();
   const handleLogout = onLogout || logout;
-  // PORTAL_MANAGER_ROLES chỉ được enforce ở backend cho revoke session và material; tạo phiên thì mọi role ghi được,
-  // nên riêng form tạo phiên không dùng cờ này.
+  // Backend kiểm tra role ngay trong use case (PORTAL_MANAGER_ROLES ở PortalUseCases) cho 3 thao tác:
+  // thu hồi phiên, thêm material, xóa material — danh sách đó là mọi role trừ VIEWER nên VIEWER nhận 403.
+  // Riêng POST /portal/sessions không kiểm tra role: VIEWER vẫn tạo được phiên chia sẻ (quyết định mở, chưa chốt sửa).
   const canManage = user?.role !== 'VIEWER';
 
   const [searchInput, setSearchInput] = useState('');
@@ -183,7 +184,8 @@ export const PortalDesk: React.FC<PortalDeskProps> = ({ onBackToOverview, onLogo
     }
   };
 
-  const shareable = Boolean(selected);
+  // PostgresPortalRepository.createSession chỉ nhận 3 trạng thái này và tự đổi APPROVED -> SENT_TO_CLIENT.
+  const shareable = Boolean(selected && ['APPROVED', 'SENT_TO_CLIENT', 'ACCEPTED'].includes(selected.status));
   const totalPages = meta?.totalPages ?? 1;
 
   return (
@@ -394,7 +396,7 @@ export const PortalDesk: React.FC<PortalDeskProps> = ({ onBackToOverview, onLogo
                     <span className={`rounded px-2 py-0.5 text-[10px] font-mono font-bold ${statusClass(selected.status)}`}>{selected.status}</span>
                   </div>
 
-                  {shareable && (
+                  {shareable ? (
                     <div className="mt-4 grid gap-2 sm:grid-cols-2">
                       <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="client@company.com" value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} />
                       <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Client name (optional)" value={clientName} onChange={(e) => setClientName(e.target.value)} maxLength={200} />
@@ -403,6 +405,11 @@ export const PortalDesk: React.FC<PortalDeskProps> = ({ onBackToOverview, onLogo
                         Create session
                       </button>
                     </div>
+                  ) : (
+                    <p className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                      Proposal ở trạng thái {selected.status} nên backend từ chối tạo phiên và material
+                      (chỉ chấp nhận APPROVED, SENT_TO_CLIENT, ACCEPTED). Chuyển hồ sơ sang APPROVED trước khi chia sẻ.
+                    </p>
                   )}
                 </div>
 

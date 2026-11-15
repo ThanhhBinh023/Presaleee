@@ -22,6 +22,7 @@ function statusClass(status: MeetingStatus): string {
 
 export const MeetingsWorkspace: React.FC<MeetingsWorkspaceProps> = ({ onBackToOverview }) => {
   const { user } = useAuth();
+  const isViewer = user?.role === 'VIEWER';
   const { leads } = useLeadDirectory({ page: 1, limit: 100 });
 
   const [leadId, setLeadId] = useState('');
@@ -172,7 +173,7 @@ export const MeetingsWorkspace: React.FC<MeetingsWorkspaceProps> = ({ onBackToOv
 
   const analysis = detail && isMeetingAnalysis(detail.analysis) ? detail.analysis : null;
   const allowedNext = detail ? MEETING_TRANSITIONS[detail.status] : [];
-  const transcriptEditable = detail?.status === 'OPEN';
+  const transcriptEditable = !isViewer && detail?.status === 'OPEN';
 
   return (
     <div className="min-h-screen bg-[#f8fafc] px-4 py-8 font-sans text-slate-900 md:px-10">
@@ -203,6 +204,13 @@ export const MeetingsWorkspace: React.FC<MeetingsWorkspaceProps> = ({ onBackToOv
           </p>
         )}
 
+        {isViewer && (
+          <p className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">
+            Tài khoản VIEWER chỉ đọc: xem được meetings và phân tích, nhưng tạo meeting, lưu transcript, đổi status
+            và Analyze đều bị backend chặn (403).
+          </p>
+        )}
+
         {notice && <p className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{notice}</p>}
         {actionError && <p className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{actionError}</p>}
         {listError && <p className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{listError}</p>}
@@ -219,7 +227,7 @@ export const MeetingsWorkspace: React.FC<MeetingsWorkspaceProps> = ({ onBackToOv
           </select>
         </label>
 
-        {leadId && (
+        {leadId && !isViewer && (
           <div className="mb-6 grid gap-2 rounded-2xl border border-slate-200 bg-white p-4 sm:grid-cols-4">
             <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm sm:col-span-2" placeholder="Meeting title" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} />
             <input type="datetime-local" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" value={newDate} onChange={(e) => setNewDate(e.target.value)} />
@@ -278,7 +286,7 @@ export const MeetingsWorkspace: React.FC<MeetingsWorkspaceProps> = ({ onBackToOv
                   {allowedNext.map((next) => (
                     <button
                       key={next}
-                      disabled={isWorking}
+                      disabled={isWorking || isViewer}
                       onClick={() => void changeStatus(next)}
                       className="rounded border border-slate-200 px-2 py-1 text-[10px] font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
                     >
@@ -289,7 +297,7 @@ export const MeetingsWorkspace: React.FC<MeetingsWorkspaceProps> = ({ onBackToOv
                 </div>
 
                 <label className="flex flex-col gap-1 text-xs font-bold text-slate-600">
-                  Transcript {transcriptEditable ? '' : '(read-only until reopened)'}
+                  Transcript {isViewer ? '(read-only for VIEWER)' : transcriptEditable ? '' : '(read-only until reopened)'}
                   <textarea
                     className="min-h-[160px] rounded-lg border border-slate-300 px-3 py-2 font-mono text-xs disabled:bg-slate-50"
                     value={transcript}
@@ -305,7 +313,7 @@ export const MeetingsWorkspace: React.FC<MeetingsWorkspaceProps> = ({ onBackToOv
                   <button onClick={() => void saveTranscript()} disabled={isWorking || !transcriptEditable || !transcript.trim()} className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
                     Save transcript
                   </button>
-                  <button onClick={() => void runAnalyze()} disabled={isWorking || !detail.rawTranscript} className="rounded-lg bg-brand-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
+                  <button onClick={() => void runAnalyze()} disabled={isWorking || !detail.rawTranscript || isViewer} className="rounded-lg bg-brand-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
                     {isWorking ? 'Working…' : 'Analyze with AI'}
                   </button>
                 </div>

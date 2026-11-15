@@ -262,6 +262,7 @@ export const ProposalStudioTab: React.FC<ProposalStudioTabProps> = ({ leadId, ac
   const toast = useToast();
   const { user } = useAuth();
   const isViewer = user?.role === 'VIEWER';
+  const canPrivilege = user?.role === 'ADMIN' || user?.role === 'PRESALE_LEAD';
   const [proposal, setProposal] = useState<ProposalItem | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [generating, setGenerating] = useState<boolean>(false);
@@ -515,7 +516,9 @@ ${uiBrief.interaction_flow}
           {!isViewer && proposalData.status === 'IN_REVIEW' && (
             <button
               onClick={() => handleUpdateStatus('APPROVED')}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs cursor-pointer"
+              disabled={!canPrivilege}
+              title={canPrivilege ? undefined : 'Chỉ ADMIN hoặc PRESALE_LEAD được phê duyệt đề xuất'}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
             >
               <CheckCircle2 className="w-3.5 h-3.5" />
               <span>Approve Proposal</span>

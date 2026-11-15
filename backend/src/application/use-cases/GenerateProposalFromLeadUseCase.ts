@@ -2,8 +2,8 @@ import { Pool } from 'pg';
 import { IProposalRepository } from '../../domain/repositories/IProposalRepository.js';
 import { ILLMGateway, LLMTaskMode } from '../../domain/repositories/ILLMGateway.js';
 import { SearchHybridRAGUseCase } from './SearchHybridRAGUseCase.js';
-import { ProposalWithSheets } from '../../domain/entities/Proposal.js';
-import { NotFoundError, ValidationError } from '../../domain/errors/AppError.js';
+import { Proposal, ProposalWithSheets } from '../../domain/entities/Proposal.js';
+import { ConflictError, NotFoundError, ValidationError } from '../../domain/errors/AppError.js';
 
 export interface GenerateProposalFromLeadInput {
   leadId: string;
@@ -70,7 +70,8 @@ export class GenerateProposalFromLeadUseCase {
     const ragResult = await this.searchRAGUseCase.execute({
       query: `${lead.title} ${lead.raw_rfp_content || ''}`,
       domain: meta.clientIndustry || undefined,
-      topK: 3
+      topK: 3,
+      organizationId: input.organizationId
     });
 
     let ragContext = '';
@@ -400,6 +401,14 @@ Return ONLY the raw JSON object without markdown code fences:
     const existingProposal = await this.proposalRepo.findByLeadId(input.leadId, input.organizationId);
 
     if (existingProposal) {
+      // Regenerating resets the proposal to DRAFT, which the state machine only allows
+      // from DRAFT/IN_REVIEW/REJECTED; approved or client-facing versions must be rolled back first.
+      const lockedStatuses: Proposal['status'][] = ['APPROVED', 'SENT_TO_CLIENT', 'ACCEPTED'];
+      if (lockedStatuses.includes(existingProposal.status)) {
+        throw new ConflictError(
+          `Proposal is ${existingProposal.status}; send it back to DRAFT before regenerating from the lead.`
+        );
+      }
       // Update existing proposal header
       await this.proposalRepo.update(existingProposal.id, input.organizationId, {
         title,

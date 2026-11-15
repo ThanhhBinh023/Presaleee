@@ -3,7 +3,7 @@
 > **Tài liệu đặc tả kiến trúc:** Role-Based Access Control (RBAC) & Multi-Tenant Data Isolation  
 > **Dự án:** Presaleee Platform (AI-Powered Presale & Proposal Engineering)  
 > **Ngày cập nhật:** 15/11/2026  
-> **Phiên bản tài liệu:** v2.5  
+> **Phiên bản tài liệu:** v2.6  
 > **Quy tắc đọc bảng ma trận:** một quyền chỉ được ghi là giới hạn theo role khi code **thực sự enforce** giới hạn đó (middleware hoặc use case). Ngoài `VIEWER` và `ORGANIZATION_ADMIN_ROLES = ['ADMIN','PRESALE_LEAD']`, hệ thống **không có** giới hạn nào khác giữa 4 role nghiệp vụ còn lại.
 
 ---
@@ -118,6 +118,7 @@ Hệ thống bảo vệ tài nguyên dựa trên 2 tầng kiểm soát đồng t
 | 3.1 | Xem danh sách & Biên bản họp | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | 3.2 | Nạp Transcript & Ghi chú họp | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | 3.3 | Chạy AI trích xuất Decisions & Gaps | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| 3.4 | Tạo mới Cuộc họp cho Lead (`POST /leads/:leadId/meetings`) | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | **4** | **Soạn thảo Đề xuất (10 Sheets Proposal)** | | | | | | |
 | 4.1 | Xem chi tiết 10 Sheets đề xuất | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | 4.2 | Sinh Proposal bằng AI RAG tự động | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
@@ -217,12 +218,21 @@ Hệ thống bảo vệ tài nguyên dựa trên 2 tầng kiểm soát đồng t
    - `POST /proposals/generate-from-lead`: `SELECT` lead + meetings **không** có mệnh đề org → đọc được RFP và biên bản họp của tổ chức khác nếu biết UUID. Nay dùng `GenerateProposalFromLeadInput.organizationId` (bắt buộc) và scope meetings qua `JOIN leads`.
    - `IProposalRepository.findByLeadId(leadId, organizationId)` bổ sung tham số org, `PostgresProposalRepository.ts:111` thêm `AND organization_id = $2`.
    - Nhánh fallback của `GET /proposals/:id/export-excel|export-pdf` không còn dùng org mặc định hard-code `00000000-…-001`, mà lấy từ token (`ProposalController.exportExcel/exportPdf`).
+   - `GenerateProposalFromLeadUseCase` gọi RAG **không truyền org**. Câu SQL trong `hybrid_search` là `(filter_organization_id IS NULL OR kd.organization_id = filter_organization_id)`, tức tham số org NULL **tắt luôn bộ lọc**, nên tài liệu (RFP, hợp đồng đã ký) của tổ chức khác lọt vào context prompt. Nay truyền `organizationId: input.organizationId` (đợt 2, 15/11/2026).
 4. **Không nhận tenant từ phía client:**
    Bản cũ cho phép `x-organization-id` hoặc `body.organizationId` làm giá trị dự phòng khi token không có org. Cả hai đường này đã bị gỡ tại `LeadIntakeController.analyze`; `organizationId`/`userId` bây giờ **chỉ** đến từ `req.auth`.
+   Đợt 2 (15/11/2026) gỡ thêm đường cuối cùng còn sót: `GET /proposals?organizationId=<uuid>` cho phép liệt kê đề xuất của tổ chức khác (`ProposalController.list` bản cũ), cùng giá trị mặc định `00000000-…-001` khi tham số trống.
 5. **Gate theo mode môi trường:**
    `POST /auth/dev-login` (đăng nhập không cần mật khẩu theo email) trả `403 Forbidden` khi `NODE_ENV=production`; trước 15/11/2026 endpoint này mở ở mọi môi trường.
 6. **Đồng bộ phân quyền Portal (`PORTAL_MANAGER_ROLES`):**
    Danh sách `['ADMIN', 'PRESALE_LEAD', 'SALES_REP', 'PRESALE_CONSULTANT', 'SOLUTION_ARCHITECT']` được khai báo ở `PortalUseCases.ts:10` và **chỉ enforce ở backend** cho: thu hồi phiên (`:151`), tạo material (`:162`), xóa material (`:187`). Bản sao trong `frontend/src/types/portal.ts:64,71` hiện **không được component nào tham chiếu**, nên không thể coi là lớp kiểm soát thứ hai.
+   `POST /portal/sessions` (phát hành token truy cập portal cho khách) **không** có `requireNotViewer` và cũng không kiểm tra role — đây là quyết định sản phẩm ghi rõ trong `PortalUseCases.ts:39`, không phải chỗ quên; UI `PortalDesk` vì vậy để trống thao tác này cho mọi role và chỉ gate revoke/material.
+7. **Hai route con bị quên middleware (đợt 2):**
+   `POST /leads/:leadId/meetings` và `POST /leads/:leadId/proposals` (`routes/index.ts:51-52`) trước đây chỉ có `requireAuth + requireOrganization`, trong khi mọi route ghi khác cùng nhóm đều có `requireNotViewer` → `VIEWER` tạo được meeting và proposal. Đã bổ sung `requireNotViewer`.
+8. **Vòng đời Proposal không còn cửa sau (đợt 2):**
+   `POST /proposals/generate-from-lead` trước đây vô điều kiện ghi đè tiêu đề, `total_cost`, timeline và **toàn bộ 10 sheet** rồi kéo Proposal về `DRAFT`, kể cả bản đã `APPROVED`/`SENT_TO_CLIENT`/`ACCEPTED` — tức đi vòng qua state machine trong `UpdateProposalUseCase.ts:69-76`. Nay ba trạng thái khoá đó trả `409 Conflict`, yêu cầu đưa về `DRAFT` bằng PATCH chuẩn (có kiểm tra role) trước khi sinh lại.
+9. **Audit log của luồng Lead trực tiếp (đợt 2):**
+   Bốn handler viết raw SQL trong `LeadIntakeController` (analyze-persist, qualify, update, delete) không ghi `audit_log` dù đi ngược lại quy ước của các use case. Nay ghi `LEAD_CREATED / LEAD_QUALIFIED / LEAD_UPDATED / LEAD_DELETED` qua `recordLeadAudit()`; `container.ts:221` truyền `auditRepository` vào controller.
 
 ---
 *Presaleee Enterprise Solutions Platform — Tài liệu kỹ thuật lưu hành nội bộ.*

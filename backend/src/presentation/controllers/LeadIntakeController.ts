@@ -5,7 +5,13 @@ import { AnalyzeLeadIntakeInputDTO } from '../../application/dtos/AnalyzeLeadInt
 import { ILLMGateway, LLMTaskMode } from '../../domain/repositories/ILLMGateway.js';
 import { CreateLeadUseCase, QualifyLeadUseCase } from '../../application/use-cases/LeadUseCases.js';
 import { AuthenticatedLeadScope, LeadWriteInput } from '../../application/dtos/LeadDTO.js';
+import { IAuditRepository } from '../../domain/repositories/IAuditRepository.js';
 import { UnauthorizedError, ValidationError } from '../../domain/errors/AppError.js';
+
+function routeParam(req: Pick<Request, 'params'>, name: string): string {
+  const value = req.params[name];
+  return Array.isArray(value) ? value[0] || '' : value || '';
+}
 
 export class LeadIntakeController {
   constructor(
@@ -13,8 +19,28 @@ export class LeadIntakeController {
     private readonly createLeadUseCase: CreateLeadUseCase,
     private readonly qualifyLeadUseCase: QualifyLeadUseCase,
     private readonly dbPool?: Pool,
-    private readonly llmGateway?: ILLMGateway
+    private readonly llmGateway?: ILLMGateway,
+    private readonly auditRepository?: IAuditRepository
   ) {}
+
+  /** These handlers write SQL directly instead of through a use case, so they must log the write themselves. */
+  private async recordLeadAudit(
+    req: Pick<Request, 'auth' | 'socket'>,
+    action: string,
+    entityId: string | null,
+    payload: Record<string, unknown>
+  ): Promise<void> {
+    if (!this.auditRepository || !req.auth?.organizationId) return;
+    await this.auditRepository.record({
+      organizationId: req.auth.organizationId,
+      actorId: req.auth.sub,
+      action,
+      entityType: 'lead',
+      entityId,
+      payload,
+      ipAddress: req.socket.remoteAddress ?? null
+    });
+  }
 
   private leadScope(req: Pick<Request, 'auth' | 'socket'>): AuthenticatedLeadScope {
     if (!req.auth?.sub) throw new UnauthorizedError('Authentication required.');
@@ -95,6 +121,7 @@ export class LeadIntakeController {
           [titleToUse, source, rawRfpContent, JSON.stringify(metadataToSave), orgId, userId]
         );
         savedLead = insertRes.rows[0];
+        await this.recordLeadAudit(req, 'LEAD_CREATED', savedLead?.id ?? null, { title: titleToUse, source, via: 'intake_analyze_persist' });
       }
 
       res.status(200).json({
@@ -126,7 +153,7 @@ export class LeadIntakeController {
         return;
       }
 
-      const leadId = req.params.id;
+      const leadId = routeParam(req, 'id');
       const inquiryText = req.body?.inquiryText;
       let leadTitle = 'Dự án Doanh nghiệp';
       let rfpContent = inquiryText || '';
@@ -238,6 +265,10 @@ Yêu cầu trả về định dạng JSON thuần túy (không markdown) với c
         );
         if (updateRes.rows.length > 0) {
           lead = updateRes.rows[0];
+          await this.recordLeadAudit(req, 'LEAD_QUALIFIED', leadId, {
+            score: qualificationData.qualification_score,
+            recommendation: qualificationData.readiness_level
+          });
         }
       }
 
@@ -324,7 +355,7 @@ Yêu cầu trả về định dạng JSON thuần túy (không markdown) với c
         res.status(404).json({ success: false, error: 'Database not connected.' });
         return;
       }
-      const leadId = req.params.id;
+      const leadId = routeParam(req, 'id');
       const { 
         title, 
         source, 
@@ -364,6 +395,12 @@ Yêu cầu trả về định dạng JSON thuần túy (không markdown) với c
         [newTitle, newSource, newStatus, newRaw, newMeta, leadId, orgId]
       );
 
+      await this.recordLeadAudit(req, 'LEAD_UPDATED', leadId, {
+        changedFields: Object.entries({ title, source, status, rawRfpContent, extractedMetadata })
+          .filter(([, value]) => value !== undefined)
+          .map(([field]) => field)
+      });
+
       res.status(200).json({
         success: true,
         data: updateRes.rows[0]
@@ -389,7 +426,7 @@ Yêu cầu trả về định dạng JSON thuần túy (không markdown) với c
         res.status(404).json({ success: false, error: 'Database not connected.' });
         return;
       }
-      const leadId = req.params.id;
+      const leadId = routeParam(req, 'id');
       const checkLead = await this.dbPool.query(
         'SELECT id FROM leads WHERE id = $1 AND organization_id = $2;',
         [leadId, orgId]
@@ -408,6 +445,7 @@ Yêu cầu trả về định dạng JSON thuần túy (không markdown) với c
         res.status(404).json({ success: false, error: 'Lead not found.' });
         return;
       }
+      await this.recordLeadAudit(req, 'LEAD_DELETED', leadId, {});
       res.status(200).json({
         success: true,
         message: 'Lead deleted successfully.',

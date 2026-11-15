@@ -26,8 +26,9 @@ function statusClass(status: ProposalStatus): string {
 export const PortalDesk: React.FC<PortalDeskProps> = ({ onBackToOverview, onLogout }) => {
   const { user, logout } = useAuth();
   const handleLogout = onLogout || logout;
-  // Bỏ qua giới hạn role theo yêu cầu người dùng
-  const canManage = true;
+  // PORTAL_MANAGER_ROLES chỉ được enforce ở backend cho revoke session và material; tạo phiên thì mọi role ghi được,
+  // nên riêng form tạo phiên không dùng cờ này.
+  const canManage = user?.role !== 'VIEWER';
 
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
@@ -183,7 +184,6 @@ export const PortalDesk: React.FC<PortalDeskProps> = ({ onBackToOverview, onLogo
   };
 
   const shareable = Boolean(selected);
-  const firstShareBlocked = false;
   const totalPages = meta?.totalPages ?? 1;
 
   return (
@@ -288,7 +288,7 @@ export const PortalDesk: React.FC<PortalDeskProps> = ({ onBackToOverview, onLogo
         )}
         {!canManage && (
           <p className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-            VIEWER can list sessions and materials (emails included). Writes return 403.
+            VIEWER được phép tạo phiên chia sẻ (backend không chặn) nhưng thu hồi phiên và thêm/xóa material trả 403.
           </p>
         )}
 
@@ -393,19 +393,13 @@ export const PortalDesk: React.FC<PortalDeskProps> = ({ onBackToOverview, onLogo
                     </div>
                     <span className={`rounded px-2 py-0.5 text-[10px] font-mono font-bold ${statusClass(selected.status)}`}>{selected.status}</span>
                   </div>
-                  {!shareable && (
-                    <p className="mt-3 text-sm text-rose-700">Only APPROVED, SENT_TO_CLIENT, or ACCEPTED proposals accept sessions and materials.</p>
-                  )}
-                  {firstShareBlocked && (
-                    <p className="mt-3 text-sm text-amber-800">SALES_REP / SOLUTION_ARCHITECT cannot create the first session on APPROVED. Use ADMIN or PRESALE_LEAD.</p>
-                  )}
 
-                  {canManage && shareable && (
+                  {shareable && (
                     <div className="mt-4 grid gap-2 sm:grid-cols-2">
                       <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="client@company.com" value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} />
                       <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Client name (optional)" value={clientName} onChange={(e) => setClientName(e.target.value)} maxLength={200} />
                       <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="expiresInHours 1–720" value={expiresInHours} onChange={(e) => setExpiresInHours(e.target.value)} />
-                      <button onClick={() => void createSession()} disabled={isWorking || !clientEmail.trim() || firstShareBlocked} className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-50">
+                      <button onClick={() => void createSession()} disabled={isWorking || !clientEmail.trim()} className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-50">
                         Create session
                       </button>
                     </div>

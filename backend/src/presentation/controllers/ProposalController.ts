@@ -200,15 +200,15 @@ export class ProposalController {
 
   list = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { page, limit, status, search, organizationId, leadId } = req.query;
-      const targetOrgId = (organizationId as string | undefined) || req.auth?.organizationId || '00000000-0000-0000-0000-000000000001';
+      const { page, limit, status, search, leadId } = req.query;
+      const { organizationId } = authContext(req);
 
       const result = await this.listUseCase.execute({
         page: page ? parseInt(page as string, 10) : 1,
         limit: limit ? parseInt(limit as string, 10) : 20,
         status: status as string | undefined,
         search: search as string | undefined,
-        organizationId: targetOrgId,
+        organizationId,
         leadId: leadId as string | undefined
       });
 
@@ -222,9 +222,6 @@ export class ProposalController {
           totalPages: result.totalPages
         }
       });
-      res.status(200).json({ success: true, data: result.proposals, meta: {
-        total: result.total, page: result.page, limit: result.limit, totalPages: result.totalPages
-      } });
     } catch (error) { next(error); }
   };
 

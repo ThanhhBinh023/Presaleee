@@ -218,7 +218,7 @@ export function createContainer(): ServiceContainer {
     submitProposalForReviewUseCase,
     generateProposalFromLeadUseCase
   );
-  const leadIntakeController = new LeadIntakeController(analyzeLeadIntakeUseCase, createLeadUseCase, qualifyLeadUseCase, dbPool, llmGateway);
+  const leadIntakeController = new LeadIntakeController(analyzeLeadIntakeUseCase, createLeadUseCase, qualifyLeadUseCase, dbPool, llmGateway, auditRepository);
   const authController = new AuthController(
     loginUseCase,
     refreshSessionUseCase,

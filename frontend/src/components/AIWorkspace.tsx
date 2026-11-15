@@ -41,7 +41,7 @@ import { ProposalStudioTab } from './ProposalStudioTab';
 import { useToast } from './common/Toast';
 import { portalStaffService } from '../services/portalService';
 import type { PortalSessionDetail, PortalMaterialDetail } from '../types/portal';
-import { fetchProposalByLead } from '../services/proposalService';
+import { fetchProposalByLead, updateProposalLifecycle } from '../services/proposalService';
 import type { ProposalItem } from '../services/proposalService';
 import { formatDateTime } from '../utils/format';
 import { ROLE_DETAILS } from './workspace/UserCard';
@@ -505,7 +505,19 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                     </span>
                   ) : (
                     <button 
-                      onClick={() => toast.info('Hồ sơ đề xuất đã gửi để xét duyệt nội bộ.', 'Trình duyệt')}
+                      onClick={async () => {
+                        if (!realProposal?.id) {
+                          toast.error('Lead này chưa có Proposal nên chưa thể nộp xét duyệt.', 'Trình duyệt');
+                          return;
+                        }
+                        try {
+                          const updated = await updateProposalLifecycle(realProposal.id, 'IN_REVIEW');
+                          setRealProposal(prev => prev ? { ...prev, status: updated.status } : prev);
+                          toast.success('Proposal đã chuyển sang IN_REVIEW và chờ xét duyệt nội bộ.', 'Trình duyệt');
+                        } catch (err: any) {
+                          toast.error(`Lỗi nộp xét duyệt: ${err.message}`, 'Trình duyệt');
+                        }
+                      }}
                       className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold shadow-sm transition-all cursor-pointer"
                     >
                       <Send className="w-3.5 h-3.5" />

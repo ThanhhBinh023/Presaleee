@@ -325,23 +325,9 @@ export class ProposalController {
 
   exportExcel = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { organizationId, userId } = authContext(req);
-      const rawId = getParam(req.params.id);
-      let result;
-      try {
-        result = await this.exportExcelUseCase.execute(rawId, organizationId);
-      } catch (err: any) {
-        if (this.generateFromLeadUseCase) {
-          const generated = await this.generateFromLeadUseCase.execute({
-            leadId: rawId,
-            organizationId,
-            userId
-          });
-          result = await this.exportExcelUseCase.execute(generated.id, organizationId);
-        } else {
-          throw err;
-        }
-      }
+      const { organizationId } = authContext(req);
+      // An export is read-only: a lead id that has no proposal answers 404 instead of generating one.
+      const result = await this.exportExcelUseCase.execute(getParam(req.params.id), organizationId);
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.setHeader('Content-Disposition', contentDisposition(result.filename));
       res.setHeader('Content-Length', result.buffer.length);
@@ -351,23 +337,8 @@ export class ProposalController {
 
   exportPdf = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { organizationId, userId } = authContext(req);
-      const rawId = getParam(req.params.id);
-      let result;
-      try {
-        result = await this.exportPdfUseCase.execute(rawId, organizationId);
-      } catch (err: any) {
-        if (this.generateFromLeadUseCase) {
-          const generated = await this.generateFromLeadUseCase.execute({
-            leadId: rawId,
-            organizationId,
-            userId
-          });
-          result = await this.exportPdfUseCase.execute(generated.id, organizationId);
-        } else {
-          throw err;
-        }
-      }
+      const { organizationId } = authContext(req);
+      const result = await this.exportPdfUseCase.execute(getParam(req.params.id), organizationId);
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', contentDisposition(result.filename));
       res.setHeader('Content-Length', result.buffer.length);

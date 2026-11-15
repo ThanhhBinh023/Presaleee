@@ -58,14 +58,20 @@ export class PostgresPortalRepository implements IPortalRepository {
 
   async findActiveSession(tokenHash: string, proposalId: string): Promise<PortalSessionContext | null> {
     const result = await this.pool.query(
-      `UPDATE portal_sessions s SET last_accessed_at = NOW()
-       FROM proposals p WHERE s.proposal_id = p.id AND s.token_hash = $1 AND s.proposal_id = $2
+      `SELECT s.id, s.proposal_id, s.organization_id, s.client_email, s.client_name, s.expires_at, s.last_accessed_at
+       FROM portal_sessions s JOIN proposals p ON p.id = s.proposal_id
+       WHERE s.token_hash = $1 AND s.proposal_id = $2
          AND s.revoked_at IS NULL AND s.expires_at > NOW()
-         AND p.status IN ('DRAFT', 'IN_REVIEW', 'APPROVED', 'SENT_TO_CLIENT', 'ACCEPTED')
-       RETURNING s.id, s.proposal_id, s.organization_id, s.client_email, s.client_name, s.expires_at;`,
+         AND p.status IN ('SENT_TO_CLIENT', 'ACCEPTED');`,
       [tokenHash, proposalId]
     );
-    return result.rows[0] ? mapSession(result.rows[0]) : null;
+    const row = result.rows[0];
+    if (!row) return null;
+    // Telemetry is written at most once a minute per session; every portal request would otherwise be a row write.
+    if (!row.last_accessed_at || Date.now() - new Date(row.last_accessed_at).getTime() > 60_000) {
+      await this.pool.query('UPDATE portal_sessions SET last_accessed_at = NOW() WHERE id = $1;', [row.id]);
+    }
+    return mapSession(row);
   }
 
   async revokeSession(sessionId: string, organizationId: string, actorId: string): Promise<boolean> {
@@ -90,14 +96,15 @@ export class PostgresPortalRepository implements IPortalRepository {
     finally { client.release(); }
   }
 
-  async listComments(proposalId: string, organizationId: string): Promise<PortalComment[]> {
+  async listComments(proposalId: string, organizationId: string, sessionId: string): Promise<PortalComment[]> {
     const result = await this.pool.query(
       `SELECT * FROM (
          SELECT id, proposal_id, portal_session_id, author_name, author_email, body, created_at
-         FROM proposal_portal_comments WHERE proposal_id = $1 AND organization_id = $2
+         FROM proposal_portal_comments
+         WHERE proposal_id = $1 AND organization_id = $2 AND portal_session_id = $3
          ORDER BY created_at DESC LIMIT 500
        ) recent_comments ORDER BY created_at ASC;`,
-      [proposalId, organizationId]
+      [proposalId, organizationId, sessionId]
     );
     return result.rows.map(row => ({
       id: row.id, proposalId: row.proposal_id, sessionId: row.portal_session_id,
@@ -120,11 +127,18 @@ export class PostgresPortalRepository implements IPortalRepository {
       [input.proposalId, input.organizationId, input.sessionId, input.authorName, input.body]
     );
     const row = result.rows[0];
-    return row ? {
+    if (!row) return null;
+    await this.pool.query(
+      `INSERT INTO audit_logs (organization_id, user_id, action, entity_type, entity_id, payload)
+       VALUES ($1, NULL, 'CLIENT_PORTAL_COMMENT_ADDED', 'proposal', $2, $3::jsonb);`,
+      [input.organizationId, input.proposalId,
+        JSON.stringify({ commentId: row.id, sessionId: input.sessionId, authorEmail: row.author_email, bodyLength: input.body.length })]
+    );
+    return {
       id: row.id, proposalId: row.proposal_id, sessionId: row.portal_session_id,
       authorName: row.author_name, authorEmail: row.author_email, body: row.body,
       createdAt: new Date(row.created_at).toISOString()
-    } : null;
+    };
   }
 
   async listMaterials(proposalId: string, organizationId: string): Promise<PortalMaterial[]> {

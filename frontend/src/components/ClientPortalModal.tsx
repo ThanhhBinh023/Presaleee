@@ -111,9 +111,9 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({
   };
 
   const handleDownloadPdf = async () => {
-    const targetId = proposal?.id || activeProject?.id;
+    const targetId = proposal?.id;
     if (!targetId) {
-      toast.warning('Chưa có thông tin dự án để tải PDF.', 'Tải PDF');
+      toast.warning('Lead này chưa có proposal, nên chưa có PDF để tải. Hãy tạo proposal trước.', 'Tải PDF');
       return;
     }
     try {
@@ -163,9 +163,6 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({
       ...bullet('Milestone', milestones.map(m => `- ${m.phase}: ${m.milestone} (${m.durationWeeks} tuần) — Bàn giao: ${m.deliverables}`)),
       '',
       '7. NGÂN SÁCH & LỊCH THANH TOÁN',
-      `- Chi phí đội ngũ: ${money(Number(pricingSheet.teamCost) || null)}`,
-      `- Hạ tầng: ${money(Number(pricingSheet.infrastructureCost) || null)}`,
-      `- Dự phòng: ${money(Number(pricingSheet.contingencyBuffer) || null)}`,
       `- Tổng trọn gói: ${money(grandTotal)}`,
       ...bullet('Đợt thanh toán', paymentMilestones.map(p => `- ${p.milestone}: ${p.percentage}% = ${money(Number(p.amount) || null)}`)),
       '',

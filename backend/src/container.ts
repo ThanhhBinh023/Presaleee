@@ -283,7 +283,7 @@ export function createContainer(): ServiceContainer {
     new ListPortalCommentsUseCase(portalRepository),
     new CreatePortalCommentUseCase(portalRepository),
     new ListPortalMaterialsUseCase(portalRepository),
-    new ExportPortalProposalPdfUseCase(exportProposalToPdfUseCase, getPortalProposalUseCase),
+    new ExportPortalProposalPdfUseCase(exportProposalToPdfUseCase, getPortalProposalUseCase, auditRepository),
     new RevokePortalSessionUseCase(portalRepository),
     new CreatePortalMaterialUseCase(portalRepository),
     new DeletePortalMaterialUseCase(portalRepository),

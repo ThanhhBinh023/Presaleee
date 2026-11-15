@@ -58,5 +58,5 @@ export interface PortalProposalView {
 
 export interface PortalQuestionAnswer {
   answer: string;
-  citations: Array<{ label: string; sheetName: string; excerpt: string }>;
+  citations: Array<{ label: string; sheetName: string }>;
 }

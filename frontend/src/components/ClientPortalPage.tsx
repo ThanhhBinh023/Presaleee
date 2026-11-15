@@ -175,7 +175,7 @@ export const ClientPortalPage: React.FC = () => {
             <p className="text-xs font-mono font-bold text-brand-700">CLIENT PORTAL</p>
             <h1 className="mt-1 text-2xl font-bold tracking-tight">Shared proposal</h1>
             <p className="mt-1 text-sm text-slate-500">
-              Uses a Bearer token only. Staff cookies are not sent. All 10 sheets are returned by the API, including internal working sheets.
+              Uses a Bearer token only. Staff cookies are not sent. Internal cost fields (rates, team cost, contingency) are removed before this view is rendered.
             </p>
           </div>
           {active && (
@@ -255,7 +255,7 @@ export const ClientPortalPage: React.FC = () => {
                   <ul className="mt-2 space-y-1 text-xs text-slate-500">
                     {answer.citations.map((citation, index) => (
                       <li key={`${citation.sheetName}-${index}`}>
-                        {citation.label} {citation.sheetName} — {citation.excerpt.slice(0, 160)}
+                        {citation.label} {citation.sheetName}
                       </li>
                     ))}
                   </ul>

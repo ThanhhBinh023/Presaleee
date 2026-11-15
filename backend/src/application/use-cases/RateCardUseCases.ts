@@ -339,7 +339,7 @@ function buildPaymentSchedule(pricing: PricingCalculationResult, existingItems: 
     ? scheduled
     : pricing.lines.map(line => ({
         milestone: `${line.roleName}${line.level ? ` (${line.level})` : ''}`,
-        description: `${line.manMonths} man-months at ${line.monthlyRate} ${pricing.currency} per month`,
+        description: `${line.manMonths} man-months of ${line.roleName}`,
         trigger: line.rateSource === 'RATE_CARD'
           ? 'Priced from the organization rate card - confirm the invoice trigger before sending.'
           : 'Priced from a manual monthly rate override - confirm the invoice trigger before sending.',

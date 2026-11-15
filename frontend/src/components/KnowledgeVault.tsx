@@ -204,7 +204,7 @@ export const KnowledgeVault: React.FC<KnowledgeVaultProps> = ({
             </button>
             <h1 className="mt-1 text-2xl font-bold tracking-tight">Knowledge vault</h1>
             <p className="mt-1 text-sm text-slate-500">
-              Ingest plain text, list metadata, hybrid RAG search, ask with citations, generate a proposal overview. VIEWER can write (no role guard).
+              Ingest plain text, list metadata, hybrid RAG search, ask with citations, generate a proposal overview. VIEWER is read-only: ingest, delete and overview generation are refused.
             </p>
           </div>
           <div className="flex gap-2">

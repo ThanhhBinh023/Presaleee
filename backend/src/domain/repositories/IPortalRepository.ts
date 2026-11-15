@@ -9,7 +9,7 @@ export interface IPortalRepository {
   }): Promise<PortalSession | null>;
   findActiveSession(tokenHash: string, proposalId: string): Promise<PortalSessionContext | null>;
   revokeSession(sessionId: string, organizationId: string, actorId: string): Promise<boolean>;
-  listComments(proposalId: string, organizationId: string): Promise<PortalComment[]>;
+  listComments(proposalId: string, organizationId: string, sessionId: string): Promise<PortalComment[]>;
   createComment(input: {
     proposalId: string; organizationId: string; sessionId: string;
     authorName: string; body: string;

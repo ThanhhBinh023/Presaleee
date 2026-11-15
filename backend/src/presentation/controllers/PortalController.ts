@@ -45,7 +45,7 @@ export class PortalController {
       const body = objectBody(req);
       const session = await this.createSessionUseCase.execute({
         proposalId: typeof body.proposalId === 'string' ? body.proposalId : '',
-        organizationId: req.auth.organizationId, userId: req.auth.sub,
+        organizationId: req.auth.organizationId, userId: req.auth.sub, role: req.auth.role,
         clientEmail: body.clientEmail, clientName: body.clientName, expiresInHours: body.expiresInHours
       });
       res.status(201).json({ success: true, data: session });
@@ -104,7 +104,7 @@ export class PortalController {
   listComments = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const session = portalSession(req);
-      const comments = await this.listCommentsUseCase.execute(routeParam(req, 'proposalId'), session.organizationId);
+      const comments = await this.listCommentsUseCase.execute(routeParam(req, 'proposalId'), session.organizationId, session.id);
       res.status(200).json({ success: true, data: comments, meta: { total: comments.length } });
     } catch (error) { next(error); }
   };
@@ -115,7 +115,7 @@ export class PortalController {
       const body = objectBody(req);
       const comment = await this.createCommentUseCase.execute({
         proposalId: routeParam(req, 'proposalId'), organizationId: session.organizationId,
-        session, authorName: body.authorName, body: body.body
+        session, body: body.body
       });
       res.status(201).json({ success: true, data: comment });
     } catch (error) { next(error); }
@@ -148,7 +148,7 @@ export class PortalController {
   exportPdf = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const session = portalSession(req);
-      const result = await this.exportPdfUseCase.execute(routeParam(req, 'proposalId'), session.organizationId);
+      const result = await this.exportPdfUseCase.execute(routeParam(req, 'proposalId'), session);
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(result.filename)}"`);
       res.setHeader('Content-Length', result.buffer.length);

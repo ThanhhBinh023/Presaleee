@@ -13,6 +13,8 @@ export interface LLMGenerateOptions {
   prompt: string;
   temperature?: number;
   maxTokens?: number;
+  /** Client-facing answers must never be a heuristic placeholder; throw instead of inventing text. */
+  requireLiveModel?: boolean;
 }
 
 export interface ILLMGateway {

@@ -692,20 +692,22 @@ await suite.test('G10-04', 'Client comments: author comes from the session, vali
   notes.push(`201 with authorName/authorEmail taken from the portal session (${comment.authorName} <${comment.authorEmail}>)`);
 
   const named = await client('POST', ids.tokenA, ids.approved, '/comments', { body: 'Sent by the project manager.', authorName: 'M. Client PM' });
-  expect(named.status === 201 && named.json.data.authorName === 'M. Client PM', `explicit authorName expected, got ${named.status} ${named.text.slice(0, 160)}`);
+  expect(named.status === 201 && named.json.data.authorName === 'E2E Client Corp',
+    `authorName must be ignored and taken from the session, got ${named.status} ${named.text.slice(0, 160)}`);
   const trimmed = await client('POST', ids.tokenA, ids.approved, '/comments', { body: `  padded ${RUN}  ` });
   expect(trimmed.status === 201 && trimmed.json.data.body === `padded ${RUN}`, 'body must be trimmed');
-  const name200 = await client('POST', ids.tokenA, ids.approved, '/comments', { body: 'boundary author name', authorName: 'a'.repeat(200) });
-  expect(name200.status === 201, `200-char authorName expected 201, got ${name200.status}`);
+  for (const label of ['a'.repeat(201), '  ', [], 42]) {
+    const ignored = await client('POST', ids.tokenA, ids.approved, '/comments', { body: `ignored author ${label}`, authorName: label });
+    expect(ignored.status === 201 && ignored.json.data.authorName === 'E2E Client Corp',
+      `an unusable authorName (${label}) must be ignored, not validated or stored, got ${ignored.status} ${ignored.text.slice(0, 120)}`);
+  }
+  notes.push('authorName in the payload is ignored at every value: attribution is the session, so it cannot be forged or used as an oracle');
 
   const invalid = [
     ['missing body', {}],
     ['blank body', { body: '   ' }],
     ['non-string body', { body: 42 }],
     ['body over 5000', { body: 'c'.repeat(5001) }],
-    ['authorName over 200', { body: 'ok', authorName: 'a'.repeat(201) }],
-    ['blank authorName', { body: 'ok', authorName: '  ' }],
-    ['non-string authorName', { body: 'ok', authorName: [] }],
     ['array body', ['nope']]
   ];
   for (const [label, body] of invalid) {
@@ -726,6 +728,21 @@ await suite.test('G10-04', 'Client comments: author comes from the session, vali
   expect(rows.some(row => row.id === ids.comment1), 'the first comment must be listed');
   expect(rows.every(row => 'authorEmail' in row && 'sessionId' in row), 'comment rows expose authorEmail and sessionId');
   notes.push(`${rows.length} comments returned oldest-first`);
+
+  const sibling = await newSession(adminA, { proposalId: ids.approved, clientEmail: `thread-${CLIENT}`, clientName: 'E2E Thread Probe' });
+  expect(sibling.status === 201, `a second session on the same proposal expected 201, got ${sibling.status} ${sibling.text.slice(0, 160)}`);
+  const siblingToken = sibling.json.data.accessToken;
+  const siblingComment = await client('POST', siblingToken, ids.approved, '/comments', { body: `E2E thread probe ${RUN}` });
+  expect(siblingComment.status === 201, `the second client's comment expected 201, got ${siblingComment.status} ${siblingComment.text.slice(0, 120)}`);
+  const ownThread = await client('GET', siblingToken, ids.approved, '/comments');
+  expect(ownThread.status === 200 && ownThread.json.data.length === 1 && ownThread.json.data[0].id === siblingComment.json.data.id,
+    `a client must see only its own thread, got ${ownThread.status} ${ownThread.json.data?.length} rows`);
+  const afterSibling = await client('GET', ids.tokenA, ids.approved, '/comments');
+  expect(!afterSibling.json.data.some(row => row.id === siblingComment.json.data.id), "another client's thread on the same proposal must stay invisible");
+  const staffCount = await listSessions(adminA, ids.approved);
+  expect(staffCount.json.data.find(row => row.id === ids.sessionA).commentCount === rows.length,
+    'staff commentCount still counts every thread on the proposal');
+  notes.push('two clients on one proposal get separate threads; the staff counter still sees them all');
 
   const other = await client('GET', ids.tokenSecond, ids.secondApproved, '/comments');
   expect(other.json.data.length === 0, 'comments must not leak across proposals');
@@ -957,6 +974,41 @@ await suite.test('G10-09', 'Client surface hygiene: no credential or internal le
 });
 
 // ------------------------------------------------------------------ teardown
+
+await suite.test('G10-10', 'Portal rate limit: one link hammering the AI route is refused with 429 before any model call', async () => {
+  const notes = [];
+  const probe = await newSession(adminA, { proposalId: ids.approved, clientEmail: `rate-${CLIENT}`, clientName: 'E2E Rate Probe' });
+  expect(probe.status === 201, `rate probe session expected 201, got ${probe.status} ${probe.text.slice(0, 160)}`);
+  const token = probe.json.data.accessToken;
+  ids.sessionRate = probe.json.data.id;
+
+  let validated = 0;
+  let throttled = 0;
+  let other = 0;
+  const bodies = [{}, { question: '   ' }, { question: 7 }, { question: 'q'.repeat(5001) }];
+  for (let index = 0; index < 25; index++) {
+    const response = await client('POST', token, ids.approved, '/questions', bodies[index % bodies.length]);
+    if (response.status === 429) throttled++;
+    else if (response.status === 400) validated++;
+    else other++;
+  }
+  expect(other === 0, `25 question calls expected only 400 and 429, got ${other} of another status`);
+  expect(validated === 20, `expected exactly the 20-call compute budget to reach validation, got ${validated}`);
+  expect(throttled === 5, `expected the 21st-25th calls refused, got ${throttled}`);
+
+  const refused = await client('POST', token, ids.approved, '/questions', { question: 'after the limit' });
+  expectEnvelope(refused, 429);
+  expectNoInternalLeak(refused);
+  expect(refused.json.error.toLowerCase().includes('portal link'), `the 429 must explain the link budget, got ${refused.json.error}`);
+
+  const stillReadable = await client('GET', token, ids.approved, '');
+  expect(stillReadable.status === 200, `cheap reads stay inside the general budget, got ${stillReadable.status} ${stillReadable.text.slice(0, 120)}`);
+  const sibling = await client('GET', ids.tokenA, ids.approved, '');
+  expect(sibling.status === 200, 'another client link must not inherit the throttled budget');
+  notes.push('20 question calls then 429; reads on the same link and other links unaffected');
+  notes.push('the window is a fixed 60 seconds per session, held in this process only - a restart resets it');
+  return notes;
+});
 
 await suite.test('G9/G10-99', 'Teardown: every probe session revoked, every probe material deleted', async () => {
   const notes = [];

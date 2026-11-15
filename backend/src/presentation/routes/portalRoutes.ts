@@ -3,7 +3,8 @@ import { hashToken } from '../../application/services/AuthTokenService.js';
 import { IPortalRepository } from '../../domain/repositories/IPortalRepository.js';
 import { UnauthorizedError } from '../../domain/errors/AppError.js';
 import { PortalController } from '../controllers/PortalController.js';
-import { requireAuth, requireOrganization } from '../middlewares/requireAuth.js';
+import { requireAuth, requireOrganization, requireNotViewer } from '../middlewares/requireAuth.js';
+import { limitPortalRequests } from '../middlewares/limitPortalRequests.js';
 
 function param(req: Request, name: string): string {
   const value = req.params[name];
@@ -12,7 +13,7 @@ function param(req: Request, name: string): string {
 
 export function createPortalRouter(controller: PortalController, portalRepository: IPortalRepository): Router {
   const router = Router();
-  router.post('/sessions', requireAuth, requireOrganization, controller.createSession);
+  router.post('/sessions', requireAuth, requireOrganization, requireNotViewer, controller.createSession);
   router.delete('/sessions/:sessionId', requireAuth, requireOrganization, controller.revokeSession);
   router.use('/proposals/:proposalId', async (req: Request, _res: Response, next: NextFunction) => {
     try {
@@ -28,7 +29,7 @@ export function createPortalRouter(controller: PortalController, portalRepositor
       req.portalSession = session;
       next();
     } catch (error) { next(error); }
-  });
+  }, limitPortalRequests);
   router.get('/proposals/:proposalId', controller.getProposal);
   router.post('/proposals/:proposalId/questions', controller.ask);
   router.get('/proposals/:proposalId/comments', controller.listComments);

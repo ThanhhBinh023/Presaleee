@@ -96,6 +96,9 @@ export class FastAPILMGateway implements ILLMGateway {
     }
 
     // 3. Resilient Dynamic Fallback Engine (derives strictly from user's actual prompt text)
+    if (options.requireLiveModel) {
+      throw new ExternalServiceError('No AI model answered this request; the placeholder response is not sent to clients.');
+    }
     return this.generateHeuristicFallback(options.taskMode, options.prompt);
   }
 

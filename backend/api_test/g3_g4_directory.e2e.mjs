@@ -263,8 +263,36 @@ await suite.test('G3-13', 'Deactivating a member kills their existing session an
   return ['login 401 after deactivation', 'pre-existing refresh session revoked'];
 });
 
-await suite.test('G3-14', 'PATCH /users/me edits profile fields and ignores role/status escalation', async () => {
-  const updated = await http(viewer, 'PATCH', '/api/v1/users/me', {
+await suite.test('G3-13b', 'A role change revokes the refresh chain; the stateless access token keeps its old role until it expires', async () => {
+  const DEMOTED = email('to-demote');
+  const created = await addMember(DEMOTED, 'PRESALE_LEAD', 'E2E Demote Me');
+  expect(created.status === 201, `fixture member failed: ${created.status} ${created.text.slice(0, 200)}`);
+  ids.demoted = created.json.data.id;
+  suite.trackUser(ids.demoted);
+
+  const memberJar = new CookieJar();
+  await login(memberJar, DEMOTED);
+  const accessToken = memberJar.get('presaleee_access');
+  const refreshToken = memberJar.get('presaleee_refresh');
+  expect(refreshToken, 'login fixture produced no refresh cookie');
+
+  const demoted = await http(adminA, 'PATCH', `/api/v1/users/${ids.demoted}`, { body: { role: 'VIEWER' } });
+  expect(demoted.status === 200 && demoted.json.data.role === 'VIEWER', `role update expected 200/VIEWER, got ${demoted.status} ${demoted.text.slice(0, 160)}`);
+
+  const refresh = await http(new CookieJar(), 'POST', '/api/v1/auth/refresh', { rawCookie: `presaleee_refresh=${refreshToken}` });
+  expectEnvelope(refresh, 401);
+
+  const stale = await http(new CookieJar(), 'POST', '/api/v1/clients', { bearer: accessToken, body: { companyName: `E2E Demoted Write ${RUN}` } });
+  expect(stale.status === 201,
+    `the recorded residual: a live access token is still judged by its old JWT role, got ${stale.status} ${stale.text.slice(0, 160)}`);
+  await http(adminA, 'DELETE', `/api/v1/clients/${stale.json.data.id}`);
+  const me = await http(new CookieJar(), 'GET', '/api/v1/auth/me', { bearer: accessToken });
+  expect(me.json.data.user.role === 'VIEWER', `the profile reads the fresh DB role, got ${me.json.data.user.role}`);
+  return ['refresh chain revoked on role change',
+    'the 24h access token still writes (requireAuth trusts the JWT claim) while /auth/me already shows VIEWER - token version is the open decision'];
+});
+
+await suite.test('G3-14', 'PATCH /users/me edits profile fields and ignores role/status escalation', async () => {  const updated = await http(viewer, 'PATCH', '/api/v1/users/me', {
     body: { fullName: 'E2E Viewer Self', avatarUrl: 'https://example.test/avatar.png', role: 'ADMIN', status: 'ACTIVE' }
   });
   expect(updated.status === 200, `expected 200, got ${updated.status} ${updated.text.slice(0, 200)}`);

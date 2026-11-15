@@ -53,8 +53,8 @@ export function createApiRouter(
   router.use('/meetings', createMeetingRouter(meetingController));
   router.use('/portal', createPortalRouter(portalController, portalRepository));
   router.get('/proposals/:proposalId/portal-materials', requireAuth, requireOrganization, portalController.listProposalMaterials);
-  router.post('/proposals/:proposalId/portal-materials', requireAuth, requireOrganization, portalController.createMaterial);
-  router.delete('/proposals/:proposalId/portal-materials/:materialId', requireAuth, requireOrganization, portalController.deleteMaterial);
+  router.post('/proposals/:proposalId/portal-materials', requireAuth, requireOrganization, requireNotViewer, portalController.createMaterial);
+  router.delete('/proposals/:proposalId/portal-materials/:materialId', requireAuth, requireOrganization, requireNotViewer, portalController.deleteMaterial);
   router.get('/proposals/:proposalId/portal-sessions', requireAuth, requireOrganization, portalController.listProposalSessions);
   router.use('/clients', createClientRouter(clientController));
   router.use('/rate-cards', createRateCardRouter(rateCardController));

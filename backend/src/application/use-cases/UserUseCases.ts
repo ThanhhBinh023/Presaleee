@@ -207,7 +207,8 @@ export class UpdateMemberUseCase {
 
     const member = await this.userRepository.update(targetId, updates);
     if (!member) throw new NotFoundError('Member not found.');
-    if (updates.status === 'DEACTIVATED') await this.userRepository.revokeSessions(targetId);
+    // Roles are read from the access token, so a demotion only takes effect once the old token is gone.
+    if (updates.status === 'DEACTIVATED' || updates.role !== undefined) await this.userRepository.revokeSessions(targetId);
     await this.auditRepository.record({
       organizationId: scope.organizationId,
       actorId: scope.userId,

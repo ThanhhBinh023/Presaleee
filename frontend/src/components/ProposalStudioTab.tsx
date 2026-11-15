@@ -32,7 +32,7 @@ interface ProposalStudioTabProps {
 
 function buildDefault10SheetsProposal(leadId: string, lead: LeadItem | null): ProposalItem {
   const title = lead?.title || 'Enterprise Solution Proposal';
-  const meta = lead?.extracted_metadata || {};
+  const meta = lead?.extractedMetadata || {};
   const budget = meta.budgetUsd || 120000;
   const timeline = meta.timelineWeeks || 20;
   const techStack = Array.isArray(meta.techStack) ? meta.techStack.join(', ') : (meta.techStack || 'React 19, TypeScript, Node.js, PostgreSQL, Kubernetes, Redis, Apache Kafka');
@@ -136,7 +136,7 @@ function buildDefault10SheetsProposal(leadId: string, lead: LeadItem | null): Pr
           totalEffortManMonths: Math.round(timeline * 0.8),
           totalTeamCost: Math.round(budget * 0.85),
           roles: (() => {
-            const assigned = (lead?.extracted_metadata as any)?.assigned_roles || (lead?.extracted_metadata as any)?.assignedRoles || [];
+            const assigned = (lead?.extractedMetadata as any)?.assigned_roles || (lead?.extractedMetadata as any)?.assignedRoles || [];
             if (Array.isArray(assigned) && assigned.length > 0) {
               const list: any[] = [];
               if (assigned.includes('SOLUTION_ARCHITECT')) {
@@ -1135,13 +1135,13 @@ ${uiBrief.interaction_flow}
             <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
               <span className="text-[10px] text-slate-400 block">SLA CAM KẾT:</span>
               <span className="font-bold text-brand-700 block">
-                {activeProject?.extracted_metadata?.target_sla || '< 200ms Latency'}
+                {activeProject?.extractedMetadata?.target_sla || '< 200ms Latency'}
               </span>
             </div>
             <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
               <span className="text-[10px] text-slate-400 block">TẢI ĐỈNH (PEAK WORKLOAD):</span>
               <span className="font-bold text-brand-700 block">
-                {activeProject?.extracted_metadata?.peak_workload || '10,000+ Concurrent Requests'}
+                {activeProject?.extractedMetadata?.peak_workload || '10,000+ Concurrent Requests'}
               </span>
             </div>
           </div>

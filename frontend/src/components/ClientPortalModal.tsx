@@ -36,7 +36,7 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({
   
   const title = activeProject?.title || proposal?.title || 'Giải pháp Doanh nghiệp Presaleee';
   const org = activeProject?.organization || 'DUT';
-  const meta = activeProject?.extracted_metadata || {};
+  const meta = activeProject?.extractedMetadata || {};
   const budget = Number(meta.budgetUsd || proposal?.totalCost) || 120000;
   const timeline = Number(meta.timelineWeeks || proposal?.estimatedTimelineWeeks) || 20;
   const techStack = Array.isArray(meta.techStack) ? meta.techStack.join(', ') : (meta.techStack || 'Node.js, PostgreSQL, Redis, Kubernetes, Kafka');

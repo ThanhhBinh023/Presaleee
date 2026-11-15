@@ -3,7 +3,7 @@
 > **Tài liệu đặc tả kiến trúc:** Role-Based Access Control (RBAC) & Multi-Tenant Data Isolation  
 > **Dự án:** Presaleee Platform (AI-Powered Presale & Proposal Engineering)  
 > **Ngày cập nhật:** 15/11/2026  
-> **Phiên bản tài liệu:** v2.7 *(đợt 3 — khảo sát `SOLUTION_ARCHITECT`: thêm mục 10–12 của phần 6 về audit material Portal, hợp đồng `task_mode` và `ui-brief`; vá danh sách lỗ hổng đa tenant bằng `findById`; đính chính phát biểu "tạo phiên Portal không cần Proposal APPROVED" — xem `RBAC_TENANCY_BUGFIX_CHANGELOG.md` mục 18)*  
+> **Phiên bản tài liệu:** v2.8 *(đợt 4 — khảo sát `SALES_REP`: vá N14/N15/N16 cho phân hệ Leads — hai route ghi chưa từng tồn tại, state machine bị cửa sau `PUT` đi vòng, danh sách lead bỏ qua mọi bộ lọc; thêm mục 13–14 của phần 6; viết lại mục 3.5 theo enforcement thật. Chi tiết trong `RBAC_TENANCY_BUGFIX_CHANGELOG.md` mục 23–30)*  
 > **Quy tắc đọc bảng ma trận:** một quyền chỉ được ghi là giới hạn theo role khi code **thực sự enforce** giới hạn đó (middleware hoặc use case). Ngoài `VIEWER` và `ORGANIZATION_ADMIN_ROLES = ['ADMIN','PRESALE_LEAD']`, hệ thống **không có** giới hạn nào khác giữa 4 role nghiệp vụ còn lại.
 
 ---
@@ -74,14 +74,15 @@ Hệ thống bảo vệ tài nguyên dựa trên 2 tầng kiểm soát đồng t
 
 ### 3.5. Role `SALES_REP` (Đại diện Kinh doanh / Account Executive)
 * **Mục tiêu:** Theo dõi và thúc đẩy cơ hội kinh doanh, duy trì kết nối với khách hàng.
-* **Quyền hạn & Thao tác:**
-  - **Quản lý Lead ban đầu:** Nhập thông tin liên hệ của khách hàng, tạo mới Lead cơ hội.
-  - **Theo dõi đường ống (`Presale Pipeline`):** Quan sát tỷ lệ chuyển đổi, trạng thái các deal (Đang thẩm định, Đang họp, Đang soạn Proposal, Đã gửi).
+* **Bản chất phân quyền:** **không** có gate nào nhắc riêng tới `SALES_REP`. Về mặt API, role này **giống hệt** `PRESALE_CONSULTANT` và `SOLUTION_ARCHITECT`; kém `ADMIN`/`PRESALE_LEAD` đúng 4 nhóm: Rate Cards, **ghi** Clients, thành viên tổ chức, và Approve/DONE của Proposal. Đọc vẫn mở (`GET /clients`, `GET /users` không gate role).
+* **Quyền hạn & Thao tác (theo enforcement thật, cập nhật đợt 4):**
+  - **Quản lý Lead ban đầu:** tạo Lead (`POST /leads`) ✅; sửa trường Lead và chuyển trạng thái ✅ **từ đợt 4** — trước đó hai route UI gọi (`PATCH /leads/:id`, `PATCH /leads/:id/status`) **chưa từng tồn tại** nên mọi nút "Save fields"/"Status machine" trả 404 (N14). ❌ **Không nhập được thông tin liên hệ khách hàng**: không có bảng `contacts`, contact nằm trên `clients` và `POST/PATCH /clients` là tầng admin (N17 — chưa xử lý, cần quyết định sản phẩm).
+  - **Theo dõi đường ống (`Presale Pipeline`):** ✅ **từ đợt 4** — `GET /leads` nay thật sự phân trang và áp bộ lọc status/source/search; trước đó backend bỏ qua cả 7 query param, hard `LIMIT 50` và không trả `meta` ⇒ ô Search/Status/Source là control chết, cột BANT và cột ngày luôn rỗng vì `SELECT` thiếu cột (N16). Lưu ý: hai nhãn "Đang xử lý"/"Đã hoàn thành" vẫn chỉ đếm **trong trang hiện tại**.
   - **Client Portal:**
-    - Tạo link chia sẻ Client Portal gửi khách hàng sau khi Proposal đã được phê duyệt.
-    - Quan sát tín hiệu thời gian thực (`Telemetry Signals`) khi khách hàng mở xem Proposal.
-    - Đọc phản hồi, câu hỏi và đề xuất chỉnh sửa của khách hàng.
-  - **Xuất tóm tắt điều hành:** Xuất bản Executive Overview (`.txt`/PDF) để trình bày nhanh cho Ban Giám đốc khách hàng.
+    - Tạo link chia sẻ sau khi Proposal được duyệt ✅ — route không gate role (`SALES_REP` nằm trong `PORTAL_MANAGER_ROLES` = mọi role trừ `VIEWER`), cửa **trạng thái** ở `PostgresPortalRepository.createSession:27`.
+    - "Tín hiệu thời gian thực" chỉ là **một** `last_accessed_at` bị ghi đè mỗi lần khách mở (`PostgresPortalRepository.findActiveSession:61-63`) — không có lịch sử lượt xem, không biết khách xem mục nào (N19, doc từng over-promise).
+    - Đọc phản hồi/câu hỏi của khách ✅ (`GET /portal/proposals/:id/comments` — còn lỗ N10 chưa duyệt: endpoint này không lọc theo phiên nên khách A đọc được bình luận của khách B trên cùng hồ sơ).
+  - **Xuất tóm tắt điều hành:** PDF ✅ thật (`GET /proposals/:id/export-pdf`, pdfmake). ❌ **`.txt` Executive Overview vẫn là mock** dựng bằng hằng số hard-code ngay trong trình duyệt (`ClientPortalModal.tsx:91-132`: SLA 99.999%, "4 Giai đoạn", Tuần 1–16) rồi báo "thành công" (N18, cùng cụm N13).
 
 ### 3.6. Role `VIEWER` (Khách quan sát - Read-Only)
 * **Mục tiêu:** Đảm bảo tính minh bạch thông tin cho kiểm toán, thành viên mới hoặc đối tác theo dõi tiến độ, tuyệt đối không làm sai lệch hay phá vỡ tính toàn vẹn của dữ liệu.
@@ -247,6 +248,14 @@ Hệ thống bảo vệ tài nguyên dựa trên 2 tầng kiểm soát đồng t
     | `GenerateUIDesignBriefUseCase.ts:68` (mới) | — | `TECH_ARCHITECTURE` (6) | Lần đầu tiên mode 6 có caller |
 12. **`POST /proposals/:id/ui-brief` trước đây không gọi AI (đợt 3):**
     Bản cũ dựng sẵn 5 trường văn mẫu tiếng Việt (`title`, `target_users`, `key_screens`, `ui_style_guide`, `interaction_flow`) khi sheet `Overview` thiếu `uiDesignBrief`, rồi trả `message: 'AI UI Design Brief generated successfully.'` — **mọi role** đều nhận thông báo sai, và `LLMTaskMode.TECH_ARCHITECTURE` vì thế không có ai gọi. Nay use case riêng (`GenerateUIDesignBriefUseCase`) đọc sheet theo org, gọi AI mode 6, **kiểm tra hình JSON** rồi mới nhận; AI trả rác thì `409` "Nothing was generated" chứ không âm thầm dựng mẫu. Response có thêm `meta.source` = `'sheet'` hay `'ai'` để UI nói đúng nguồn.
+13. **State machine của Lead nay enforce ở backend (đợt 4):**
+    Trước đợt 4, bảng chuyển trạng thái **chỉ tồn tại ở frontend** (`frontend/src/types/lead.ts:17-28`), còn `PUT /leads/:id` nhận `status` từ body và ghi thẳng không kiểm tra gì (`LeadIntakeController.ts:362,381,392` bản cũ) — kể cả `APPROVED` khi lead chưa có điểm BANT, tức dòng "APPROVED requires a stored BANT score" trong UI là rule không có thật. Nay:
+    - `UpdateLeadUseCase.ts:195` **throw 400** nếu body update có `status`, và `PUT` lẫn `PATCH /:id` cùng delegate một handler (`leadIntakeRoutes.ts:31-32`) ⇒ không còn cửa sau.
+    - Đổi trạng thái chỉ đi qua `PATCH /:id/status` → `UpdateLeadStatusUseCase` (`:210-242`), và kiểm tra + ghi nằm trong **cùng một câu UPDATE** (`PostgresLeadRepository.ts:128-138`): `($3 <> 'APPROVED' OR bant_score IS NOT NULL) AND status = ANY(allowedCurrentStatuses)` — nên không có window đua hai request cùng nhảy trạng thái.
+    - UI không còn mời bước sai: `AIWorkspace` sinh option từ `LEAD_TRANSITIONS` (`:1706-1716`) và tách lưu trường / đổi trạng thái thành 2 bước, 409 được báo rõ mà không mất nội dung đã lưu (`:257-296`).
+    - **Lỗ còn lại (N20, chưa sửa):** cả hai endpoint qualify vẫn tự ghi `status = 'QUALIFIED'` không qua bảng transition (`PostgresLeadRepository.saveQualification:150`, `LeadIntakeController.qualify:294`), trong khi bảng chỉ cho `QUALIFYING → QUALIFIED` ⇒ từ `NEW` vẫn nhảy thẳng lên `QUALIFIED` được. Đóng lỗ này là quyết định hành vi sản phẩm (qualify có được đổi trạng thái hay không), không phải bug phân quyền.
+14. **Hợp đồng API của phân hệ Leads: một shape duy nhất (đợt 4):**
+    `GET /leads` và `GET /leads/:id` từng trả **raw column snake_case** (`raw_rfp_content`, `extracted_metadata`) vì handler viết SQL thô, trong khi `LeadsDirectory` khai type `LeadRecord`/`LeadListItem` **camelCase** và không có layer chuyển đổi nào trong `apiClient.ts` ⇒ mọi field camel `undefined` lúc chạy (ô RFP trống, panel metadata toàn "—", cột BANT luôn "—", cột ngày luôn rỗng) — đây là lý do lỗi 404 của N14 bị coi nhẹ: trang vẫn hiển thị được một nửa. Nay toàn bộ read/write lead đi qua `PostgresLeadRepository` nên **chỉ còn camelCase**, `GET /leads` kèm `meta {total,page,limit,totalPages}` như các list endpoint khác (`ClientController.ts:58`). Hai hệ quả phải biết khi test tay: (a) xoá lead **không còn xoá proposal** kèm theo — FK `proposals.lead_id ON DELETE SET NULL` (`001_initial_schema.sql:167`) giữ proposal và cắt liên kết, chỉ `meetings` là CASCADE (`:89`); (b) `PUT /leads/:id` nghiêm khắc hơn (từ chối `status`, kiểm tra `clientId`/`assignedTo` qua `ReferenceValidator`). Còn N21: 5 field `organization`, `client_name`, `requirements_summary`, `client_request_raw`, `qualification_status` **không endpoint lead nào trả**, UI đang rơi vào fallback hard-code — chưa sửa để khỏi lan phạm vi.
 
 ---
 *Presaleee Enterprise Solutions Platform — Tài liệu kỹ thuật lưu hành nội bộ.*

@@ -3,8 +3,18 @@ import { Pool } from 'pg';
 import { AnalyzeLeadIntakeUseCase } from '../../application/use-cases/AnalyzeLeadIntakeUseCase.js';
 import { AnalyzeLeadIntakeInputDTO } from '../../application/dtos/AnalyzeLeadIntakeDTO.js';
 import { ILLMGateway, LLMTaskMode } from '../../domain/repositories/ILLMGateway.js';
-import { CreateLeadUseCase, QualifyLeadUseCase } from '../../application/use-cases/LeadUseCases.js';
+import {
+  CreateLeadUseCase,
+  QualifyLeadUseCase,
+  ListLeadsUseCase,
+  GetLeadUseCase,
+  UpdateLeadUseCase,
+  UpdateLeadStatusUseCase,
+  DeleteLeadUseCase,
+  GetLatestQualificationUseCase
+} from '../../application/use-cases/LeadUseCases.js';
 import { AuthenticatedLeadScope, LeadWriteInput } from '../../application/dtos/LeadDTO.js';
+import { LeadSource, LeadStatus } from '../../domain/entities/Lead.js';
 import { IAuditRepository } from '../../domain/repositories/IAuditRepository.js';
 import { UnauthorizedError, ValidationError } from '../../domain/errors/AppError.js';
 
@@ -13,11 +23,39 @@ function routeParam(req: Pick<Request, 'params'>, name: string): string {
   return Array.isArray(value) ? value[0] || '' : value || '';
 }
 
+/** Query-string filters arrive as strings and are re-validated by ListLeadsUseCase. */
+function leadListFilters(query: Record<string, unknown>): {
+  page?: string;
+  limit?: string;
+  status?: LeadStatus;
+  source?: LeadSource;
+  assignedTo?: string;
+  clientId?: string;
+  search?: string;
+} {
+  const text = (value: unknown): string | undefined => (typeof value === 'string' ? value : undefined);
+  return {
+    page: text(query.page),
+    limit: text(query.limit),
+    status: text(query.status) as LeadStatus | undefined,
+    source: text(query.source) as LeadSource | undefined,
+    assignedTo: text(query.assignedTo),
+    clientId: text(query.clientId),
+    search: text(query.search)
+  };
+}
+
 export class LeadIntakeController {
   constructor(
     private readonly analyzeUseCase: AnalyzeLeadIntakeUseCase,
     private readonly createLeadUseCase: CreateLeadUseCase,
     private readonly qualifyLeadUseCase: QualifyLeadUseCase,
+    private readonly listLeadsUseCase: ListLeadsUseCase,
+    private readonly getLeadUseCase: GetLeadUseCase,
+    private readonly updateLeadUseCase: UpdateLeadUseCase,
+    private readonly updateLeadStatusUseCase: UpdateLeadStatusUseCase,
+    private readonly deleteLeadUseCase: DeleteLeadUseCase,
+    private readonly getLatestQualificationUseCase: GetLatestQualificationUseCase,
     private readonly dbPool?: Pool,
     private readonly llmGateway?: ILLMGateway,
     private readonly auditRepository?: IAuditRepository
@@ -264,7 +302,7 @@ Yêu cầu trả về định dạng JSON thuần túy (không markdown) với c
           [JSON.stringify(qualificationData), leadId, orgId]
         );
         if (updateRes.rows.length > 0) {
-          lead = updateRes.rows[0];
+          lead = await this.getLeadUseCase.execute(leadId, orgId);
           await this.recordLeadAudit(req, 'LEAD_QUALIFIED', leadId, {
             score: qualificationData.qualification_score,
             recommendation: qualificationData.readiness_level
@@ -287,23 +325,14 @@ Yêu cầu trả về định dạng JSON thuần túy (không markdown) với c
 
   listLeads = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      if (!this.dbPool) {
-        res.status(200).json({ success: true, data: [] });
-        return;
-      }
-      const orgId = req.auth?.organizationId;
-      if (!orgId) {
-        res.status(403).json({ success: false, error: 'An organization is required.' });
-        return;
-      }
-
-      const queryResult = await this.dbPool.query(
-        'SELECT id, title, source, status, raw_rfp_content, extracted_metadata, organization_id, created_by, created_at FROM leads WHERE organization_id = $1 ORDER BY created_at DESC LIMIT 50;',
-        [orgId]
-      );
+      const result = await this.listLeadsUseCase.execute({
+        ...this.leadScope(req),
+        ...leadListFilters(req.query as Record<string, unknown>)
+      });
       res.status(200).json({
         success: true,
-        data: queryResult.rows
+        data: result.leads,
+        meta: { total: result.total, page: result.page, limit: result.limit, totalPages: result.totalPages }
       });
     } catch (error) {
       console.error('[LeadIntakeController.listLeads] Error:', error);
@@ -313,139 +342,75 @@ Yêu cầu trả về định dạng JSON thuần túy (không markdown) với c
 
   getLeadById = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const orgId = req.auth?.organizationId;
-      if (!orgId) {
-        res.status(403).json({ success: false, error: 'An organization is required.' });
-        return;
-      }
-      if (!this.dbPool) {
-        res.status(404).json({ success: false, error: 'Database not connected.' });
-        return;
-      }
-      const queryResult = await this.dbPool.query(
-        'SELECT * FROM leads WHERE id = $1 AND organization_id = $2 LIMIT 1;',
-        [req.params.id, orgId]
-      );
-      if (queryResult.rows.length === 0) {
-        res.status(404).json({ success: false, error: 'Lead not found.' });
-        return;
-      }
-      res.status(200).json({
-        success: true,
-        data: queryResult.rows[0]
-      });
+      const lead = await this.getLeadUseCase.execute(routeParam(req, 'id'), this.leadScope(req).organizationId);
+      res.status(200).json({ success: true, data: lead });
     } catch (error) {
       console.error('[LeadIntakeController.getLeadById] Error:', error);
       next(error);
     }
   };
 
-  updateLead = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  /** PUT is kept as an alias of PATCH so both verbs share exactly one implementation. */
+  updateLead = async (
+    req: Request<{ id: string }, unknown, Partial<LeadWriteInput> & { status?: unknown }>,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
     try {
-      const orgId = req.auth?.organizationId;
-      if (!orgId) {
-        res.status(403).json({ success: false, error: 'An organization is required.' });
-        return;
-      }
-      if (req.auth?.role === 'VIEWER') {
-        res.status(403).json({ success: false, error: 'VIEWER role is read-only. Modifying leads is not permitted.' });
-        return;
-      }
-      if (!this.dbPool) {
-        res.status(404).json({ success: false, error: 'Database not connected.' });
-        return;
-      }
-      const leadId = routeParam(req, 'id');
-      const { 
-        title, 
-        source, 
-        status, 
-        rawRfpContent, 
-        raw_rfp_content, 
-        extractedMetadata, 
-        extracted_metadata 
-      } = req.body;
-
-      const existingRes = await this.dbPool.query(
-        'SELECT * FROM leads WHERE id = $1 AND organization_id = $2 LIMIT 1;',
-        [leadId, orgId]
-      );
-      if (existingRes.rows.length === 0) {
-        res.status(404).json({ success: false, error: 'Lead not found.' });
-        return;
-      }
-
-      const current = existingRes.rows[0];
-      const newTitle = title !== undefined ? title : current.title;
-      const newSource = source !== undefined ? source : current.source;
-      const newStatus = status !== undefined ? status : current.status;
-      const rawInput = rawRfpContent !== undefined ? rawRfpContent : raw_rfp_content;
-      const newRaw = rawInput !== undefined ? rawInput : current.raw_rfp_content;
-      
-      const metaInput = extractedMetadata !== undefined ? extractedMetadata : extracted_metadata;
-      const newMeta = metaInput !== undefined 
-        ? (typeof metaInput === 'string' ? metaInput : JSON.stringify(metaInput))
-        : JSON.stringify(current.extracted_metadata || {});
-
-      const updateRes = await this.dbPool.query(
-        `UPDATE leads
-         SET title = $1, source = $2, status = $3, raw_rfp_content = $4, extracted_metadata = $5::jsonb, updated_at = NOW()
-         WHERE id = $6 AND organization_id = $7
-         RETURNING *;`,
-        [newTitle, newSource, newStatus, newRaw, newMeta, leadId, orgId]
-      );
-
-      await this.recordLeadAudit(req, 'LEAD_UPDATED', leadId, {
-        changedFields: Object.entries({ title, source, status, rawRfpContent, extractedMetadata })
-          .filter(([, value]) => value !== undefined)
-          .map(([field]) => field)
+      const body = req.body ?? {};
+      const lead = await this.updateLeadUseCase.execute({
+        ...this.leadScope(req),
+        id: routeParam(req, 'id'),
+        title: body.title,
+        source: body.source,
+        rawRfpContent: body.rawRfpContent,
+        extractedMetadata: body.extractedMetadata,
+        clientId: body.clientId,
+        assignedTo: body.assignedTo,
+        status: body.status as LeadStatus | undefined
       });
-
-      res.status(200).json({
-        success: true,
-        data: updateRes.rows[0]
-      });
+      res.status(200).json({ success: true, data: lead });
     } catch (error) {
       console.error('[LeadIntakeController.updateLead] Error:', error);
       next(error);
     }
   };
 
+  changeStatus = async (
+    req: Request<{ id: string }, unknown, { status?: unknown }>,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const lead = await this.updateLeadStatusUseCase.execute(
+        routeParam(req, 'id'),
+        this.leadScope(req),
+        req.body?.status
+      );
+      res.status(200).json({ success: true, data: lead });
+    } catch (error) {
+      console.error('[LeadIntakeController.changeStatus] Error:', error);
+      next(error);
+    }
+  };
+
+  latestQualification = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const qualification = await this.getLatestQualificationUseCase.execute(
+        routeParam(req, 'id'),
+        this.leadScope(req).organizationId
+      );
+      res.status(200).json({ success: true, data: qualification });
+    } catch (error) {
+      console.error('[LeadIntakeController.latestQualification] Error:', error);
+      next(error);
+    }
+  };
+
   deleteLead = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const orgId = req.auth?.organizationId;
-      if (!orgId) {
-        res.status(403).json({ success: false, error: 'An organization is required.' });
-        return;
-      }
-      if (req.auth?.role === 'VIEWER') {
-        res.status(403).json({ success: false, error: 'VIEWER role is read-only. Deleting leads is not permitted.' });
-        return;
-      }
-      if (!this.dbPool) {
-        res.status(404).json({ success: false, error: 'Database not connected.' });
-        return;
-      }
       const leadId = routeParam(req, 'id');
-      const checkLead = await this.dbPool.query(
-        'SELECT id FROM leads WHERE id = $1 AND organization_id = $2;',
-        [leadId, orgId]
-      );
-      if (checkLead.rows.length === 0) {
-        res.status(404).json({ success: false, error: 'Lead not found.' });
-        return;
-      }
-      await this.dbPool.query('DELETE FROM meetings WHERE lead_id = $1;', [leadId]);
-      await this.dbPool.query('DELETE FROM proposals WHERE lead_id = $1;', [leadId]);
-      const deleteRes = await this.dbPool.query(
-        'DELETE FROM leads WHERE id = $1 AND organization_id = $2 RETURNING id;',
-        [leadId, orgId]
-      );
-      if (deleteRes.rows.length === 0) {
-        res.status(404).json({ success: false, error: 'Lead not found.' });
-        return;
-      }
-      await this.recordLeadAudit(req, 'LEAD_DELETED', leadId, {});
+      await this.deleteLeadUseCase.execute(leadId, this.leadScope(req));
       res.status(200).json({
         success: true,
         message: 'Lead deleted successfully.',

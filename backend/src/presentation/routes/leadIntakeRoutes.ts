@@ -23,8 +23,16 @@ export function createLeadIntakeRouter(controller: LeadIntakeController): Router
   // Get single lead (strictly scoped to user's organization)
   router.get('/:id', requireAuth, requireOrganization, controller.getLeadById);
 
-  // Update lead (prohibited for VIEWER, strictly scoped to user's organization)
+  // Latest stored BANT result (strictly scoped to user's organization)
+  router.get('/:id/qualifications/latest', requireAuth, requireOrganization, controller.latestQualification);
+
+  // Update lead fields (prohibited for VIEWER, strictly scoped to user's organization).
+  // Rejects `status`: status changes only go through PATCH /:id/status, which enforces the state machine.
+  router.patch('/:id', requireAuth, requireOrganization, requireNotViewer, controller.updateLead);
   router.put('/:id', requireAuth, requireOrganization, requireNotViewer, controller.updateLead);
+
+  // Move a lead through the state machine (prohibited for VIEWER)
+  router.patch('/:id/status', requireAuth, requireOrganization, requireNotViewer, controller.changeStatus);
 
   // Delete lead (prohibited for VIEWER, strictly scoped to user's organization)
   router.delete('/:id', requireAuth, requireOrganization, requireNotViewer, controller.deleteLead);

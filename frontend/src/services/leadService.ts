@@ -51,12 +51,19 @@ export interface ExtractedMetadata {
 
 export interface LeadItem {
   id: string;
+  organizationId?: string;
+  clientId?: string | null;
+  createdBy?: string | null;
+  assignedTo?: string | null;
   title: string;
   source: string;
   status: string;
-  raw_rfp_content?: string;
-  extracted_metadata?: ExtractedMetadata;
-  created_at?: string;
+  rawRfpContent?: string;
+  extractedMetadata?: ExtractedMetadata;
+  bantScore?: number | null;
+  createdAt?: string;
+  updatedAt?: string;
+  /** Never returned by any lead endpoint — the UI below still renders fallbacks for these. */
   qualification_score?: number | null;
   qualification_status?: string | null;
   organization?: string;
@@ -102,10 +109,22 @@ export async function getLeadById(leadId: string): Promise<LeadItem | null> {
   }
 }
 
-export async function updateLead(leadId: string, updates: Partial<LeadItem>): Promise<LeadItem> {
+/** Status is excluded on purpose: PATCH /leads/:id rejects it, transitions go through PATCH /leads/:id/status. */
+export type LeadFieldUpdate = Partial<
+  Pick<LeadItem, 'title' | 'source' | 'rawRfpContent' | 'extractedMetadata' | 'clientId' | 'assignedTo'>
+>;
+
+export async function updateLead(leadId: string, updates: LeadFieldUpdate): Promise<LeadItem> {
   return await apiRequest<LeadItem>(`${LEADS_PREFIX}/${encodeURIComponent(leadId)}`, {
-    method: 'PUT',
+    method: 'PATCH',
     body: updates
+  });
+}
+
+export async function updateLeadStatus(leadId: string, status: string): Promise<LeadItem> {
+  return await apiRequest<LeadItem>(`${LEADS_PREFIX}/${encodeURIComponent(leadId)}/status`, {
+    method: 'PATCH',
+    body: { status }
   });
 }
 

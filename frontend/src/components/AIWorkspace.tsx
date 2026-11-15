@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import type { LeadItem } from '../services/leadService';
-import { fetchLeads, qualifyLead, updateLead, deleteLead } from '../services/leadService';
+import type { LeadStatus } from '../types/lead';
+import { LEAD_TRANSITIONS } from '../types/lead';
+import { fetchLeads, qualifyLead, updateLead, updateLeadStatus, deleteLead } from '../services/leadService';
 import { useAuth } from '../hooks/useAuth';
 import { useOrganizations } from '../hooks/useOrganizations';
 import { WorkspacePill } from './workspace/WorkspacePill';
@@ -132,7 +134,7 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
 
   const assignedRolesList: UserRole[] = React.useMemo(() => {
     if (!selectedProject) return [];
-    const meta = selectedProject.extracted_metadata as any;
+    const meta = selectedProject.extractedMetadata as any;
     const roles = meta?.assigned_roles || meta?.assignedRoles;
     if (Array.isArray(roles) && roles.length > 0) {
       return roles as UserRole[];
@@ -160,12 +162,12 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
     try {
       setIsSubmitting(true);
       const updatedMetadata = {
-        ...(selectedProject.extracted_metadata || {}),
+        ...(selectedProject.extractedMetadata || {}),
         assigned_roles: selectedDealRoles,
         assignedRoles: selectedDealRoles
       };
       const updated = await updateLead(selectedProject.id, {
-        extracted_metadata: updatedMetadata
+        extractedMetadata: updatedMetadata
       });
       setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
       toast.success(`Đã cập nhật đội ngũ (${selectedDealRoles.length} vai trò) cho lead "${updated.title}"!`, 'Đội ngũ phụ trách');
@@ -240,14 +242,14 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
   const openEditModal = () => {
     if (!selectedProject) return;
     setEditTitle(selectedProject.title || '');
-    setEditRfpContent(selectedProject.raw_rfp_content || '');
+    setEditRfpContent(selectedProject.rawRfpContent || '');
     setEditSource(selectedProject.source || 'INBOUND_EMAIL');
     setEditStatus(selectedProject.status || 'NEW');
-    setEditIndustry(selectedProject.extracted_metadata?.clientIndustry || '');
-    setEditBudget(selectedProject.extracted_metadata?.budgetUsd || '');
-    setEditTimeline(selectedProject.extracted_metadata?.timelineWeeks || '');
-    setEditTargetSla(selectedProject.extracted_metadata?.target_sla || '');
-    setEditPeakWorkload(selectedProject.extracted_metadata?.peak_workload || '');
+    setEditIndustry(selectedProject.extractedMetadata?.clientIndustry || '');
+    setEditBudget(selectedProject.extractedMetadata?.budgetUsd || '');
+    setEditTimeline(selectedProject.extractedMetadata?.timelineWeeks || '');
+    setEditTargetSla(selectedProject.extractedMetadata?.target_sla || '');
+    setEditPeakWorkload(selectedProject.extractedMetadata?.peak_workload || '');
     setIsEditModalOpen(true);
   };
 
@@ -259,7 +261,7 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
     try {
       setIsSubmitting(true);
       const updatedMetadata = {
-        ...(selectedProject.extracted_metadata || {}),
+        ...(selectedProject.extractedMetadata || {}),
         clientIndustry: editIndustry || undefined,
         budgetUsd: editBudget ? Number(editBudget) : undefined,
         timelineWeeks: editTimeline ? Number(editTimeline) : undefined,
@@ -270,14 +272,28 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
       const updated = await updateLead(selectedProject.id, {
         title: editTitle.trim() || selectedProject.title,
         source: editSource || selectedProject.source,
-        status: editStatus || selectedProject.status,
-        raw_rfp_content: editRfpContent,
-        extracted_metadata: updatedMetadata
+        rawRfpContent: editRfpContent,
+        extractedMetadata: updatedMetadata
       });
 
-      setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
-      toast.success(`Đã cập nhật Intake "${updated.title}"!`, 'Cập nhật thành công');
-      setIsEditModalOpen(false);
+      const nextStatus = editStatus || updated.status;
+      if (nextStatus === updated.status) {
+        setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
+        toast.success(`Đã cập nhật Intake "${updated.title}"!`, 'Cập nhật thành công');
+        setIsEditModalOpen(false);
+        return;
+      }
+
+      try {
+        const statusUpdated = await updateLeadStatus(updated.id, nextStatus);
+        setProjects(prev => prev.map(p => p.id === statusUpdated.id ? statusUpdated : p));
+        toast.success(`Đã cập nhật Intake "${statusUpdated.title}"!`, 'Cập nhật thành công');
+        setIsEditModalOpen(false);
+      } catch (statusErr: any) {
+        // The field edits are already stored; only the transition was refused by the backend state machine.
+        setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
+        toast.error(statusErr?.message || 'Backend từ chối chuyển trạng thái này.', `Nội dung đã lưu — trạng thái vẫn là ${updated.status}`);
+      }
     } catch (err: any) {
       toast.error(err.message || 'Lỗi cập nhật Intake', 'Thất bại');
     } finally {
@@ -305,7 +321,7 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
     if (!selectedProject) return;
     try {
       setIsQualifying(true);
-      const res = await qualifyLead(selectedProject.id, selectedProject.raw_rfp_content);
+      const res = await qualifyLead(selectedProject.id, selectedProject.rawRfpContent);
       setProjects(prev => prev.map(p => p.id === res.lead.id ? res.lead : p));
       toast.success(`Thẩm định BANT thành công! Điểm: ${res.qualification.qualification_score}/100`, 'AI BANT Engine');
     } catch (err: any) {
@@ -548,11 +564,11 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                 </span>
 
                 <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                  Est. Value: <strong>{selectedProject.extracted_metadata?.budgetUsd ? `$${selectedProject.extracted_metadata.budgetUsd.toLocaleString()} USD` : 'Chưa nhập'}</strong>
+                  Est. Value: <strong>{selectedProject.extractedMetadata?.budgetUsd ? `$${selectedProject.extractedMetadata.budgetUsd.toLocaleString()} USD` : 'Chưa nhập'}</strong>
                 </span>
 
                 <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                  Target Timeline: <strong>{selectedProject.extracted_metadata?.timelineWeeks ? `${selectedProject.extracted_metadata.timelineWeeks} Weeks` : 'Chưa định'}</strong>
+                  Target Timeline: <strong>{selectedProject.extractedMetadata?.timelineWeeks ? `${selectedProject.extractedMetadata.timelineWeeks} Weeks` : 'Chưa định'}</strong>
                 </span>
               </div>
             ) : loadingProjects ? (
@@ -813,32 +829,32 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                       </div>
 
                       <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 font-mono text-xs text-slate-700 leading-relaxed max-h-48 overflow-y-auto whitespace-pre-wrap">
-                        {selectedProject.raw_rfp_content || '(Không có nội dung mô tả thô)'}
+                        {selectedProject.rawRfpContent || '(Không có nội dung mô tả thô)'}
                       </div>
 
                       <div className="grid grid-cols-2 gap-3 text-xs font-mono">
                         <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
                           <span className="text-slate-400 text-[10px] block">CLIENT TIER / DOMAIN</span>
                           <span className="font-bold text-slate-800">
-                            {selectedProject.extracted_metadata?.clientIndustry || 'Chưa xác định'}
+                            {selectedProject.extractedMetadata?.clientIndustry || 'Chưa xác định'}
                           </span>
                         </div>
                         <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
                           <span className="text-slate-400 text-[10px] block">EST. VALUE</span>
                           <span className="font-bold text-brand-700">
-                            {selectedProject.extracted_metadata?.budgetUsd ? `$${selectedProject.extracted_metadata.budgetUsd.toLocaleString()} USD` : 'Chưa định'}
+                            {selectedProject.extractedMetadata?.budgetUsd ? `$${selectedProject.extractedMetadata.budgetUsd.toLocaleString()} USD` : 'Chưa định'}
                           </span>
                         </div>
                         <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
                           <span className="text-slate-400 text-[10px] block">TARGET SLA</span>
                           <span className="font-bold text-slate-800">
-                            {selectedProject.extracted_metadata?.target_sla || 'Chưa cấu hình'}
+                            {selectedProject.extractedMetadata?.target_sla || 'Chưa cấu hình'}
                           </span>
                         </div>
                         <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
                           <span className="text-slate-400 text-[10px] block">PEAK WORKLOAD</span>
                           <span className="font-bold text-brand-700">
-                            {selectedProject.extracted_metadata?.peak_workload || 'Chưa cấu hình'}
+                            {selectedProject.extractedMetadata?.peak_workload || 'Chưa cấu hình'}
                           </span>
                         </div>
                       </div>
@@ -850,31 +866,31 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                         <h3 className="text-sm font-bold text-slate-900 font-mono">
                           Qualification Engine Assessment
                         </h3>
-                        {selectedProject.extracted_metadata?.qualification && (
+                        {selectedProject.extractedMetadata?.qualification && (
                           <span className="text-[10px] font-mono font-bold text-brand-700 bg-emerald-50 px-2 py-0.5 rounded border border-brand-200">
                             Đã Thẩm Định
                           </span>
                         )}
                       </div>
 
-                      {selectedProject.extracted_metadata?.qualification ? (
+                      {selectedProject.extractedMetadata?.qualification ? (
                         <div className="p-4 rounded-2xl bg-emerald-50/70 border border-brand-200 space-y-2.5">
                           <div className="flex justify-between items-center text-xs font-mono">
                             <span className="font-bold text-brand-900 text-sm">
-                              Score: {selectedProject.extracted_metadata.qualification.qualification_score} / 100
+                              Score: {selectedProject.extractedMetadata.qualification.qualification_score} / 100
                             </span>
                             <span className="text-brand-700 font-bold">
-                              {selectedProject.extracted_metadata.qualification.readiness_level}
+                              {selectedProject.extractedMetadata.qualification.readiness_level}
                             </span>
                           </div>
                           <p className="text-xs text-slate-700 leading-relaxed">
-                            {selectedProject.extracted_metadata.qualification.project_brief}
+                            {selectedProject.extractedMetadata.qualification.project_brief}
                           </p>
 
                           {/* Breakdown tags */}
-                          {selectedProject.extracted_metadata.qualification.breakdown && (
+                          {selectedProject.extractedMetadata.qualification.breakdown && (
                             <div className="space-y-1.5 pt-2 border-t border-brand-200/60">
-                              {selectedProject.extracted_metadata.qualification.breakdown.slice(0, 3).map((item, idx) => (
+                              {selectedProject.extractedMetadata.qualification.breakdown.slice(0, 3).map((item, idx) => (
                                 <div key={idx} className="text-[11px] font-mono text-slate-700 flex items-start gap-1.5">
                                   <span className="text-brand-600 font-bold">•</span>
                                   <span><strong>{item.title}:</strong> {item.detail}</span>
@@ -1162,7 +1178,7 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
               const totalComments = realSessions.reduce((acc, s) => acc + (s.commentCount || 0), 0);
 
               // Calculate real info completeness
-              const meta = selectedProject.extracted_metadata || {};
+              const meta = selectedProject.extractedMetadata || {};
               const checks = [
                 Boolean(meta.budgetUsd),
                 Boolean(meta.timelineWeeks),
@@ -1692,12 +1708,14 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                     onChange={(e) => setEditStatus(e.target.value)}
                     className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:border-brand-500"
                   >
-                    <option value="NEW">NEW</option>
-                    <option value="QUALIFIED">QUALIFIED</option>
-                    <option value="IN_REVIEW">IN_REVIEW</option>
-                    <option value="APPROVED">APPROVED</option>
-                    <option value="REJECTED">REJECTED</option>
+                    <option value={selectedProject.status}>{selectedProject.status} (giữ nguyên)</option>
+                    {(LEAD_TRANSITIONS[selectedProject.status as LeadStatus] ?? []).map((next) => (
+                      <option key={next} value={next}>{next}</option>
+                    ))}
                   </select>
+                  <p className="mt-1 text-[10px] text-slate-400 font-sans">
+                    Chỉ những bước hợp lệ theo state machine mới được liệt kê; APPROVED cần điểm BANT đã lưu.
+                  </p>
                 </div>
                 <div>
                   <label className="block text-slate-700 font-semibold mb-1">

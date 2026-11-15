@@ -169,6 +169,12 @@ export function createContainer(): ServiceContainer {
   const analyzeLeadIntakeUseCase = new AnalyzeLeadIntakeUseCase(llmGateway);
   const createLeadUseCase = new CreateLeadUseCase(leadRepository, referenceValidator, auditRepository);
   const qualifyLeadUseCase = new QualifyLeadUseCase(leadRepository, llmGateway, auditRepository);
+  const listLeadsUseCase = new ListLeadsUseCase(leadRepository);
+  const getLeadUseCase = new GetLeadUseCase(leadRepository);
+  const updateLeadUseCase = new UpdateLeadUseCase(leadRepository, referenceValidator, auditRepository);
+  const updateLeadStatusUseCase = new UpdateLeadStatusUseCase(leadRepository, auditRepository);
+  const deleteLeadUseCase = new DeleteLeadUseCase(leadRepository, auditRepository);
+  const getLatestQualificationUseCase = new GetLatestQualificationUseCase(leadRepository);
   const loginUseCase = new LoginUseCase(authRepository);
   const refreshSessionUseCase = new RefreshSessionUseCase(authRepository);
   const logoutUseCase = new LogoutUseCase(authRepository);
@@ -222,7 +228,20 @@ export function createContainer(): ServiceContainer {
     generateProposalFromLeadUseCase,
     generateUIDesignBriefUseCase
   );
-  const leadIntakeController = new LeadIntakeController(analyzeLeadIntakeUseCase, createLeadUseCase, qualifyLeadUseCase, dbPool, llmGateway, auditRepository);
+  const leadIntakeController = new LeadIntakeController(
+    analyzeLeadIntakeUseCase,
+    createLeadUseCase,
+    qualifyLeadUseCase,
+    listLeadsUseCase,
+    getLeadUseCase,
+    updateLeadUseCase,
+    updateLeadStatusUseCase,
+    deleteLeadUseCase,
+    getLatestQualificationUseCase,
+    dbPool,
+    llmGateway,
+    auditRepository
+  );
   const authController = new AuthController(
     loginUseCase,
     refreshSessionUseCase,

@@ -241,3 +241,73 @@ Ngoài ra `docs/RBAC_ROLES_AND_PERMISSIONS_GUIDE.md` mục portal cần nói rõ
   - Mục 6.6: nói rõ `PORTAL_MANAGER_ROLES` = mọi role trừ VIEWER (tương đương `requireNotViewer`, không phải tầng quản trị riêng) và phân biệt gate **trạng thái** với gate **role** ở `PortalDesk`.
   - Mục 6: thêm **10** (audit material portal), **11** (bảng đối chiếu `task_mode` cũ/mới, ghi rõ chỗ nào đổi hành vi và chỗ nào chỉ đổi số thô thành enum), **12** (`ui-brief` từng không gọi AI).
 
+---
+
+# ĐỢT 4 — defect phát hiện khi khảo sát `SALES_REP` (15/11/2026)
+
+Phạm vi đợt này: **N14, N15, N16** theo yêu cầu. Không đụng N10–N13, N19, không ghi DB.
+
+## 23. Bảng defect
+
+| # | Defect | Bằng chứng **trước** khi sửa | Sau khi sửa |
+|---|---|---|---|
+| **N14** | UI gọi `PATCH /leads/:id` và `PATCH /leads/:id/status`, backend chỉ khai báo `PUT '/:id'` và **không có route `/status` nào** ⇒ "Save fields" và mọi nút "Status machine" trả 404 (text thô của Express, không phải thông báo nghiệp vụ) | `leadService.ts:169-173` ↔ `leadIntakeRoutes.ts:27` (cũ); call site `LeadsDirectory.tsx:146`/`:162`; `UpdateLeadUseCase`/`UpdateLeadStatusUseCase` import ở `container.ts:47-48` (cũ) nhưng **không bao giờ được khởi tạo** | `leadIntakeRoutes.ts:31` (`PATCH /:id`), `:35` (`PATCH /:id/status`), `:27` (`GET /:id/qualifications/latest`) đã mount; `container.ts:172-177` khởi tạo đủ 6 use case |
+| **N15** | State machine lead **chỉ chạy ở frontend**, trong khi `PUT /leads/:id` nhận `status` từ body và ghi thẳng — **không kiểm tra bước chuyển, không kiểm tra BANT** ⇒ dòng chữ "APPROVED requires a stored BANT score" là rule không tồn tại | `LeadIntakeController.ts:362,381,392` (cũ) vs `frontend/src/types/lead.ts:17-28`; **và** `AIWorkspace.tsx:273` (cũ) đang gửi `status` qua chính cửa sau đó | `PUT`/`PATCH /:id` chỉ còn một delegate `UpdateLeadUseCase`, nó **throw 400** khi body có `status` (`LeadUseCases.ts:195`); đổi trạng thái buộc đi `UpdateLeadStatusUseCase` (`:210-242`, bảng transition nội bộ + `updateStatusWithQualificationCheck`) mà SQL chốt `($3 <> 'APPROVED' OR bant_score IS NOT NULL)` **và** `status = ANY(allowedCurrentStatuses)` (`PostgresLeadRepository.ts:128-138`) ⇒ kiểm tra và ghi trong **cùng một câu UPDATE**, không có window đua |
+| **N16** | `listLeads` bỏ qua **cả 7** query param, hard-code `LIMIT 50`, không trả `meta`; `SELECT` thiếu `assigned_to`/`updated_at`/`bant_score`/`client_id` | `LeadIntakeController.ts:300-303` (cũ) trong khi `useLeadDirectory.ts:20` và `leadService.ts:139-147` gửi đủ 7 tham số | `ListLeadsUseCase` (`LeadUseCases.ts:149-170`, validate `page>=1`, `limit 1..100`) + `PostgresLeadRepository.list:69-94` (COUNT thật, filter status/source/assignedTo/clientId, `ILIKE` search **có escape `%_\`**, `ORDER BY updated_at, created_at DESC`, LIMIT/OFFSET); controller trả `meta {total,page,limit,totalPages}` (`LeadIntakeController.ts:332-336`) |
+| **N16-b** *(phát sinh trong lúc sửa N16)* | **Hai client đọc hai shape khác nhau trên cùng một endpoint.** `AIWorkspace`/`ProposalStudioTab`/`ClientPortalModal` đọc `raw_rfp_content`, `extracted_metadata` (khớp raw-SQL cũ ⇒ chạy được); `LeadsDirectory` khai `LeadRecord`/`LeadListItem` **camelCase** ⇒ mọi field camel đều `undefined` lúc chạy: ô RFP trống (`:101`), so sánh `detail.rawRfpContent` sai (`:137`), panel "Extracted metadata" luôn "—" (`:535-538`), cột BANT luôn "—" (`:450`), cột ngày luôn rỗng (`:451`), `qualificationFromLead` luôn `null` (`:31`). Đây là lý do thật khiến N14/N15 không ai phát hiện sớm: trang dùng được một nửa nên lỗi 404 bị coi là chuyện nhỏ | `leadService.ts:52-66` (cũ, snake) ↔ `:160-185` (camel); không có hàm chuyển đổi nào trong `apiClient.ts` | API lead giờ **chỉ còn một shape camelCase** (do `mapLead` của repository sinh ra). `LeadItem` đổi sang camel (`leadService.ts:52-70`), 31 reference ở `AIWorkspace` (27 `extracted_metadata` + 4 `raw_rfp_content`), 5 ở `ProposalStudioTab`, 1 ở `ClientPortalModal` đổi theo. `tsc --noEmit` frontend **0 lỗi** chính là bằng chứng không còn chỗ nào đọc tên cũ |
+
+## 24. Thay đổi backend
+
+- `container.ts:172-177`: khởi tạo 6 use case lead trước đó chỉ nằm trong `import` (`:44-52`); `:231-244` truyền vào `LeadIntakeController` theo thứ tự 12 tham số — `dbPool/llmGateway/auditRepository` vẫn ở cuối vì `analyze` và `qualify` legacy còn dùng.
+- `LeadIntakeController.ts`: `listLeads:326`, `getLeadById:343`, `updateLead:354`, `changeStatus:379`, `latestQualification:397`, `deleteLead:410` — **xoá toàn bộ SQL thô** của 5 handler (−~120 dòng raw query). Thêm `leadListFilters:27-46`: đọc **từng key một** thay vì spread `req.query`, nên query-string không có đường nào ghi đè `organizationId` (scope luôn spread trước, filters luôn spread sau).
+- `leadIntakeRoutes.ts`: `PUT /:id` giữ nguyên nhưng trỏ đúng một handler với `PATCH /:id` (`:31-32`) — hai verb, một triển khai, không phải shim tương thích ngược.
+- `qualify` (`POST /:id/qualify`, legacy heuristic): field `lead` trong response giờ lấy qua `GetLeadUseCase` nên camelCase; **không** động vào logic AI/fallback 88 bên trong.
+
+## 25. Thay đổi frontend
+
+- `leadService.ts`: `LeadItem` camelCase + thêm `updatedAt`/`bantScore`/`clientId`/`assignedTo`; `updateLead` → `PATCH` (`:117-122`); thêm `updateLeadStatus` (`:124-129`); `LeadFieldUpdate` (`:113-115`) **loại `status` khỏi kiểu tham số** để không UI nào vô tình gửi trạng thái qua route trường.
+- `AIWorkspace.tsx:257-296`: tách lưu **2 bước** — trường trước, trạng thái sau. Nếu backend chặn bước chuyển: nội dung đã lưu vẫn được giữ, modal **không đóng**, toast nêu lý do 409 và trạng thái cũ (`"Nội dung đã lưu — trạng thái vẫn là …"`).
+- `AIWorkspace.tsx:1706-1716`: select trạng thái bỏ 5 option hard-code, sinh từ `LEAD_TRANSITIONS` + trạng thái hiện tại ⇒ UI không còn mời gọi bước mà API sẽ chặn; kèm dòng chú "APPROVED cần điểm BANT đã lưu".
+- `LeadsDirectory.tsx:384`: "Tất cả" dùng `meta?.total ?? leads.length` (tổng thật của cả org); `:417-419`: chú thích hai nhãn còn lại chỉ đếm trong trang hiện tại.
+- `ProposalStudioTab.tsx`, `ClientPortalModal.tsx`: chỉ đổi tên field sang camel, không đổi logic hiển thị.
+
+## 26. Hệ quả hành vi — cần biết trước khi test
+
+1. **Xoá lead không còn xoá proposal.** Handler cũ chạy `DELETE FROM proposals WHERE lead_id = $1`; `DeleteLeadUseCase` (`LeadUseCases.ts:250-255`) chỉ xoá lead và để FK tự xử: `proposals.lead_id ON DELETE SET NULL` (`001_initial_schema.sql:167`) ⇒ **proposal sống sót, mất liên kết lead** (vẫn còn `organization_id` nên vẫn liệt kê/dashboard bình thường); `meetings.lead_id ON DELETE CASCADE` (`:89`) vẫn bị xoá như trước. Đây là hành vi do **schema** khai báo, handler cũ đang ghi đè nó.
+2. **`PUT /leads/:id` nghiêm khắc hơn trước**: có `status` trong body ⇒ `400`; `clientId`/`assignedTo` đi qua `ReferenceValidator` ⇒ UUID trỏ user/client không thuộc org bị chặn (trước đây raw SQL ghi thẳng, không kiểm tra).
+3. **Hợp đồng API lead đổi case** với mọi consumer bên ngoài (Postman, script, tài liệu cũ): `raw_rfp_content` → `rawRfpContent`, `extracted_metadata` → `extractedMetadata`, thêm `updatedAt`/`bantScore`/`organizationId`, và `GET /leads` có `meta`.
+4. **`GET /leads` mặc định 20 dòng/trang** (UI gửi `PAGE_SIZE = 20`), trần 100 — không còn "50 dòng mới nhất vô điều kiện".
+
+## 27. Đã kiểm chứng
+
+- `npx tsc --noEmit` **backend**: **34 → 34**. Trung gian từng phát sinh **1** lỗi mới (`Request<unknown, …>` làm `params` mất kiểu ở `LeadIntakeController.ts:355`) và đã sửa; chạy lại: `grep "error TS" | grep -vi meeting | grep -v testDiscovery` → **rỗng**, tức 34 lỗi còn lại 100% nằm ngoài file touched (cluster meeting cô lập).
+- `npx tsc --noEmit` **frontend**: **0 → 0** (exit code 0 xác nhận bằng lệnh riêng, không suy từ output rỗng).
+- `git diff --stat`: **8 file, +214/−182**; `git status --porcelain` → **không file mới, không untracked**.
+- **Chưa** test runtime: chưa gọi API thật, chưa đăng nhập, chưa đọc/ghi DB. Toàn bộ kết luận trên là **đọc source + biên dịch**. Riêng N14/N15/N16 muốn kết luận "đã chạy đúng" phải test tay (mục 29, cần duyệt vì mỗi bước ghi DB thật).
+
+## 28. Phát hiện mới — **chưa sửa**, cần quyết định
+
+| # | Phát hiện | Bằng chứng | Vì sao chưa sửa |
+|---|---|---|---|
+| **N20** | State machine vẫn bị **đi vòng** bởi chính luồng BANT: hai endpoint qualify tự ý ghi `status = 'QUALIFIED'` không kiểm tra bước chuyển, trong khi bảng chỉ cho `QUALIFYING → QUALIFIED` — tức từ `NEW` vẫn nhảy thẳng lên `QUALIFIED` được | `PostgresLeadRepository.saveQualification:150` và `LeadIntakeController.qualify:294` | đóng lại phải chọn 1 trong 2: (a) qualify chỉ chấm điểm, không đổi trạng thái; (b) nới bảng transition. Cả hai đều là **quyết định hành vi sản phẩm**, ngoài phạm vi N14–N16 |
+| **N21** | 5 field `organization`, `client_name`, `requirements_summary`, `client_request_raw`, `qualification_status` **không endpoint lead nào trả** ⇒ UI luôn rơi vào fallback hard-code ('DUT', 'Chưa phân loại', …) | kiểm kê `AIWorkspace.tsx:1170/1232/1462/1604/1608`, `ClientPortalModal.tsx:38`; `LeadRow` của repository không có column nào tương ứng | cùng họ N13/N19 (nội dung dựng sẵn). Mình **giữ nguyên** để không lan phạm vi, chỉ đánh dấu trong type (`leadService.ts:62`) |
+
+## 29. Còn tồn (kế + mới)
+
+| # | Việc | Ghi chú |
+|---|---|---|
+| 1 | Test runtime N14/N15/N16 (kế hoạch 6 bước: Save fields → đổi status hợp lệ → đổi status trái phép → APPROVED khi chưa có BANT → search/filter → phân trang) | **ghi DB thật → chờ duyệt** |
+| 2 | N20, N21 (mục 28) | chờ quyết định hành vi |
+| 3 | N10, N11, N12, N13(+N18), N19 (đợt 3 + khảo sát SALES_REP) | chờ duyệt phạm vi |
+| 4 | `POST /portal/sessions` mở cho `VIEWER` | quyết định sản phẩm, chưa được trả lời |
+| 5 | Cluster meeting cô lập (34 lỗi tsc) | chờ "viết lại" hay "xoá" |
+| 6 | `rate_cards` trống ở org chưa có bảng đơn giá | defect dữ liệu, ngoài nhóm này |
+
+## 30. Tài liệu đã cập nhật (đợt 4)
+
+- File này: thêm `# ĐỢT 4` (23 bảng defect N14–N16 + N16-b, 24 backend, 25 frontend, 26 hệ quả hành vi, 27 kiểm chứng, 28 N20–N21, 29 còn tồn, 30 mục này).
+- `docs/RBAC_ROLES_AND_PERMISSIONS_GUIDE.md` **v2.7 → v2.8**:
+  - Mục 3.5 (`SALES_REP`): viết lại 4 gạch đầu dòng theo **enforcement thật** — thêm/tách duty Pipeline giờ đã chạy thật, ghi rõ duty "nhập thông tin liên hệ" vẫn bất khả (N17), `.txt` vẫn mock (N18/N13), Telemetry chỉ là một timestamp ghi đè (N19).
+  - Mục 6 thêm **13**: state machine lead nay enforce ở đâu (use case + SQL một câu), `PUT`/`PATCH` từ chối `status`, và **N20** (qualify còn đi vòng) ghi rõ là lỗ chưa đóng.
+  - Mục 6 thêm **14**: hợp đồng API lead một shape camelCase + `meta`; danh sách field UI đọc mà không endpoint nào trả (N21).
+

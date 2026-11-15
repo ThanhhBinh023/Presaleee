@@ -381,7 +381,7 @@ export const LeadsDirectory: React.FC<LeadsDirectoryProps> = ({ onBackToOverview
                 : 'text-slate-600 hover:bg-slate-100'
             }`}
           >
-            Tất cả ({leads.length})
+            Tất cả ({meta?.total ?? leads.length})
           </button>
           <button
             onClick={() => setPipelineTab('in_process')}
@@ -414,6 +414,9 @@ export const LeadsDirectory: React.FC<LeadsDirectoryProps> = ({ onBackToOverview
             </span>
           </button>
         </div>
+        <p className="-mt-3 mb-4 text-[11px] text-slate-400">
+          Hai nhãn "Đang xử lý" / "Đã hoàn thành" đếm trong trang hiện tại (tối đa {PAGE_SIZE} lead); "Tất cả" là tổng của toàn bộ tổ chức.
+        </p>
 
         <div className="grid gap-6 lg:grid-cols-12">
           <div className="lg:col-span-7 overflow-x-auto rounded-2xl border border-slate-200 bg-white">

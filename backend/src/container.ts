@@ -48,6 +48,7 @@ import {
   UpdateLeadStatusUseCase,
   DeleteLeadUseCase,
   QualifyLeadUseCase,
+  SaveQualificationUseCase,
   GetLatestQualificationUseCase
 } from './application/use-cases/LeadUseCases.js';
 import { PostgresDashboardRepository } from './infrastructure/database/repositories/PostgresDashboardRepository.js';
@@ -168,7 +169,8 @@ export function createContainer(): ServiceContainer {
   const generateProposalUseCase = new GenerateProposalUseCase(searchHybridRAGUseCase, llmGateway);
   const analyzeLeadIntakeUseCase = new AnalyzeLeadIntakeUseCase(llmGateway);
   const createLeadUseCase = new CreateLeadUseCase(leadRepository, referenceValidator, auditRepository);
-  const qualifyLeadUseCase = new QualifyLeadUseCase(leadRepository, llmGateway, auditRepository);
+  const saveQualificationUseCase = new SaveQualificationUseCase(leadRepository, auditRepository);
+  const qualifyLeadUseCase = new QualifyLeadUseCase(leadRepository, llmGateway, saveQualificationUseCase);
   const listLeadsUseCase = new ListLeadsUseCase(leadRepository);
   const getLeadUseCase = new GetLeadUseCase(leadRepository);
   const updateLeadUseCase = new UpdateLeadUseCase(leadRepository, referenceValidator, auditRepository);
@@ -232,6 +234,7 @@ export function createContainer(): ServiceContainer {
     analyzeLeadIntakeUseCase,
     createLeadUseCase,
     qualifyLeadUseCase,
+    saveQualificationUseCase,
     listLeadsUseCase,
     getLeadUseCase,
     updateLeadUseCase,

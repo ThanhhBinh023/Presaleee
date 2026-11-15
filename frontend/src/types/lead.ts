@@ -14,10 +14,15 @@ export const LEAD_STATUSES = [
 ] as const;
 export type LeadStatus = (typeof LEAD_STATUSES)[number];
 
-/** Allowed PATCH /leads/:id/status targets. APPROVED also requires a stored BANT score. */
+/**
+ * Allowed PATCH /leads/:id/status targets — a copy of the backend table in
+ * `backend/src/application/use-cases/LeadUseCases.ts`. QUALIFIED is reachable straight from the
+ * pre-review stages because running BANT qualification is the product's fast path; both QUALIFIED and
+ * APPROVED additionally require a stored BANT score, enforced in the backend UPDATE itself.
+ */
 export const LEAD_TRANSITIONS: Record<LeadStatus, readonly LeadStatus[]> = {
-  NEW: ['IN_REVIEW', 'QUALIFYING', 'REJECTED'],
-  IN_REVIEW: ['QUALIFYING', 'APPROVED', 'REJECTED'],
+  NEW: ['IN_REVIEW', 'QUALIFYING', 'QUALIFIED', 'REJECTED'],
+  IN_REVIEW: ['QUALIFYING', 'QUALIFIED', 'APPROVED', 'REJECTED'],
   QUALIFYING: ['QUALIFIED', 'IN_REVIEW', 'REJECTED'],
   QUALIFIED: ['APPROVED', 'PROPOSAL_DRAFTING', 'REJECTED'],
   PROPOSAL_DRAFTING: ['APPROVED', 'WON', 'LOST', 'REJECTED'],
@@ -82,7 +87,7 @@ export interface LeadRecord {
   updatedAt: string;
 }
 
-export type LeadListItem = Omit<LeadRecord, 'rawRfpContent' | 'bantDetails'>;
+export type LeadListItem = Omit<LeadRecord, 'rawRfpContent'>;
 
 export interface LeadIntakeDraft {
   id?: string | null;

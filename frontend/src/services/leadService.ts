@@ -61,15 +61,9 @@ export interface LeadItem {
   rawRfpContent?: string;
   extractedMetadata?: ExtractedMetadata;
   bantScore?: number | null;
+  bantDetails?: Record<string, unknown> | null;
   createdAt?: string;
   updatedAt?: string;
-  /** Never returned by any lead endpoint — the UI below still renders fallbacks for these. */
-  qualification_score?: number | null;
-  qualification_status?: string | null;
-  organization?: string;
-  client_name?: string;
-  requirements_summary?: string;
-  client_request_raw?: string;
 }
 
 export async function fetchLeads(): Promise<LeadItem[]> {

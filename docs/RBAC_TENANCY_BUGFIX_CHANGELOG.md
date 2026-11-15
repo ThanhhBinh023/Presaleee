@@ -311,3 +311,88 @@ Phạm vi đợt này: **N14, N15, N16** theo yêu cầu. Không đụng N10–N
   - Mục 6 thêm **13**: state machine lead nay enforce ở đâu (use case + SQL một câu), `PUT`/`PATCH` từ chối `status`, và **N20** (qualify còn đi vòng) ghi rõ là lỗ chưa đóng.
   - Mục 6 thêm **14**: hợp đồng API lead một shape camelCase + `meta`; danh sách field UI đọc mà không endpoint nào trả (N21).
 
+---
+
+# ĐỢT 5 — đóng N20/N21/N18/N13/N19/N12 + **test runtime lần đầu** (15/11/2026)
+
+Phạm vi: toàn bộ hàng đợi còn lại, và **được phép ghi DB thật** ("cứ sửa giúp mình, thoải mái ghi db"). Đây là đợt đầu tiên backend chạy được trong workspace này — xem mục 34 về `pdfmake`.
+
+## 31. Bảng defect
+
+| # | Defect | Bằng chứng **trước** khi sửa | Sau khi sửa |
+|---|---|---|---|
+| **N20** | Hai đường qualify **tự ý ghi `status='QUALIFIED'` vô điều kiện** và **hai đường ghi hai chỗ khác nhau**: `POST /:id/qualify` (legacy) viết `extracted_metadata.qualification` bằng raw SQL, **không bao giờ chạm `bant_score`**; `PostgresLeadRepository.saveQualification` cũng đổi status bất kể lead đang ở đâu | `LeadIntakeController.ts:294` (cũ, raw `UPDATE leads SET status='QUALIFIED', extracted_metadata = jsonb_set(...)`), `PostgresLeadRepository.ts:150` (cũ). Hệ quả dây chuyền: rule "APPROVED cần điểm BANT đã lưu" kiểm `bant_score` trong khi UI chỉ ghi `extracted_metadata` ⇒ **rule không bao giờ thoả được từ UI** | Một use case duy nhất `SaveQualificationUseCase` (`LeadUseCases.ts:278-306`) là cửa ghi BANT; cả hai endpoint đi qua nó (`LeadIntakeController.ts:295`, `LeadUseCases.ts:336`). Status chỉ đổi trong phạm vi bảng: `statusesThatCanReach('QUALIFIED')` truyền xuống `saveQualification:148-160`, đóng trong **cùng một câu UPDATE** với `CASE WHEN status = ANY($5::varchar[]) THEN 'QUALIFIED' ELSE status END` ⇒ **đã proof bằng API**: re-qualify một lead `WON` trả 200 nhưng status vẫn `WON` (mục 33, case H3) |
+| **N20-b** | Bảng transition **không có đường nào vào `QUALIFIED` từ `NEW`/`IN_REVIEW`** (chỉ `QUALIFYING → QUALIFIED`), nên nếu đóng N20 nghiêm khắc thì nút "Qualify" trên UI thành dead button với mọi lead mới | `frontend/src/types/lead.ts:17-28` (cũ) vs luồng thật: AIWorkspace bấm Qualify ngay ở `NEW` | Cộng thêm `NEW/IN_REVIEW → QUALIFIED` vào bảng **một lần, ở backend** (`LeadUseCases.ts:18-30`) — `LEAD_TRANSITIONS` giờ là source of truth duy nhất; frontend chỉ còn bản copy có chú thích trỏ về file backend. Bù lại, vào `QUALIFIED` **bắt buộc có điểm đã lưu** (`QUALIFICATION_REQUIRED_STATUSES:38`), nên fast-path không còn là cửa sau |
+| **N21** | `LeadItem` khai 6 field **không endpoint nào trả** ⇒ UI rơi vào fallback bịa sẵn ('DUT', 'Chưa phân loại', …) | `leadService.ts:52-66` (cũ) vs `mapLead` của repository; field thật duy nhất còn thiếu là `bantDetails` | Bỏ `qualification_score`, `qualification_status`, `organization`, `client_name`, `requirements_summary`, `client_request_raw`; thêm `bantDetails` (`leadService.ts:64`). `LeadListItem` đổi thành `Omit<Lead,'rawRfpContent'>` (`Lead.ts:24`) và repository **không cắt `bant_details` khỏi list nữa** ⇒ UI đọc đúng một nguồn. **Đã proof**: `GET /leads` trả đúng 14 key camelCase, 0 key snake (mục 33, case B2/B3/B4) |
+| **N18/N13** | Modal Portal khách hàng + nút tải "Executive Overview" `.txt`: **toàn bộ nội dung là hằng hard-code** (SLA 99.999%, 5 module, 20 tuần, 4 mốc thanh toán, "đã ký duyệt bởi Solution Architect"). Root cause thật: `AIWorkspace` **không truyền prop `proposal`** nên modal không có số liệu để hiển thị, và tab 2 tự nhận "10 Sheets Tiêu Chuẩn … đã kiểm duyệt" kể cả khi chưa có sheet nào | call site `AIWorkspace.tsx:344-350` (cũ, thiếu `proposal`); `ClientPortalModal.tsx` (cũ) không có accessor sheet nào | Truyền `proposal={realProposal}` (`AIWorkspace.tsx:348`). Modal đọc **thật 10 sheet** qua `overviewSheet/scopeSheet/architectureSheet/timelineSheet/pricingSheet/slaSheet`, sinh KPI, module list, phân đoạn thanh toán, `x/10 sheets đã tạo`, status/version thật; hằng số bịa thay bằng `MISSING_FACT = 'chưa có trong hồ sơ'` (`ClientPortalModal.tsx:22`); câu "ký duyệt bởi Solution Architect" **bị xoá** (proposal thật đang `DRAFT`); `.txt` tải về dựng từ sheet + footer ghi rõ nguồn; có amber notice khi chưa có sheet |
+| **N19** | 4 card "Portal Telemetry" quảng cáo "lượt xem", "tài liệu đã tải", "lịch sử truy cập" — **schema chỉ lưu một timestamp bị ghi đè** | `portal_sessions` không có cột view-count/history nào; handler truy cập chỉ `UPDATE … last_accessed_at = NOW()` | Đổi tiêu đề thành "Dữ liệu Tương tác Thực tế từ Portal" + một dòng nói thẳng mỗi phiên chỉ lưu **một timestamp ghi đè**, không có lượt xem, không có lịch sử; số liệu suy ra từ field có thật, fallback nêu rõ "chưa phát sinh lượt truy cập" |
+| **N12** | `proposals.organization_id` NULL ở **4/156 dòng** ⇒ proposal **vô hình** với mọi truy vấn list/dashboard (đều scope `organization_id = $1`) và không tenant nào đọc được | probe: `ed84f7b4…`, `8b89987a…` có `lead_id` và lead của chúng thuộc org `fb5e76e1…` (DUT); `1d38de4e…`, `9975f068…` **không lead, không `created_by`** | 2 dòng đầu **đã sửa và commit**: `UPDATE … SET organization_id = l.organization_id FROM leads l WHERE pr.id = <id> AND l.id = pr.lead_id AND pr.organization_id IS NULL` — lấy theo lead của chính nó, không hard-code org. 2 dòng orphan **không đoán**, báo ở mục 35 |
+
+## 32. Thay đổi backend
+
+- `LeadUseCases.ts`: thêm `LEAD_TRANSITIONS:18` + `statusesThatCanReach:31` + `QUALIFICATION_REQUIRED_STATUSES:38` (trước đây bảng transition **không tồn tại ở backend**); thêm `SaveQualificationUseCase:278`; `QualifyLeadUseCase` nhận use case đó ở tham số 3 (`:314`) và kết thúc bằng `saveQualification.execute` (`:336`) thay vì tự ghi; `UpdateLeadStatusUseCase:232-262` dùng bảng chung và phân biệt 2 thông báo 409 (bước trái phép vs thiếu điểm).
+- `PostgresLeadRepository.ts`: `updateStatusWithQualificationCheck:128` nhận thêm `requiresQualification` và guard thành `AND ($5 = FALSE OR bant_score IS NOT NULL)`; `saveQualification:148` là UPDATE nguyên tử mới (điểm + details + `CASE` status, không đọc-sửa-ghi 2 bước).
+- `ILeadRepository.ts`: `StoredQualification:32` + 2 chữ ký mới (`:38`, `:44`).
+- `LeadIntakeController.ts`: **xoá raw SQL** trong `qualify`, thay bằng `saveQualificationUseCase.execute:295`; constructor thành 13 tham số (`:54`).
+- `container.ts:172-173`: khởi tạo + nối `SaveQualificationUseCase`; `leadIntakeRoutes.ts:17-21`: comment mô tả lại đúng enforcement thật.
+
+## 33. Kiểm chứng — **lần đầu có runtime**
+
+Backend chạy thật trên `:5000`, đăng nhập `POST /auth/dev-login`, gọi API bằng `harness.mjs` (cookie jar) của suite e2e có sẵn. **22/22 case PASS**, lead test tạo ra đã `DELETE` sạch:
+
+| Nhóm | Case | Kết quả đo được |
+|---|---|---|
+| Hợp đồng list | B1–B4 | `meta {total:2,page:1,limit:3,totalPages:1}`; 14 key camelCase, **0** key snake; `bantDetails` có mặt |
+| State machine | D1 | `NEW → QUALIFIED` khi chưa có điểm ⇒ **409** `"QUALIFIED requires a stored BANT score — run qualification first."` |
+| | D2 | `NEW → APPROVED` ⇒ **409** `"Lead cannot transition from NEW to APPROVED."` |
+| | D3 | `status:'DONE'` ⇒ **400** kèm danh sách enum hợp lệ |
+| | D4 | `NEW → IN_REVIEW` ⇒ 200 |
+| Cửa sau | F1 | `PATCH /leads/:id` có `status` ⇒ **400** `"Change the lead status through PATCH /leads/:id/status…"` |
+| | F2 | Cùng route không có `status` ⇒ 200, vẫn sửa được field |
+| Một nguồn BANT | G1–G4 | `POST /:id/qualify` ⇒ 200; đọc lại: `bantScore=90`, `bantDetails` có 5 key, status `IN_REVIEW → QUALIFIED` |
+| | G5 | `GET /:id/qualifications/latest` ⇒ 200, đúng bản đã lưu |
+| Không tụt hạng | H1 | Có điểm rồi ⇒ `QUALIFIED → APPROVED` 200 (**trước đợt này bước này bất khả từ UI**) |
+| | H2–H4 | `APPROVED → WON` 200; **re-qualify lead `WON` → status vẫn `WON`**; `WON → NEW` 409 `"Lead cannot transition from WON to NEW."` |
+| Dữ liệu N12 | I1 | Lead `3cd4f3da…` sau backfill: `bantScore=85` + `bantDetails` 4 key, `/qualifications/latest` đọc được |
+
+**Tĩnh**: `tsc --noEmit` backend **34 → 34** (100% cluster meeting cô lập: `InspectMeetingUseCase` 11, `testDiscoveryMeetingE2E` 10, `CreateMeetingUseCase` 5, `UpdateMeetingLifecycleUseCase` 3, `MeetingDTOs` 3, `ListMeetingsByLeadUseCase` 1, `GetMeetingByIdUseCase` 1 — không file nào thuộc nhóm sửa); frontend **0 → 0**. `git diff --stat`: 11 file, **+331/−155**, không untracked.
+
+**DB đã ghi** (transaction có assert số dòng, sai là rollback): 2 proposal `organization_id` (`ed84f7b4…`, `8b89987a…` ← `fb5e76e1…`); 1 lead `3cd4f3da…` (`bant_score=85`, `bant_details` = nguyên `extracted_metadata.qualification` đã lưu từ trước — **chép dữ liệu thật đang nằm sai cột**, không bịa số). Số liệu chưa có bằng chứng thì **để nguyên NULL**: `138d902c…` (`QUALIFIED`, chưa từng có payload qualify).
+
+## 34. Môi trường — `pdfmake` khai mà không cài
+
+`npm run dev` **chết ngay** ở `PdfProposalExporterService.ts:5` với `Cannot find module 'pdfmake'`, dù `backend/package.json:30` khai `"pdfmake": "^0.3.14"` và `package-lock.json` đã pin 0.3.14 — package **không có trong `node_modules` gốc** (workspace lồng nhau). Mình chữa cục bộ bằng `npm install pdfmake@0.3.14 --no-save` để chạy được verification; **không đổi** `package.json`/lock. Nghĩa là: backend chưa từng boot được trong workspace này trước hôm nay, và máy khác `npm ci` xong vẫn có thể thiếu.
+
+## 35. Phát hiện mới — **chưa sửa**, cần quyết định
+
+| # | Phát hiện | Bằng chứng **đo được hôm nay** | Vì sao chưa sửa |
+|---|---|---|---|
+| **N22** | **Một cột `bant_details`, ba schema khác nhau.** `POST /:id/qualify` lưu shape snake_case `{qualification_score, readiness_level, breakdown, project_brief, project_title}`; `POST /:id/qualifications` khai shape camelCase `LeadQualification {score, criteria:{budget,authority,need,timeline}, risks, nextSteps}`; `GET /:id/qualifications/latest` **đọc camelCase** (`LeadUseCases.ts:346-347` cast `bantDetails as LeadQualification`). Hệ quả thật: (a) `latest` trả 200 nhưng body là shape khác với type khai; (b) `LeadsDirectory.tsx:31` chặn bằng `isLeadQualification` (`types/lead.ts:137-141`: cần `score` **và** `criteria`) ⇒ **panel chi tiết BANT** (`:102`) vẫn trống với lead do `/qualify` ghi (cột BANT `:453`/`:502` đọc thẳng `bantScore` nên đã hiện bình thường) | Case G3/G5: `latest` 200 với `detailsKeys=breakdown,project_brief,project_title,readiness_level,qualification_score`. **Và đường camelCase đang chết hẳn**: `POST /:id/qualifications` ⇒ **409 `"Qualification service returned invalid criteria."`** trên AI service thật (Gemini trả shape cũ), để lại `bantScore=null`, `bantDetails={}`, `latest` 404 | Đây chính là gap schema đã ghi nhận từ trước ("3 incompatible BANT shapes"), nằm **ngoài** 6 defect của đợt này. Đóng nó phải chọn nguồn đúng: hoặc gateway map sang `criteria`, hoặc `latest`/UI chỉ nhận snake. Cả hai đều đổi hợp đồng API đang có 3 consumer |
+| **N23** | `GET /proposals/lead/:leadId` **không lọc theo lead**: controller gọi `listUseCase.execute({leadId,…,limit:1})` (`ProposalController.ts:99`) nhưng `PostgresProposalRepository.findAll:121-140` **không có nhánh `filter.leadId` nào** trong `conditions` ⇒ luôn lấy proposal `updated_at DESC` **của cả org**, rồi `findById` của nó | Probe 2 lead khác nhau (`3cd4f3da…` và `138d902c…`) **cùng trả về một proposal `8b89987a…`**, dù `3cd4f3da…` có proposal riêng là `ed84f7b4…`. Repository **đã có** `findByLeadId:96-98` viết đúng (`WHERE lead_id = $1 AND organization_id = $2`) nhưng controller không dùng | Một dòng đổi delegate, **nhưng** nó là chỗ N18 vừa nối vào: modal Portal của lead A có thể đang render proposal của lead B. Cần xác nhận có endpoint/luồng nào khác dựa vào `findAll` với `leadId` không đã. Ngoài phạm vi 6 defect |
+
+## 36. Còn tồn (kế + mới)
+
+| # | Việc | Ghi chú |
+|---|---|---|
+| 1 | **N22, N23** (mục 35) | chờ quyết định — N23 nên chốt trước vì nó làm giảm giá trị N18 |
+| 2 | **N17**: `SALES_REP` vẫn không vào được danh bạ khách hàng/liên hệ | quyết định sản phẩm, chưa được trả lời từ đợt 4 |
+| 3 | `POST /portal/sessions` mở cho `VIEWER` | quyết định sản phẩm, chưa được trả lời |
+| 4 | **N10, N11** | chưa được giao phạm vi |
+| 5 | Cluster meeting cô lập (34 lỗi tsc) | chờ "viết lại" hay "xoá" |
+| 6 | 2 proposal orphan `1d38de4e…` (script `testProposalSprint1` để lại — script **có** truyền `organizationId`, chứng tỏ INSERT cũ âm thầm bỏ), `9975f068…` | không lead, không `created_by` ⇒ **không có căn cứ** gán org nào; cần bạn nói gán về DUT hay xoá |
+| 7 | 3 lead thật chưa có điểm: `138d902c…` (`QUALIFIED`, không có bằng chứng), `d1000000…0007` (`NEW`), `d1000000…0009` (`QUALIFYING`) | 2 lead `NEW/QUALIFYING` chưa cần điểm là **đúng**; riêng `138d902c…` muốn lên `APPROVED` thì phải bấm Qualify lại để có số liệu thật |
+| 8 | ~90 dòng `E2E …` / `Probe lead …` vẫn nằm trong DB | data test tích tụ từ các suite; muốn dọn thì nói, mình không tự xoá |
+| 9 | **Chưa bấm thử UI**: N18/N13/N19 mới chắc về **data contract** (`GET /proposals/lead/:id` trả đủ 10 sheet với key thật) và `tsc` 0 lỗi; chưa mở browser xem modal + file `.txt` tải về | `pdfmake` chỉ `--no-save`; `npm ci` máy khác vẫn có thể thiếu |
+| 10 | `rate_cards` trống ở org chưa có bảng đơn giá | defect dữ liệu, chưa nằm trong đợt nào |
+
+## 37. Tài liệu đã cập nhật (đợt 5)
+
+- File này: thêm `# ĐỢT 5` (31 bảng defect, 32 backend, 33 kiểm chứng runtime 22 case, 34 `pdfmake`, 35 N22–N23, 36 còn tồn, 37 mục này).
+- `docs/RBAC_ROLES_AND_PERMISSIONS_GUIDE.md` **v2.8 → v2.9**:
+  - Mục 3.5 (`SALES_REP`): bỏ 3 chữ "still mock/still hard-coded" đã thành thật — `.txt` và modal giờ đọc sheet thật (N18/N13), telemetry đã đổi nhãn đúng schema (N19); duty "nhập thông tin liên hệ" vẫn bất khả (N17).
+  - Mục 6 **13**: cập nhật N20 đã đóng (một cửa `SaveQualificationUseCase`, `CASE` guard, bằng chứng H3) và bỏ ghi chú "lỗ chưa đóng"; thêm N20-b (lý do cộng `NEW/IN_REVIEW → QUALIFIED` và điều kiện bắt buộc có điểm).
+  - Mục 6 **14**: `bantDetails` đã vào list, 6 field bịa đã xoá (N21), kèm số đo 14 key / 0 key snake.
+  - Mục 6 thêm **15**: hai defect mới **chưa sửa** — N22 (ba schema trên một cột `bant_details`, `POST /qualifications` 409 với AI thật) và N23 (`GET /proposals/lead/:leadId` không lọc lead, hai lead cùng trả một proposal).
+  - Mục "Ma trận quyền theo endpoint": lead `PATCH /:id` từ chối `status`, `PATCH /:id/status` + `POST /:id/qualify` + `POST /:id/qualifications` giờ enforce state machine; `GET /leads` có `meta` và camelCase.
+
+

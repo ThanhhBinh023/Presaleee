@@ -1,4 +1,4 @@
-import { ILeadRepository } from '../../domain/repositories/ILeadRepository.js';
+import { ILeadRepository, StoredQualification } from '../../domain/repositories/ILeadRepository.js';
 import { IAuditRepository } from '../../domain/repositories/IAuditRepository.js';
 import { ConflictError, NotFoundError, ValidationError } from '../../domain/errors/AppError.js';
 import { Lead, LeadQualification, LeadSource, LeadStatus, LEAD_SOURCES, LEAD_STATUSES } from '../../domain/entities/Lead.js';
@@ -9,6 +9,33 @@ import { AuthenticatedLeadScope, CreateLeadDTO, ListLeadsDTO, parseLeadSource, p
 import { LEAD_QUALIFICATION_SCHEMA } from '../prompts/LeadQualificationPrompt.js';
 
 const MAX_RFP_CHARACTERS = 50_000;
+
+/**
+ * The single source of truth for lead status changes in the backend. Every write that moves a lead
+ * must derive its allowed current statuses from this table, so no endpoint can jump the queue.
+ * Mirrored by `frontend/src/types/lead.ts`.
+ */
+export const LEAD_TRANSITIONS: Record<LeadStatus, LeadStatus[]> = {
+  NEW: ['IN_REVIEW', 'QUALIFYING', 'QUALIFIED', 'REJECTED'],
+  IN_REVIEW: ['QUALIFYING', 'QUALIFIED', 'APPROVED', 'REJECTED'],
+  QUALIFYING: ['QUALIFIED', 'IN_REVIEW', 'REJECTED'],
+  QUALIFIED: ['APPROVED', 'PROPOSAL_DRAFTING', 'REJECTED'],
+  PROPOSAL_DRAFTING: ['APPROVED', 'WON', 'LOST', 'REJECTED'],
+  APPROVED: ['PROPOSAL_DRAFTING', 'WON', 'LOST', 'REJECTED'],
+  REJECTED: ['IN_REVIEW'],
+  WON: [],
+  LOST: ['IN_REVIEW']
+};
+
+/** Statuses from which `status` may be reached, used as the guard in every conditional UPDATE. */
+export function statusesThatCanReach(status: LeadStatus): LeadStatus[] {
+  return (Object.entries(LEAD_TRANSITIONS) as [LeadStatus, LeadStatus[]][])
+    .filter(([, nextStatuses]) => nextStatuses.includes(status))
+    .map(([currentStatus]) => currentStatus);
+}
+
+/** Stored BANT evidence is a precondition for QUALIFIED and APPROVED, whichever endpoint writes them. */
+export const QUALIFICATION_REQUIRED_STATUSES: LeadStatus[] = ['QUALIFIED', 'APPROVED'];
 
 function requiredText(value: unknown, field: string, maxLength: number): string {
   if (typeof value !== 'string' || !value.trim()) throw new ValidationError(`${field} is required.`);
@@ -212,28 +239,21 @@ export class UpdateLeadStatusUseCase {
     const leadId = requiredUuid(id, 'id');
     const existing = await this.leadRepository.findById(leadId, { organizationId: scope.organizationId });
     if (!existing) throw new NotFoundError('Lead not found.');
-    const transitions: Record<LeadStatus, LeadStatus[]> = {
-      NEW: ['IN_REVIEW', 'QUALIFYING', 'REJECTED'],
-      IN_REVIEW: ['QUALIFYING', 'APPROVED', 'REJECTED'],
-      QUALIFYING: ['QUALIFIED', 'IN_REVIEW', 'REJECTED'],
-      QUALIFIED: ['APPROVED', 'PROPOSAL_DRAFTING', 'REJECTED'],
-      PROPOSAL_DRAFTING: ['APPROVED', 'WON', 'LOST', 'REJECTED'],
-      APPROVED: ['PROPOSAL_DRAFTING', 'WON', 'LOST', 'REJECTED'],
-      REJECTED: ['IN_REVIEW'],
-      WON: [],
-      LOST: ['IN_REVIEW']
-    };
     if (existing.status === status) return existing;
-    const allowedCurrentStatuses = Object.entries(transitions)
-      .filter(([, nextStatuses]) => nextStatuses.includes(status))
-      .map(([currentStatus]) => currentStatus as LeadStatus);
+    const allowedCurrentStatuses = statusesThatCanReach(status);
     if (!allowedCurrentStatuses.includes(existing.status)) {
       throw new ConflictError(`Lead cannot transition from ${existing.status} to ${status}.`);
     }
     const lead = await this.leadRepository.updateStatusWithQualificationCheck(
-      leadId, { organizationId: scope.organizationId }, status, allowedCurrentStatuses
+      leadId, { organizationId: scope.organizationId }, status, allowedCurrentStatuses,
+      QUALIFICATION_REQUIRED_STATUSES.includes(status)
     );
-    if (!lead) throw new ConflictError('Lead status changed or the required qualification is missing.');
+    if (!lead) {
+      if (QUALIFICATION_REQUIRED_STATUSES.includes(status) && existing.bantScore === null) {
+        throw new ConflictError(`${status} requires a stored BANT score — run qualification first.`);
+      }
+      throw new ConflictError('Lead status changed concurrently, please retry.');
+    }
     await this.auditRepository?.record(leadAudit(scope, 'LEAD_STATUS_CHANGED', lead.id, {
       from: existing.status,
       to: lead.status
@@ -255,11 +275,43 @@ export class DeleteLeadUseCase {
   }
 }
 
+export class SaveQualificationUseCase {
+  constructor(
+    private readonly leadRepository: ILeadRepository,
+    private readonly auditRepository?: IAuditRepository
+  ) {}
+
+  /**
+   * Stores the BANT evidence and, inside the same statement, moves the lead to QUALIFIED only from a
+   * status that legally precedes it. A lead already in PROPOSAL_DRAFTING/APPROVED/WON/LOST is re-scored
+   * without being dragged backwards through the pipeline.
+   */
+  async execute(id: string, scope: AuthenticatedLeadScope, qualification: StoredQualification): Promise<Lead> {
+    const leadId = requiredUuid(id, 'id');
+    if (!Number.isFinite(qualification.score)) throw new ValidationError('Qualification requires a numeric score.');
+    const existing = await this.leadRepository.findById(leadId, { organizationId: scope.organizationId });
+    if (!existing) throw new NotFoundError('Lead not found.');
+    const saved = await this.leadRepository.saveQualification(
+      leadId,
+      { organizationId: scope.organizationId },
+      qualification,
+      statusesThatCanReach('QUALIFIED')
+    );
+    if (!saved) throw new NotFoundError('Lead not found.');
+    await this.auditRepository?.record(leadAudit(scope, 'LEAD_QUALIFIED', saved.id, {
+      score: qualification.score,
+      from: existing.status,
+      to: saved.status
+    }));
+    return saved;
+  }
+}
+
 export class QualifyLeadUseCase {
   constructor(
     private readonly leadRepository: ILeadRepository,
     private readonly llmGateway: ILLMGateway,
-    private readonly auditRepository?: IAuditRepository
+    private readonly saveQualification: SaveQualificationUseCase
   ) {}
   async execute(id: string, scope: AuthenticatedLeadScope): Promise<LeadQualification> {
     const leadId = requiredUuid(id, 'id');
@@ -281,12 +333,7 @@ export class QualifyLeadUseCase {
     ].join('\n\n');
     const output = await this.llmGateway.generate({ taskMode: LLMTaskMode.LEAD_QUALIFICATION, prompt, temperature: 0.1, maxTokens: 1400 });
     const qualification = normalizeQualification(parseJsonObject(output));
-    const saved = await this.leadRepository.saveQualification(leadId, { organizationId: scope.organizationId }, qualification);
-    if (!saved) throw new NotFoundError('Lead not found.');
-    await this.auditRepository?.record(leadAudit(scope, 'LEAD_QUALIFIED', leadId, {
-      score: qualification.score,
-      recommendation: qualification.recommendation
-    }));
+    await this.saveQualification.execute(leadId, scope, { score: qualification.score, details: qualification });
     return qualification;
   }
 }

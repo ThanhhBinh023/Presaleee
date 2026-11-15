@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { LeadItem } from '../services/leadService';
+import type { LeadItem, QualificationData } from '../services/leadService';
 import type { LeadStatus } from '../types/lead';
 import { LEAD_TRANSITIONS } from '../types/lead';
 import { fetchLeads, qualifyLead, updateLead, updateLeadStatus, deleteLead } from '../services/leadService';
@@ -131,6 +131,12 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
   }, []);
 
   const selectedProject = projects.find(p => p.id === selectedProjectId) || null;
+
+  /**
+   * The stored BANT result. `POST /leads/:id/qualify` persists it into `bant_details`, and the list
+   * endpoint returns that column, so this is the only place a saved qualification is read from.
+   */
+  const storedQualification = selectedProject?.bantDetails as Partial<QualificationData> | null | undefined;
 
   const assignedRolesList: UserRole[] = React.useMemo(() => {
     if (!selectedProject) return [];
@@ -339,6 +345,8 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
         isOpen={portalModalOpen} 
         onClose={() => setPortalModalOpen(false)} 
         activeProject={selectedProject}
+        proposal={realProposal}
+        clientName={realSessions[0]?.clientName ?? null}
       />
 
       {/* 1. LEFT SIDEBAR */}
@@ -560,7 +568,7 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
 
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 text-brand-700 border border-brand-200">
                   <span className="w-1.5 h-1.5 rounded-full bg-brand-500"></span>
-                  Qualification Score: <strong>{selectedProject.qualification_score ? `${selectedProject.qualification_score}/100` : 'Chờ thẩm định'}</strong>
+                  Qualification Score: <strong>{selectedProject.bantScore == null ? 'Chờ thẩm định' : `${selectedProject.bantScore}/100`}</strong>
                 </span>
 
                 <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
@@ -866,31 +874,31 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                         <h3 className="text-sm font-bold text-slate-900 font-mono">
                           Qualification Engine Assessment
                         </h3>
-                        {selectedProject.extractedMetadata?.qualification && (
+                        {storedQualification && (
                           <span className="text-[10px] font-mono font-bold text-brand-700 bg-emerald-50 px-2 py-0.5 rounded border border-brand-200">
                             Đã Thẩm Định
                           </span>
                         )}
                       </div>
 
-                      {selectedProject.extractedMetadata?.qualification ? (
+                      {storedQualification ? (
                         <div className="p-4 rounded-2xl bg-emerald-50/70 border border-brand-200 space-y-2.5">
                           <div className="flex justify-between items-center text-xs font-mono">
                             <span className="font-bold text-brand-900 text-sm">
-                              Score: {selectedProject.extractedMetadata.qualification.qualification_score} / 100
+                              Score: {selectedProject.bantScore ?? storedQualification.qualification_score} / 100
                             </span>
                             <span className="text-brand-700 font-bold">
-                              {selectedProject.extractedMetadata.qualification.readiness_level}
+                              {storedQualification.readiness_level}
                             </span>
                           </div>
                           <p className="text-xs text-slate-700 leading-relaxed">
-                            {selectedProject.extractedMetadata.qualification.project_brief}
+                            {storedQualification.project_brief}
                           </p>
 
                           {/* Breakdown tags */}
-                          {selectedProject.extractedMetadata.qualification.breakdown && (
+                          {storedQualification.breakdown && (
                             <div className="space-y-1.5 pt-2 border-t border-brand-200/60">
-                              {selectedProject.extractedMetadata.qualification.breakdown.slice(0, 3).map((item, idx) => (
+                              {storedQualification.breakdown.slice(0, 3).map((item, idx) => (
                                 <div key={idx} className="text-[11px] font-mono text-slate-700 flex items-start gap-1.5">
                                   <span className="text-brand-600 font-bold">•</span>
                                   <span><strong>{item.title}:</strong> {item.detail}</span>
@@ -1183,7 +1191,7 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                 Boolean(meta.budgetUsd),
                 Boolean(meta.timelineWeeks),
                 Boolean(meta.techStack && meta.techStack.length > 0),
-                Boolean(selectedProject.requirements_summary || selectedProject.client_request_raw),
+                Boolean(meta.coreFunctionalModules?.length || meta.integrationsRequired?.length),
                 Boolean(realProposal)
               ];
               const completenessPercent = Math.round((checks.filter(Boolean).length / checks.length) * 100);
@@ -1245,7 +1253,7 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                       <div>
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-brand-50 text-brand-700 border border-brand-200">
-                            {selectedProject.organization || 'DUT'}
+                            {organization?.name || 'Chưa rõ tổ chức'}
                           </span>
                           <span className="text-xs font-mono text-slate-400">
                             ID: {selectedProject.id.slice(0, 8)}...
@@ -1286,12 +1294,16 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                     <div>
                       <div className="flex items-center gap-2 mb-3">
                         <span className="text-xs font-mono font-bold text-slate-700 uppercase tracking-wider">
-                          Dữ liệu Tương tác Thực tế (Portal Telemetry)
+                          Dữ liệu Tương tác Thực tế từ Portal
                         </span>
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold">
                           Live DB Signals
                         </span>
                       </div>
+                      <p className="text-[11px] text-slate-500 mb-3">
+                        Mỗi phiên portal chỉ lưu <strong>một timestamp lần truy cập gần nhất</strong> (giá trị
+                        cũ bị ghi đè): hệ thống không đếm số lượt xem và không giữ lịch sử truy cập.
+                      </p>
 
                       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                         <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/90 relative overflow-hidden">
@@ -1464,7 +1476,7 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                         </p>
                       </div>
                       <span className="text-xs font-mono font-bold px-2.5 py-1 rounded-xl bg-brand-50 text-brand-700 border border-brand-200">
-                        BANT Score: {selectedProject.qualification_score !== null ? `${selectedProject.qualification_score}/100` : 'Chưa thẩm định'}
+                        BANT Score: {selectedProject.bantScore == null ? 'Chưa thẩm định' : `${selectedProject.bantScore}/100`}
                       </span>
                     </div>
 
@@ -1472,10 +1484,10 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                       <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
                         <span className="text-[10px] text-slate-400 block font-bold">1. LEAD HEALTH</span>
                         <div className="text-xl font-bold text-brand-700 mt-1">
-                          {selectedProject.qualification_score !== null ? `${selectedProject.qualification_score}%` : 'N/A'}
+                          {selectedProject.bantScore == null ? 'N/A' : `${selectedProject.bantScore}%`}
                         </div>
                         <span className="text-[10px] text-emerald-700 font-semibold mt-0.5 block">
-                          {selectedProject.qualification_status || 'Chưa phân loại'}
+                          {storedQualification?.readiness_level || 'Chưa phân loại'}
                         </span>
                       </div>
 
@@ -1617,11 +1629,11 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
 
                         <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 font-mono text-xs text-slate-700 leading-relaxed space-y-2">
                           <div className="text-slate-500 text-[10px] space-y-0.5">
-                            <div><strong>TO:</strong> {realSessions[0]?.clientEmail || `contact@${selectedProject.organization?.toLowerCase() || 'client'}.vn`}</div>
+                            <div><strong>TO:</strong> {realSessions[0]?.clientEmail || 'chưa có email khách hàng — hãy tạo phiên Portal'}</div>
                             <div><strong>SUBJECT:</strong> [Presaleee] Hồ sơ Kỹ thuật &amp; Kế hoạch phối hợp: {selectedProject.title}</div>
                           </div>
                           <div className="border-t border-slate-200 pt-2 space-y-2">
-                            <p>Kính gửi Quý đối tác / Ban Quản lý dự án {selectedProject.organization || ''},</p>
+                            <p>Kính gửi Quý đối tác / Ban Quản lý dự án {realSessions[0]?.clientName || selectedProject.title},</p>
                             <p>
                               Đội ngũ Presale xin chân thành cảm ơn Quý đơn vị đã cùng phối hợp làm rõ các yêu cầu kỹ thuật cho dự án <strong>"{selectedProject.title}"</strong>.
                             </p>

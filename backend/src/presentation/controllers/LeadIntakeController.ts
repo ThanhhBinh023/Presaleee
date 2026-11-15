@@ -6,6 +6,7 @@ import { ILLMGateway, LLMTaskMode } from '../../domain/repositories/ILLMGateway.
 import {
   CreateLeadUseCase,
   QualifyLeadUseCase,
+  SaveQualificationUseCase,
   ListLeadsUseCase,
   GetLeadUseCase,
   UpdateLeadUseCase,
@@ -50,6 +51,7 @@ export class LeadIntakeController {
     private readonly analyzeUseCase: AnalyzeLeadIntakeUseCase,
     private readonly createLeadUseCase: CreateLeadUseCase,
     private readonly qualifyLeadUseCase: QualifyLeadUseCase,
+    private readonly saveQualificationUseCase: SaveQualificationUseCase,
     private readonly listLeadsUseCase: ListLeadsUseCase,
     private readonly getLeadUseCase: GetLeadUseCase,
     private readonly updateLeadUseCase: UpdateLeadUseCase,
@@ -287,27 +289,13 @@ Yêu cầu trả về định dạng JSON thuần túy (không markdown) với c
         };
       }
 
-      // Persist qualification results into lead
+      // Persist through the one use case that writes bant_score/bant_details and applies the state
+      // machine, so qualifying a lead can never move it backwards out of PROPOSAL_DRAFTING/APPROVED/WON.
       if (this.dbPool && leadId && orgId) {
-        const updateRes = await this.dbPool.query(
-          `UPDATE leads
-           SET status = 'QUALIFIED',
-               extracted_metadata = jsonb_set(
-                 COALESCE(extracted_metadata, '{}'::jsonb),
-                 '{qualification}',
-                 $1::jsonb
-               )
-           WHERE id = $2 AND organization_id = $3
-           RETURNING *;`,
-          [JSON.stringify(qualificationData), leadId, orgId]
-        );
-        if (updateRes.rows.length > 0) {
-          lead = await this.getLeadUseCase.execute(leadId, orgId);
-          await this.recordLeadAudit(req, 'LEAD_QUALIFIED', leadId, {
-            score: qualificationData.qualification_score,
-            recommendation: qualificationData.readiness_level
-          });
-        }
+        lead = await this.saveQualificationUseCase.execute(leadId, this.leadScope(req), {
+          score: Number(qualificationData.qualification_score),
+          details: qualificationData
+        });
       }
 
       res.status(200).json({

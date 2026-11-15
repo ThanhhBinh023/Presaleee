@@ -21,7 +21,7 @@ export interface Lead {
   updatedAt: string;
 }
 
-export interface LeadListItem extends Omit<Lead, 'rawRfpContent' | 'bantDetails'> {}
+export interface LeadListItem extends Omit<Lead, 'rawRfpContent'> {}
 
 export interface LeadQualification {
   score: number;

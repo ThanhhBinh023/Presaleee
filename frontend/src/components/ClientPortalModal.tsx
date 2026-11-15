@@ -18,29 +18,68 @@ import {
   RefreshCw
 } from 'lucide-react';
 
+/** Shown wherever the stored proposal genuinely has no value yet — never replaced by an invented default. */
+const MISSING_FACT = 'chưa có trong hồ sơ';
+
 interface ClientPortalModalProps {
   isOpen: boolean;
   onClose: () => void;
   activeProject?: LeadItem | null;
   proposal?: ProposalItem | null;
+  clientName?: string | null;
 }
 
 export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({ 
   isOpen, 
   onClose,
   activeProject,
-  proposal
+  proposal,
+  clientName
 }) => {
   const toast = useToast();
   const [activeTab, setActiveTab] = useState<'overview' | 'proposal' | 'prototype' | 'materials' | 'discussion'>('overview');
   
   const title = activeProject?.title || proposal?.title || 'Giải pháp Doanh nghiệp Presaleee';
-  const org = activeProject?.organization || 'DUT';
+  const org = clientName || 'chưa gắn khách hàng (chưa tạo phiên Portal)';
   const meta = activeProject?.extractedMetadata || {};
-  const budget = Number(meta.budgetUsd || proposal?.totalCost) || 120000;
-  const timeline = Number(meta.timelineWeeks || proposal?.estimatedTimelineWeeks) || 20;
-  const techStack = Array.isArray(meta.techStack) ? meta.techStack.join(', ') : (meta.techStack || 'Node.js, PostgreSQL, Redis, Kubernetes, Kafka');
-  const compliance = Array.isArray(meta.complianceStandards) ? meta.complianceStandards.join(', ') : (meta.complianceStandards || 'SOC-2 Type II, ISO 27001');
+
+  /**
+   * Everything below comes from the stored proposal sheets. When a sheet is absent the UI says so
+   * instead of falling back to made-up numbers — the earlier version hard-coded 120k USD, 20 weeks,
+   * 99.999% SLA and a 20/25/35/20 payment split that contradicted the real Pricing sheet.
+   */
+  const sheetData = (name: string): Record<string, any> =>
+    proposal?.sheets?.find(s => s.sheetName === name)?.sheetData ?? {};
+  const overviewSheet = sheetData('Overview');
+  const scopeSheet = sheetData('Scope of Work');
+  const architectureSheet = sheetData('Architecture & Tech Stack');
+  const timelineSheet = sheetData('Timeline & Milestones');
+  const pricingSheet = sheetData('Pricing & Quotation');
+  const slaSheet = sheetData('SLA & Maintenance');
+
+  const currency: string = pricingSheet.currency || proposal?.currency || 'USD';
+  const grandTotal: number | null = Number(pricingSheet.grandTotal ?? proposal?.totalCost ?? meta.budgetUsd) || null;
+  const totalWeeks: number | null = Number(timelineSheet.totalWeeks ?? proposal?.estimatedTimelineWeeks ?? meta.timelineWeeks) || null;
+
+  const milestones: any[] = Array.isArray(timelineSheet.milestones) ? timelineSheet.milestones : [];
+  const slaMetrics: any[] = Array.isArray(slaSheet.metrics) ? slaSheet.metrics : [];
+  const paymentMilestones: any[] = Array.isArray(pricingSheet.paymentMilestones) ? pricingSheet.paymentMilestones : [];
+  const scopeModules: any[] = Array.isArray(scopeSheet.modules) ? scopeSheet.modules : [];
+  const stackLayers: any[] = Array.isArray(architectureSheet.stack) ? architectureSheet.stack : [];
+  const nonFunctional: any[] = Array.isArray(architectureSheet.nonFunctionalRequirements) ? architectureSheet.nonFunctionalRequirements : [];
+  const keyObjectives: string[] = Array.isArray(overviewSheet.keyObjectives) ? overviewSheet.keyObjectives : [];
+
+  const uptimeTarget: string = slaMetrics.find(m => /uptime|sẵn sàng/i.test(String(m?.metric)))?.target || meta.target_sla || MISSING_FACT;
+  const warrantyTarget: string = slaMetrics.find(m => /bảo hành|hypercare/i.test(String(m?.metric)))?.target || '';
+  const techStack: string = stackLayers.length
+    ? stackLayers.map(l => l.technology).filter(Boolean).join(', ')
+    : (Array.isArray(meta.techStack) ? meta.techStack.join(', ') : (meta.techStack || MISSING_FACT));
+  const securityRequirement = nonFunctional.find(n => /bảo mật|security/i.test(String(n?.category)));
+  const compliance: string = securityRequirement?.requirement
+    || (Array.isArray(meta.complianceStandards) ? meta.complianceStandards.join(', ') : (meta.complianceStandards as string))
+    || MISSING_FACT;
+  const executiveSummary: string = overviewSheet.executiveSummary || '';
+  const hasSheets = Boolean(proposal?.sheets?.length);
 
   const [clientQuery, setClientQuery] = useState('');
   const [aiAnswers, setAiAnswers] = useState<Array<{ q: string; a: string }>>([]);
@@ -57,7 +96,7 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({
       ...aiAnswers,
       {
         q: clientQuery,
-        a: `[Xem thử] Dự án "${title}" được đề xuất với ${techStack}, tiến độ ${timeline} tuần, mức đầu tư ${budget.toLocaleString()} USD. Đây là bản nháp sinh tại trình duyệt — khách hàng thật phải hỏi qua đường dẫn portal, câu trả lời mới đi qua AI và trích dẫn source.`,
+        a: `[Xem thử] Dự án "${title}" được đề xuất với ${techStack}, tiến độ ${totalWeeks === null ? MISSING_FACT : `${totalWeeks} tuần`}, mức đầu tư ${grandTotal === null ? MISSING_FACT : `${grandTotal.toLocaleString()} ${currency}`}. Đây là bản nháp sinh tại trình duyệt — khách hàng thật phải hỏi qua đường dẫn portal, câu trả lời mới đi qua AI và trích dẫn source.`,
       },
     ]);
     setClientQuery('');
@@ -88,35 +127,54 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({
     }
   };
 
+  /** Assembled from the stored proposal sheets; nothing here falls back to an invented number. */
   const handleDownloadOverviewFile = () => {
+    const money = (value: number | null) => (value === null ? MISSING_FACT : `${value.toLocaleString()} ${currency}`);
+    const bullet = (prefix: string, lines: string[]) => (lines.length ? lines : [`- ${prefix}: ${MISSING_FACT}`]);
+
     const overviewText = [
       '============================================================',
       'BẢN TÓM TẮT DỰ ÁN DÀNH CHO KHÁCH HÀNG (EXECUTIVE OVERVIEW)',
       '============================================================',
       `Dự án: ${title}`,
       `Khách hàng / Tổ chức: ${org}`,
+      `Hồ sơ đề xuất: ${proposal ? `${proposal.title} — trạng thái ${proposal.status}, phiên bản ${proposal.version}` : 'chưa được tạo cho lead này'}`,
       `Ngày xuất: ${new Date().toLocaleDateString('vi-VN')}`,
       '',
       '1. CHỈ SỐ QUAN TRỌNG (KEY METRICS)',
-      `- Ngân sách đề xuất: $${budget.toLocaleString()} USD (Trọn gói chuyển giao)`,
-      `- Tiến độ thực hiện: ${timeline} tuần (4 Giai đoạn)`,
-      '- Cam kết SLA: 99.999% Multi-AZ Uptime',
-      `- Tiêu chuẩn tuân thủ: ${compliance}`,
+      `- Ngân sách đề xuất: ${money(grandTotal)}`,
+      `- Tiến độ thực hiện: ${totalWeeks === null ? MISSING_FACT : `${totalWeeks} tuần`}${milestones.length ? ` (${milestones.length} giai đoạn)` : ''}`,
+      `- Cam kết SLA: ${uptimeTarget}`,
+      `- Tiêu chuẩn tuân thủ / bảo mật: ${compliance}`,
       '',
-      '2. MỤC TIÊU CHIẾN LƯỢC',
-      `Xây dựng và bàn giao nền tảng kỹ thuật hiện đại cho dự án "${title}", tối ưu hóa chi phí vận hành, bảo mật đa lớp theo chuẩn ${compliance}, và đảm bảo khả năng mở rộng linh hoạt theo sự tăng trưởng của doanh nghiệp.`,
+      '2. TÓM TẮT ĐIỀU HÀNH',
+      executiveSummary || `- Hồ sơ chưa có Executive Summary (sheet "Overview" chưa được tạo).`,
       '',
-      '3. KIẾN TRÚC CÔNG NGHỆ CỐT LÕI',
-      `Tech Stack: ${techStack}`,
-      'Quy chuẩn: Microservices, Containerization, CI/CD Pipeline tự động hóa.',
+      '3. MỤC TIÊU CHIẾN LƯỢC',
+      ...bullet('Mục tiêu', keyObjectives.map(o => `- ${o}`)),
       '',
-      '4. CÁC MỐC TRIỂN KHAI CHÍNH (MILESTONES)',
-      '- Phase 1: Khảo sát, kiến trúc hệ thống & Thiết lập hạ tầng (Tuần 1 - 4)',
-      '- Phase 2: Phát triển các module cốt lõi & Tích hợp API (Tuần 5 - 10)',
-      '- Phase 3: Kiểm thử tải, UAT & Đánh giá an toàn thông tin (Tuần 11 - 14)',
-      '- Phase 4: Triển khai sản xuất (Go-live) & Chuyển giao vận hành (Tuần 15 - 16)',
+      '4. KIẾN TRÚC CÔNG NGHỆ CỐT LÕI',
+      ...bullet('Tech stack', stackLayers.map(l => `- ${l.layer}: ${l.technology} (${l.rationale})`)),
+      '',
+      '5. YÊU CẦU PHI CHỨC NĂNG',
+      ...bullet('NFR', nonFunctional.map(n => `- ${n.category}: ${n.requirement}`)),
+      '',
+      '6. CÁC MỐC TRIỂN KHAI CHÍNH (MILESTONES)',
+      ...bullet('Milestone', milestones.map(m => `- ${m.phase}: ${m.milestone} (${m.durationWeeks} tuần) — Bàn giao: ${m.deliverables}`)),
+      '',
+      '7. NGÂN SÁCH & LỊCH THANH TOÁN',
+      `- Chi phí đội ngũ: ${money(Number(pricingSheet.teamCost) || null)}`,
+      `- Hạ tầng: ${money(Number(pricingSheet.infrastructureCost) || null)}`,
+      `- Dự phòng: ${money(Number(pricingSheet.contingencyBuffer) || null)}`,
+      `- Tổng trọn gói: ${money(grandTotal)}`,
+      ...bullet('Đợt thanh toán', paymentMilestones.map(p => `- ${p.milestone}: ${p.percentage}% = ${money(Number(p.amount) || null)}`)),
+      '',
+      '8. SLA & BẢO HÀNH',
+      ...bullet('SLA', slaMetrics.map(m => `- ${m.metric}: ${m.target}`)),
       '============================================================',
-      'Presaleee Enterprise Solutions Platform'
+      hasSheets
+        ? 'Nguồn: 10 sheet của hồ sơ đề xuất đã lưu trong hệ thống (Proposal sheets).'
+        : 'Nguồn: thông số RFP trích xuất. Hồ sơ đề xuất chưa được tạo nên các mục trên chưa phải cam kết với khách hàng.'
     ].join('\n');
 
     const blob = new Blob([overviewText], { type: 'text/plain;charset=utf-8' });
@@ -152,7 +210,7 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({
                   Presaleee Client Portal View
                 </span>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-100 text-brand-800 border border-brand-200">
-                  {org} · Verified Client
+                  {clientName ? `${clientName} · Verified Client` : 'chưa cấp phiên cho khách hàng'}
                 </span>
               </div>
               <div className="text-xs text-slate-600 font-semibold truncate max-w-md">
@@ -249,30 +307,36 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({
                 </button>
               </div>
 
-              {/* KPI Cards Grid */}
+              {/* KPI Cards Grid — each value names the sheet it came from */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs font-mono">
                 <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
                   <span className="text-slate-400 block text-[10px] uppercase font-bold">NGÂN SÁCH ĐỀ XUẤT</span>
                   <span className="text-xl font-bold text-brand-700 font-sans mt-1 block">
-                    ${budget.toLocaleString()} USD
+                    {grandTotal === null ? MISSING_FACT : `${grandTotal.toLocaleString()} ${currency}`}
                   </span>
-                  <span className="text-[10px] text-slate-500 mt-0.5 block">Trọn gói chuyển giao</span>
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">
+                    {pricingSheet.grandTotal ? 'Pricing & Quotation — trọn gói chuyển giao' : 'chưa có sheet Pricing & Quotation'}
+                  </span>
                 </div>
 
                 <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
                   <span className="text-slate-400 block text-[10px] uppercase font-bold">TIẾN ĐỘ THỰC HIỆN</span>
                   <span className="text-xl font-bold text-slate-900 font-sans mt-1 block">
-                    {timeline} Tuần
+                    {totalWeeks === null ? MISSING_FACT : `${totalWeeks} Tuần`}
                   </span>
-                  <span className="text-[10px] text-slate-500 mt-0.5 block">4 Giai đoạn (Phases)</span>
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">
+                    {milestones.length ? `${milestones.length} giai đoạn (Timeline & Milestones)` : 'chưa có milestones'}
+                  </span>
                 </div>
 
                 <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
                   <span className="text-slate-400 block text-[10px] uppercase font-bold">CAM KẾT SLA</span>
-                  <span className="text-xl font-bold text-emerald-700 font-sans mt-1 block">
-                    99.999%
+                  <span className="text-sm font-bold text-emerald-700 font-sans mt-1 block">
+                    {uptimeTarget}
                   </span>
-                  <span className="text-[10px] text-emerald-600 mt-0.5 block">Multi-AZ Uptime</span>
+                  <span className="text-[10px] text-emerald-600 mt-0.5 block">
+                    {slaMetrics.length ? `${slaMetrics.length} chỉ số (SLA & Maintenance)` : 'chưa có sheet SLA'}
+                  </span>
                 </div>
 
                 <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
@@ -280,20 +344,42 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({
                   <span className="text-sm font-bold text-slate-900 font-sans mt-1 block truncate">
                     {compliance}
                   </span>
-                  <span className="text-[10px] text-slate-500 mt-0.5 block">Audit Sẵn Sàng</span>
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">
+                    {securityRequirement ? 'Architecture & Tech Stack — Security' : 'RFP extracted metadata'}
+                  </span>
                 </div>
               </div>
+
+              {!hasSheets && (
+                <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900">
+                  Lead này chưa có hồ sơ đề xuất (10 sheets). Các con số ở trên chỉ lấy từ thông số RFP đã
+                  trích xuất, chưa phải nội dung cam kết với khách hàng — hãy chạy Generate Proposal from Lead
+                  để bản xem thử này có dữ liệu thật.
+                </div>
+              )}
 
               {/* Structured Overview Details */}
               <div className="space-y-4 text-xs font-sans">
                 <div className="p-4 rounded-2xl bg-white border border-slate-200 space-y-2">
                   <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-brand-600" />
-                    <span>Mục Tiêu Chiến Lược Của Giải Pháp</span>
+                    <span>Tóm Tắt Điều Hành &amp; Mục Tiêu Chiến Lược</span>
                   </h4>
-                  <p className="text-slate-600 leading-relaxed">
-                    Xây dựng và bàn giao nền tảng kỹ thuật hiện đại cho dự án "{title}", tối ưu hóa chi phí vận hành, bảo mật đa lớp theo chuẩn {compliance}, và đảm bảo khả năng mở rộng linh hoạt theo sự tăng trưởng của doanh nghiệp.
-                  </p>
+                  {executiveSummary ? (
+                    <p className="text-slate-600 leading-relaxed">{executiveSummary}</p>
+                  ) : (
+                    <p className="text-slate-500 italic">Sheet "Overview" chưa được tạo — {MISSING_FACT}.</p>
+                  )}
+                  {keyObjectives.length > 0 && (
+                    <ul className="space-y-1 pt-1">
+                      {keyObjectives.map((objective, idx) => (
+                        <li key={idx} className="text-slate-600 flex gap-2">
+                          <span className="text-brand-600">•</span>
+                          <span>{objective}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
 
                 <div className="p-4 rounded-2xl bg-white border border-slate-200 space-y-2">
@@ -301,12 +387,28 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({
                     <CheckCircle2 className="w-4 h-4 text-brand-600" />
                     <span>Kiến Trúc Công Nghệ Cốt Lõi</span>
                   </h4>
-                  <p className="text-slate-600 leading-relaxed font-mono text-[11px]">
-                    Tech Stack: {techStack}
-                  </p>
-                  <p className="text-slate-500 text-[11px]">
-                    Kiến trúc Microservices độc lập, kết hợp lưu trữ phân tán, cơ chế caching tự động và cơ chế bảo mật xác thực mTLS/RBAC nghiêm ngặt.
-                  </p>
+                  {stackLayers.length > 0 ? (
+                    <ul className="space-y-1.5">
+                      {stackLayers.map((layer, idx) => (
+                        <li key={idx} className="text-slate-600">
+                          <span className="font-semibold text-slate-800">{layer.layer}</span>
+                          <span className="font-mono text-[11px] text-brand-700"> — {layer.technology}</span>
+                          {layer.rationale && <p className="text-slate-500 text-[11px]">{layer.rationale}</p>}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-slate-600 leading-relaxed font-mono text-[11px]">Tech Stack: {techStack}</p>
+                  )}
+                  {nonFunctional.length > 0 && (
+                    <ul className="space-y-1 pt-2 border-t border-slate-100">
+                      {nonFunctional.map((nfr, idx) => (
+                        <li key={idx} className="text-slate-500 text-[11px]">
+                          <span className="font-semibold text-slate-700">{nfr.category}:</span> {nfr.requirement}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
 
                 <div className="p-4 rounded-2xl bg-white border border-slate-200 space-y-2">
@@ -315,8 +417,11 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({
                     <span>Phương Thức Chuyển Giao &amp; Bảo Hành</span>
                   </h4>
                   <p className="text-slate-600 leading-relaxed">
-                    Triển khai theo phương pháp Agile Scrum (2 tuần/Sprint), kiểm thử tự động CI/CD. Chuyển giao toàn bộ mã nguồn, tài liệu kiến trúc kỹ thuật và bảo hành 12 tháng kể từ ngày nghiệm thu Go-Live.
+                    {overviewSheet.deliveryMethodology || `Chưa có phương thức chuyển giao trong hồ sơ — ${MISSING_FACT}.`}
                   </p>
+                  {warrantyTarget && (
+                    <p className="text-slate-500 text-[11px]">Bảo hành &amp; hỗ trợ sau Go-live: {warrantyTarget}</p>
+                  )}
                 </div>
               </div>
 
@@ -329,14 +434,16 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({
               <div className="p-5 rounded-2xl bg-emerald-50/60 border border-brand-200 flex items-center justify-between">
                 <div>
                   <h4 className="text-sm font-bold text-slate-900">
-                    Hồ Sơ Đề Xuất Kỹ Thuật (10 Sheets Tiêu Chuẩn)
+                    Hồ Sơ Đề Xuất Kỹ Thuật ({proposal?.sheets?.length ?? 0}/10 sheets đã tạo)
                   </h4>
                   <p className="text-xs text-slate-600 mt-1">
-                    Đã được kiểm duyệt và ký duyệt bởi Solution Architect cho dự án: {title}.
+                    {proposal
+                      ? `${proposal.title} — trạng thái ${proposal.status}, phiên bản ${proposal.version}.`
+                      : `Lead này chưa có hồ sơ đề xuất — hãy chạy Generate Proposal from Lead.`}
                   </p>
                 </div>
                 <span className="px-3 py-1 rounded-full text-xs font-mono font-bold bg-white text-brand-700 border border-brand-200 shadow-xs">
-                  SLA: 99.999%
+                  SLA: {uptimeTarget}
                 </span>
               </div>
 
@@ -344,32 +451,41 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({
                 <h3 className="text-lg font-bold text-slate-900 border-b pb-2">
                   1. Phạm Vi Triển Khai (Scope of Work &amp; WBS)
                 </h3>
-                <p>
-                  Dự án bao gồm 5 phân hệ cốt lõi: Xác thực phân quyền tập trung, Gateway đồng bộ dữ liệu thời gian thực, Quy trình nghiệp vụ lõi, Client Portal tích hợp và Hạ tầng DevOps bảo mật cao theo tiêu chuẩn {compliance}.
-                </p>
+                {scopeModules.length > 0 ? (
+                  <ul className="space-y-1">
+                    {scopeModules.map((module, idx) => (
+                      <li key={idx}>
+                        <span className="font-mono text-[11px] text-slate-500">{module.wbs}</span>{' '}
+                        <span className="font-semibold text-slate-800">{module.module}</span>
+                        {module.feature && <span className="text-slate-600"> — {module.feature}</span>}
+                        {module.priority && <span className="text-[11px] text-slate-500"> ({module.priority})</span>}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>Sheet "Scope of Work" chưa có dữ liệu — {MISSING_FACT}.</p>
+                )}
 
                 <h3 className="text-lg font-bold text-slate-900 border-b pb-2 pt-2">
                   2. Kế Hoạch Nghiệm Thu &amp; Thanh Toán Theo Đợt
                 </h3>
                 <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono space-y-2">
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
-                    <div>
-                      <span className="text-slate-400 block text-[10px]">ĐỢT 1 (KÝ HỢP ĐỒNG)</span>
-                      <span className="font-bold text-slate-800">20% (${Math.round(budget * 0.2).toLocaleString()})</span>
+                  {paymentMilestones.length > 0 ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
+                      {paymentMilestones.map((payment, idx) => (
+                        <div key={idx}>
+                          <span className="text-slate-400 block text-[10px]">
+                            ĐỢT {idx + 1} — {payment.milestone}
+                          </span>
+                          <span className="font-bold text-slate-800">
+                            {payment.percentage}% ({Number(payment.amount).toLocaleString()} {currency})
+                          </span>
+                        </div>
+                      ))}
                     </div>
-                    <div>
-                      <span className="text-slate-400 block text-[10px]">ĐỢT 2 (PHÊ DUYỆT KIẾN TRÚC)</span>
-                      <span className="font-bold text-slate-800">25% (${Math.round(budget * 0.25).toLocaleString()})</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block text-[10px]">ĐỢT 3 (ALPHA UAT)</span>
-                      <span className="font-bold text-slate-800">35% (${Math.round(budget * 0.35).toLocaleString()})</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block text-[10px]">ĐỢT 4 (GO-LIVE)</span>
-                      <span className="font-bold text-brand-700">20% (${Math.round(budget * 0.2).toLocaleString()})</span>
-                    </div>
-                  </div>
+                  ) : (
+                    <p className="text-slate-500">Sheet "Pricing &amp; Quotation" chưa có lịch thanh toán — {MISSING_FACT}.</p>
+                  )}
                 </div>
               </div>
             </div>

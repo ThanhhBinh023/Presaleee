@@ -1,6 +1,6 @@
 import { Pool } from 'pg';
-import { Lead, LeadListItem, LeadQualification, LeadSource, LeadStatus } from '../../../domain/entities/Lead.js';
-import { CreateLeadInput, ILeadRepository, ListLeadFilters, UpdateLeadInput, LeadScope } from '../../../domain/repositories/ILeadRepository.js';
+import { Lead, LeadListItem, LeadSource, LeadStatus } from '../../../domain/entities/Lead.js';
+import { CreateLeadInput, ILeadRepository, ListLeadFilters, StoredQualification, UpdateLeadInput, LeadScope } from '../../../domain/repositories/ILeadRepository.js';
 
 interface LeadRow {
   id: string;
@@ -87,7 +87,7 @@ export class PostgresLeadRepository implements ILeadRepository {
       pageValues
     );
     const leads = result.rows.map(row => {
-      const { rawRfpContent: _rawRfpContent, bantDetails: _bantDetails, ...item } = mapLead(row);
+      const { rawRfpContent: _rawRfpContent, ...item } = mapLead(row);
       return item;
     });
     return { leads, total };
@@ -125,14 +125,14 @@ export class PostgresLeadRepository implements ILeadRepository {
     return result.rows[0] ? mapLead(result.rows[0]) : null;
   }
 
-  async updateStatusWithQualificationCheck(id: string, scope: LeadScope, status: LeadStatus, allowedCurrentStatuses: LeadStatus[]): Promise<Lead | null> {
+  async updateStatusWithQualificationCheck(id: string, scope: LeadScope, status: LeadStatus, allowedCurrentStatuses: LeadStatus[], requiresQualification: boolean): Promise<Lead | null> {
     const result = await this.pool.query<LeadRow>(
       `UPDATE leads SET status = $3, updated_at = NOW()
        WHERE id = $1 AND organization_id = $2
-         AND ($3 <> 'APPROVED' OR bant_score IS NOT NULL)
+         AND ($5 = FALSE OR bant_score IS NOT NULL)
          AND status = ANY($4::varchar[])
        RETURNING ${FULL_LEAD_COLUMNS};`,
-      [id, scope.organizationId, status, allowedCurrentStatuses]
+      [id, scope.organizationId, status, allowedCurrentStatuses, requiresQualification]
     );
     return result.rows[0] ? mapLead(result.rows[0]) : null;
   }
@@ -145,11 +145,16 @@ export class PostgresLeadRepository implements ILeadRepository {
     return (result.rowCount || 0) > 0;
   }
 
-  async saveQualification(id: string, scope: LeadScope, qualification: LeadQualification): Promise<Lead | null> {
+  async saveQualification(id: string, scope: LeadScope, qualification: StoredQualification, qualifyFrom: LeadStatus[]): Promise<Lead | null> {
     const result = await this.pool.query<LeadRow>(
-      `UPDATE leads SET bant_score = $3, bant_details = $4::jsonb, status = 'QUALIFIED', updated_at = NOW()
-       WHERE id = $1 AND organization_id = $2 RETURNING ${FULL_LEAD_COLUMNS};`,
-      [id, scope.organizationId, qualification.score, JSON.stringify(qualification)]
+      `UPDATE leads
+          SET bant_score = $3,
+              bant_details = $4::jsonb,
+              status = CASE WHEN status = ANY($5::varchar[]) THEN 'QUALIFIED' ELSE status END,
+              updated_at = NOW()
+        WHERE id = $1 AND organization_id = $2
+        RETURNING ${FULL_LEAD_COLUMNS};`,
+      [id, scope.organizationId, qualification.score, JSON.stringify(qualification.details), qualifyFrom]
     );
     return result.rows[0] ? mapLead(result.rows[0]) : null;
   }

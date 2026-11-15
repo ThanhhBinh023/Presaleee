@@ -14,10 +14,10 @@ export function createLeadIntakeRouter(controller: LeadIntakeController): Router
   // Analyze RFP text and return an unsaved draft
   router.post('/intake/analyze', requireAuth, requireOrganization, requireNotViewer, controller.analyze);
 
-  // Qualify lead with AI BANT evaluation
+  // Qualify lead with AI BANT evaluation (writes bant_score/bant_details; status moves only where the state machine allows)
   router.post('/:id/qualify', requireAuth, requireOrganization, requireNotViewer, controller.qualify);
 
-  // BANT scoring: reads the stored RFP, writes bant_score + bant_details, status -> QUALIFIED
+  // BANT scoring through the canonical use case: reads the stored RFP, writes bant_score + bant_details
   router.post('/:id/qualifications', requireAuth, requireOrganization, requireNotViewer, controller.qualifyBant);
 
   // Get single lead (strictly scoped to user's organization)

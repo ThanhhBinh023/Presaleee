@@ -1,4 +1,4 @@
-import { Lead, LeadListItem, LeadQualification, LeadSource, LeadStatus } from '../entities/Lead.js';
+import { Lead, LeadListItem, LeadSource, LeadStatus } from '../entities/Lead.js';
 
 export interface LeadScope { organizationId: string; }
 export interface ListLeadFilters extends LeadScope {
@@ -28,12 +28,18 @@ export interface UpdateLeadInput {
   extractedMetadata?: Record<string, unknown>;
 }
 
+/** A qualification as it is persisted: the numeric score plus the evidence blob behind it. */
+export interface StoredQualification {
+  score: number;
+  details: object;
+}
+
 export interface ILeadRepository {
-  updateStatusWithQualificationCheck(id: string, scope: LeadScope, status: LeadStatus, allowedCurrentStatuses: LeadStatus[]): Promise<Lead | null>;
+  updateStatusWithQualificationCheck(id: string, scope: LeadScope, status: LeadStatus, allowedCurrentStatuses: LeadStatus[], requiresQualification: boolean): Promise<Lead | null>;
   create(input: CreateLeadInput): Promise<Lead>;
   list(filters: ListLeadFilters): Promise<{ leads: LeadListItem[]; total: number }>;
   findById(id: string, scope: LeadScope): Promise<Lead | null>;
   update(id: string, scope: LeadScope, input: UpdateLeadInput): Promise<Lead | null>;
   delete(id: string, scope: LeadScope): Promise<boolean>;
-  saveQualification(id: string, scope: LeadScope, qualification: LeadQualification): Promise<Lead | null>;
+  saveQualification(id: string, scope: LeadScope, qualification: StoredQualification, qualifyFrom: LeadStatus[]): Promise<Lead | null>;
 }

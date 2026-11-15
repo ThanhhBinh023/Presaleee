@@ -28,7 +28,7 @@ Base path: `/api/v1`. Authentication uses the `presaleee_access` HttpOnly cookie
 
 `organizationDomain` is optional. The organization row and the `ADMIN` user are inserted in one transaction, so a partial registration cannot be left behind. A taken email returns `409`.
 
-The response is `201` with `data: { user, organization }` and sets the access cookie. **No refresh token is issued at registration** — the client must call `POST /auth/login` to obtain a durable 30-day session. The access token carries the role claim, so a role change only takes effect when the token is reissued (within 15 minutes).
+The response is `201` with `data: { user, organization }` and sets the access cookie. **No refresh token is issued at registration** — the client must call `POST /auth/login` to obtain a durable 30-day session. The access token carries the role claim, so a role change only takes effect when the token is reissued; the access token TTL is 24 hours (`AuthTokenService.ts:8`) and requests are authorized from the token alone, without a per-request user lookup. Setting a member to `DEACTIVATED` revokes their refresh sessions (`UserUseCases.ts:210`), which blocks re-login, but an already-issued access token keeps working until it expires.
 
 ## Self-service profile update
 

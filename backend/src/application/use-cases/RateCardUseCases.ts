@@ -1,4 +1,4 @@
-import { ConflictError, NotFoundError, ValidationError } from '../../domain/errors/AppError.js';
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../domain/errors/AppError.js';
 import { Proposal, ProposalWithSheets, STANDARD_PROPOSAL_SHEETS } from '../../domain/entities/Proposal.js';
 import { getDefaultProposalSheets } from '../services/DefaultProposalSheets.js';
 import { PricingCalculationError, calculatePricing, deriveMonthlyRate } from '../../domain/services/calculatePricing.js';
@@ -234,6 +234,7 @@ export class CalculateQuotationPricingUseCase {
 
     let proposal = null;
     if (shouldApply) {
+      if (scope.role === 'VIEWER') throw new ForbiddenError('VIEWER role is read-only. Applying pricing to a proposal is not permitted.');
       if (!proposalId || !this.proposalRepository) throw new ValidationError('proposalId is required to apply a calculated quotation.');
       const existing = await this.proposalRepository.findById(proposalId, scope.organizationId);
       if (!existing) throw new NotFoundError('Proposal not found.');

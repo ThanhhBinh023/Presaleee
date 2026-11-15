@@ -4,7 +4,7 @@ import { UserRole } from '../../domain/entities/User.js';
 
 /**
  * Coarse gate executed after `requireAuth`. Fine-grained ownership checks stay in
- * use cases; roles come from the access token, which lives at most 15 minutes.
+ * use cases; roles come from the access token, which lives at most 24 hours.
  */
 export function requireRole(...roles: UserRole[]) {
   return (req: Request, _res: Response, next: NextFunction): void => {
@@ -20,17 +20,4 @@ export function requireRole(...roles: UserRole[]) {
     }
     next();
   };
-}
-
-export function requireNotViewer(req: Request, _res: Response, next: NextFunction): void {
-  const claims = req.auth;
-  if (!claims) {
-    next(new UnauthorizedError());
-    return;
-  }
-  if (claims.role === 'VIEWER') {
-    next(new ForbiddenError('VIEWER role is read-only. This operation is not permitted.'));
-    return;
-  }
-  next();
 }

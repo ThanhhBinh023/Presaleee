@@ -1,6 +1,6 @@
 import { IMeetingRepository } from '../../domain/repositories/IMeetingRepository.js';
 import { ILeadRepository } from '../../domain/repositories/ILeadRepository.js';
-import { ILLMGateway } from '../../domain/repositories/ILLMGateway.js';
+import { ILLMGateway, LLMTaskMode } from '../../domain/repositories/ILLMGateway.js';
 import { Meeting, MeetingAnalysis, MeetingStatus } from '../../domain/entities/Meeting.js';
 import { requiredUuid } from '../services/RequestValidation.js';
 import { ConflictError, NotFoundError, ValidationError } from '../../domain/errors/AppError.js';
@@ -125,7 +125,7 @@ export class AnalyzeMeetingUseCase {
       `Current meeting: ${meeting.title} at ${meeting.meetingDate}`,
       `<transcript>\n${meeting.rawTranscript}\n</transcript>`
     ].join('\n\n');
-    const output = await this.llmGateway.generate({ taskMode: 4, prompt, temperature: 0.1, maxTokens: 1800 });
+    const output = await this.llmGateway.generate({ taskMode: LLMTaskMode.MEETING_ASSISTANT, prompt, temperature: 0.1, maxTokens: 1800 });
     const analysis = parseAiAnalysis(output);
     const saved = await this.meetingRepository.saveAnalysis(meeting.id, { organizationId }, analysis);
     if (!saved) throw new ConflictError('Meeting transcript changed or the meeting is no longer available. Reload and retry.');

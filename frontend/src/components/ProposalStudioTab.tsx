@@ -502,7 +502,7 @@ ${uiBrief.interaction_flow}
 
         {/* Toolbar Action Buttons */}
         <div className="flex flex-wrap items-center gap-2.5">
-          {proposalData.status === 'DRAFT' && (
+          {!isViewer && proposalData.status === 'DRAFT' && (
             <button
               onClick={() => handleUpdateStatus('IN_REVIEW')}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs cursor-pointer"
@@ -512,7 +512,7 @@ ${uiBrief.interaction_flow}
             </button>
           )}
 
-          {proposalData.status === 'IN_REVIEW' && (
+          {!isViewer && proposalData.status === 'IN_REVIEW' && (
             <button
               onClick={() => handleUpdateStatus('APPROVED')}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs cursor-pointer"
@@ -579,14 +579,16 @@ ${uiBrief.interaction_flow}
             <span>Client Portal &rarr;</span>
           </button>
 
-          <button
-            onClick={handleGenerateProposal}
-            disabled={generating}
-            title="Sinh lại toàn bộ 10 sheets bằng AI RAG"
-            className="p-2 rounded-xl border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50"
-          >
-            <RefreshCw className={`w-4 h-4 ${generating ? 'animate-spin' : ''}`} />
-          </button>
+          {!isViewer && (
+            <button
+              onClick={handleGenerateProposal}
+              disabled={generating}
+              title="Sinh lại toàn bộ 10 sheets bằng AI RAG"
+              className="p-2 rounded-xl border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${generating ? 'animate-spin' : ''}`} />
+            </button>
+          )}
         </div>
 
       </div>
@@ -1089,14 +1091,16 @@ ${uiBrief.interaction_flow}
                     <span>{copiedBrief ? 'Đã sao chép ✓' : 'Copy cho Figma'}</span>
                   </button>
 
-                  <button
-                    onClick={handleGenerateUIBrief}
-                    disabled={generatingBrief}
-                    title="Làm mới UI Brief"
-                    className="p-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${generatingBrief ? 'animate-spin' : ''}`} />
-                  </button>
+                  {!isViewer && (
+                    <button
+                      onClick={handleGenerateUIBrief}
+                      disabled={generatingBrief}
+                      title="Làm mới UI Brief"
+                      className="p-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${generatingBrief ? 'animate-spin' : ''}`} />
+                    </button>
+                  )}
                 </div>
               </div>
             ) : isViewer ? (

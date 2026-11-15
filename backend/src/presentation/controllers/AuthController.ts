@@ -88,6 +88,9 @@ export class AuthController {
 
   devLogin = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
+      if (env.nodeEnv === 'production') {
+        throw new ForbiddenError('Dev login is disabled in production.');
+      }
       validateCsrfOrigin(req);
       const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : 'ntbinh1@gmail.com';
       if (!this.authRepository) {

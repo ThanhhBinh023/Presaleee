@@ -16,7 +16,7 @@ export class LeadIntakeController {
     private readonly llmGateway?: ILLMGateway
   ) {}
 
-  private leadScope(req: Request): AuthenticatedLeadScope {
+  private leadScope(req: Pick<Request, 'auth' | 'socket'>): AuthenticatedLeadScope {
     if (!req.auth?.sub) throw new UnauthorizedError('Authentication required.');
     if (!req.auth.organizationId) throw new ValidationError('An authenticated organization is required.');
     return {
@@ -65,7 +65,7 @@ export class LeadIntakeController {
   };
 
   analyze = async (
-    req: Request<unknown, unknown, AnalyzeLeadIntakeInputDTO & { persist?: boolean; inquiryText?: string; organizationId?: string; userId?: string }>,
+    req: Request<unknown, unknown, AnalyzeLeadIntakeInputDTO & { persist?: boolean; inquiryText?: string }>,
     res: Response,
     next: NextFunction
   ): Promise<void> => {
@@ -85,8 +85,8 @@ export class LeadIntakeController {
           peak_workload: (result.draft.extractedMetadata as any).peakWorkload || '40,000+ TPS'
         };
 
-        const orgId = req.auth?.organizationId || (req.headers['x-organization-id'] as string) || body.organizationId || null;
-        const userId = req.auth?.sub || body.userId || null;
+        const orgId = req.auth?.organizationId || null;
+        const userId = req.auth?.sub || null;
 
         const insertRes = await this.dbPool.query(
           `INSERT INTO leads (title, source, status, raw_rfp_content, extracted_metadata, organization_id, created_by)
@@ -176,7 +176,7 @@ Yêu cầu trả về định dạng JSON thuần túy (không markdown) với c
 }`;
 
         try {
-          const aiResponse = await this.llmGateway.generate({ prompt, taskMode: LLMTaskMode.BANT_QUALIFICATION });
+          const aiResponse = await this.llmGateway.generate({ prompt, taskMode: LLMTaskMode.LEAD_QUALIFICATION });
           let cleaned = aiResponse.trim();
           if (cleaned.startsWith('```json')) cleaned = cleaned.replace(/^```json/, '').replace(/```$/, '').trim();
           else if (cleaned.startsWith('```')) cleaned = cleaned.replace(/^```/, '').replace(/```$/, '').trim();
@@ -184,6 +184,22 @@ Yêu cầu trả về định dạng JSON thuần túy (không markdown) với c
         } catch (aiErr) {
           console.warn('[LeadIntakeController] LLM Qualification JSON parse failed, falling back to heuristic:', aiErr);
         }
+      }
+
+      // The AI service answers task_mode 4 with the canonical { score, criteria } shape,
+      // while this endpoint's contract uses the legacy keys consumed by AIWorkspace.
+      if (qualificationData && qualificationData.qualification_score === undefined && typeof qualificationData.score === 'number') {
+        const criteria = qualificationData.criteria || {};
+        qualificationData = {
+          qualification_score: qualificationData.score,
+          readiness_level: qualificationData.recommendation || 'REVIEW',
+          breakdown: Object.entries(criteria).map(([pillar, item]: [string, any]) => ({
+            type: Number(item?.score) >= 15 ? 'positive' : 'warning',
+            title: pillar.charAt(0).toUpperCase() + pillar.slice(1),
+            detail: item?.assessment || ''
+          })),
+          project_brief: qualificationData.summary || ''
+        };
       }
 
       if (!qualificationData) {

@@ -40,7 +40,7 @@ export interface ProposalFilterParams {
 export interface IProposalRepository {
   create(params: CreateProposalParams): Promise<ProposalWithSheets>;
   findById(id: string, organizationId: string): Promise<ProposalWithSheets | null>;
-  findByLeadId(leadId: string): Promise<ProposalWithSheets | null>;
+  findByLeadId(leadId: string, organizationId: string): Promise<ProposalWithSheets | null>;
   findAll(filter?: ProposalFilterParams): Promise<{ proposals: Proposal[]; total: number }>;
   update(id: string, organizationId: string, params: UpdateProposalParams): Promise<Proposal | null>;
   updateStatus(

@@ -106,10 +106,10 @@ export class PostgresProposalRepository implements IProposalRepository {
     };
   }
 
-  async findByLeadId(leadId: string): Promise<ProposalWithSheets | null> {
+  async findByLeadId(leadId: string, organizationId: string): Promise<ProposalWithSheets | null> {
     const proposalRes = await this.pool.query(
-      'SELECT * FROM proposals WHERE lead_id = $1 ORDER BY updated_at DESC LIMIT 1;',
-      [leadId]
+      'SELECT * FROM proposals WHERE lead_id = $1 AND organization_id = $2 ORDER BY updated_at DESC LIMIT 1;',
+      [leadId, organizationId]
     );
 
     if (proposalRes.rows.length === 0) {

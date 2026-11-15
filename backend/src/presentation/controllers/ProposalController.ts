@@ -12,15 +12,16 @@ import { GenerateProposalSheetsUseCase } from '../../application/use-cases/Gener
 import { ExportProposalToPdfUseCase } from '../../application/use-cases/ExportProposalToPdfUseCase.js';
 import { SubmitProposalForReviewUseCase } from '../../application/use-cases/SubmitProposalForReviewUseCase.js';
 import { GenerateProposalFromLeadUseCase } from '../../application/use-cases/GenerateProposalFromLeadUseCase.js';
+import { UserRole } from '../../domain/entities/AuthUser.js';
 
 function getParam(param: string | string[] | undefined): string {
   return Array.isArray(param) ? param[0] || '' : param || '';
 }
 
-function authContext(req: Request): { organizationId: string; userId: string } {
+function authContext(req: Request): { organizationId: string; userId: string; role: UserRole } {
   if (!req.auth?.sub) throw new UnauthorizedError();
   if (!req.auth.organizationId) throw new ForbiddenError('An organization is required for this operation.');
-  return { organizationId: req.auth.organizationId, userId: req.auth.sub };
+  return { organizationId: req.auth.organizationId, userId: req.auth.sub, role: req.auth.role };
 }
 
 function bodyObject(req: Request): Record<string, unknown> {
@@ -68,10 +69,12 @@ export class ProposalController {
         return;
       }
       const { leadId, customInstructions } = req.body;
+      const { organizationId, userId } = authContext(req);
       const proposal = await this.generateFromLeadUseCase.execute({
         leadId,
+        organizationId,
         customInstructions,
-        userId: (req as any).user?.id || null
+        userId
       });
 
       res.status(200).json({
@@ -110,8 +113,15 @@ export class ProposalController {
   updateLifecycle = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const id = getParam(req.params.id);
+      const { organizationId, userId, role } = authContext(req);
       const { status } = req.body;
-      const updated = await this.updateUseCase.execute({ id, status });
+      const updated = await this.updateUseCase.execute({
+        id,
+        organizationId,
+        actorId: userId,
+        actorRole: role,
+        status
+      });
       res.status(200).json({
         success: true,
         data: updated,
@@ -128,7 +138,8 @@ export class ProposalController {
   generateUIDesignBrief = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const id = getParam(req.params.id);
-      const proposal = await this.getByIdUseCase.execute(id);
+      const { organizationId } = authContext(req);
+      const proposal = await this.getByIdUseCase.execute(id, organizationId);
       const overviewSheet = proposal.sheets.find(s => s.sheetName === 'Overview');
       const brief = overviewSheet?.sheetData?.uiDesignBrief || {
         title: `Interactive UI/UX Design Brief cho ${proposal.title}`,
@@ -220,6 +231,7 @@ export class ProposalController {
   update = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const id = getParam(req.params.id);
+      const { organizationId, userId, role } = authContext(req);
       const {
         title,
         version,
@@ -231,6 +243,9 @@ export class ProposalController {
       } = req.body;
 
       const updated = await this.updateUseCase.execute({ id,
+        organizationId,
+        actorId: userId,
+        actorRole: role,
         title,
         version,
         status,
@@ -313,7 +328,7 @@ export class ProposalController {
 
   exportExcel = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const organizationId = req.auth?.organizationId || '00000000-0000-0000-0000-000000000001';
+      const { organizationId, userId } = authContext(req);
       const rawId = getParam(req.params.id);
       let result;
       try {
@@ -322,7 +337,8 @@ export class ProposalController {
         if (this.generateFromLeadUseCase) {
           const generated = await this.generateFromLeadUseCase.execute({
             leadId: rawId,
-            userId: (req as any).user?.id || req.auth?.sub || null
+            organizationId,
+            userId
           });
           result = await this.exportExcelUseCase.execute(generated.id, organizationId);
         } else {
@@ -338,7 +354,7 @@ export class ProposalController {
 
   exportPdf = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const organizationId = req.auth?.organizationId || '00000000-0000-0000-0000-000000000001';
+      const { organizationId, userId } = authContext(req);
       const rawId = getParam(req.params.id);
       let result;
       try {
@@ -347,7 +363,8 @@ export class ProposalController {
         if (this.generateFromLeadUseCase) {
           const generated = await this.generateFromLeadUseCase.execute({
             leadId: rawId,
-            userId: (req as any).user?.id || req.auth?.sub || null
+            organizationId,
+            userId
           });
           result = await this.exportPdfUseCase.execute(generated.id, organizationId);
         } else {

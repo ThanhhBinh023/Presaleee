@@ -11,7 +11,7 @@ const SYSTEM_PROMPTS: Record<number, string> = {
     "You are an expert AI Presale Meeting Assistant for 'Presaleee'. Clean, normalize, and distill raw meeting transcripts into structured notes with Key Discussion Points, Clarified Requirements, Action Items & Ownership, and Open Questions.",
   [LLMTaskMode.GAP_ANALYSIS]:
     "You are a senior IT Presale Consultant for 'Presaleee'. Analyze gaps in client requirements against a complete 10-sheet proposal and suggest sharp proactive follow-up questions.",
-  [LLMTaskMode.BANT_QUALIFICATION]:
+  [LLMTaskMode.LEAD_QUALIFICATION]:
     "You are a Commercial Presale Director for 'Presaleee'. Qualify this lead using the BANT framework (0-100 score) with detailed risk evaluation.",
   [LLMTaskMode.PROPOSAL_BUILDER]:
     "You are a Lead Proposal Architect for 'Presaleee'. Synthesize a comprehensive executive overview for the technical proposal.",
@@ -108,7 +108,7 @@ export class FastAPILMGateway implements ILLMGateway {
       return this.heuristicLeadIntake(prompt);
     }
 
-    if (taskMode === LLMTaskMode.BANT_QUALIFICATION) {
+    if (taskMode === LLMTaskMode.LEAD_QUALIFICATION) {
       return this.heuristicBantQualification(prompt);
     }
 

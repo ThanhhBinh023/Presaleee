@@ -2,8 +2,9 @@
 
 > **Tài liệu đặc tả kiến trúc:** Role-Based Access Control (RBAC) & Multi-Tenant Data Isolation  
 > **Dự án:** Presaleee Platform (AI-Powered Presale & Proposal Engineering)  
-> **Ngày cập nhật:** 14/11/2026  
-> **Phiên bản tài liệu:** v2.4
+> **Ngày cập nhật:** 15/11/2026  
+> **Phiên bản tài liệu:** v2.5  
+> **Quy tắc đọc bảng ma trận:** một quyền chỉ được ghi là giới hạn theo role khi code **thực sự enforce** giới hạn đó (middleware hoặc use case). Ngoài `VIEWER` và `ORGANIZATION_ADMIN_ROLES = ['ADMIN','PRESALE_LEAD']`, hệ thống **không có** giới hạn nào khác giữa 4 role nghiệp vụ còn lại.
 
 ---
 
@@ -43,10 +44,12 @@ Hệ thống bảo vệ tài nguyên dựa trên 2 tầng kiểm soát đồng t
 ### 3.2. Role `PRESALE_LEAD` (Trưởng nhóm Presale)
 * **Mục tiêu:** Kiểm soát chất lượng chuyên môn, tiến độ phê duyệt và các chỉ số thương mại của dự án.
 * **Quyền hạn & Thao tác:**
-  - **Phê duyệt Vòng đời Hồ sơ (`Proposal Lifecycle`):** Chỉ có `ADMIN` và `PRESALE_LEAD` mới có quyền chuyển trạng thái Proposal lên `APPROVED` và `SENT_TO_CLIENT`.
-  - **Cấu hình Bảng đơn giá (`Rate Cards`):** Quản lý định mức chi phí theo giờ/ngày cho từng vai trò nhân sự (Project Manager, Solution Architect, Senior Dev, DevOps, QA...) làm cơ sở tính giá cho Sheet 5 & Sheet 6.
-  - **Phê duyệt chia sẻ Portal lần đầu (`PORTAL_FIRST_SHARE_ROLES`):** Cấp phép phát hành liên kết Client Portal chính thức ra bên ngoài cho khách hàng.
+  - **Phê duyệt Vòng đời Hồ sơ (`Proposal Lifecycle`):** Chỉ `ADMIN` và `PRESALE_LEAD` được chuyển trạng thái sang `APPROVED`, `REJECTED`, `SENT_TO_CLIENT`, `ACCEPTED` (`UpdateProposalUseCase.ts:66`).
+  - **Cấu hình Bảng đơn giá & Khách hàng:** `POST/PATCH/DELETE /rate-cards` và `POST/PATCH/DELETE /clients` dùng `requireRole(...ORGANIZATION_ADMIN_ROLES)`.
+  - **Quản trị Thành viên:** Mời thành viên (`POST /users`), đổi role / vô hiệu hóa (`PATCH /users/:id`) — dùng chung `ORGANIZATION_ADMIN_ROLES`.
+  - **Nhật ký Kiểm toán:** `GET /audit-logs` chỉ mở cho `ADMIN` và `PRESALE_LEAD`.
   - **Quản lý Leads:** Xóa, chỉnh sửa, tái phân bổ quyền phụ trách Lead cho các chuyên viên tư vấn.
+  - **Lưu ý:** các thao tác nghiệp vụ thông thường (Intake, BANT, Meetings, Proposal Studio, Ingest, Portal) **không** phân biệt `PRESALE_LEAD` với 3 role nghiệp vụ còn lại — `ADMIN` và `PRESALE_LEAD` chỉ hơn ở 4 nhóm quyền vừa liệt kê.
 
 ### 3.3. Role `PRESALE_CONSULTANT` (Chuyên viên Tư vấn Presale)
 * **Mục tiêu:** Trực tiếp chuyển hóa yêu cầu của khách hàng thành bản đề xuất giải pháp kỹ thuật hoàn chỉnh.
@@ -88,11 +91,13 @@ Hệ thống bảo vệ tài nguyên dựa trên 2 tầng kiểm soát đồng t
     - Xuất / Tải xuống tệp Excel (`.xlsx`) và PDF (`.pdf`) của Proposal.
     - Sử dụng tính năng tra cứu tri thức nâng cao: Tìm kiếm Hybrid (`Hybrid Search`) và trò chuyện với trợ lý tri thức (`Ask Vault`).
   - **BỊ CHẶN HOÀN TOÀN (Trả mã lỗi `403 Forbidden`):**
-    - ❌ Không được tạo mới, cập nhật hay xóa bất kỳ Lead nào (`POST/PUT/DELETE /leads`).
-    - ❌ Không được sửa, sinh lại hay xóa Proposal (`DELETE /proposals/:id`, `PATCH /proposals/:id`).
+    - ❌ Không được tạo mới, cập nhật hay xóa bất kỳ Lead nào (`POST/PUT/DELETE /leads`), kể cả chạy AI Intake và chấm điểm BANT.
+    - ❌ Không được sửa, sinh lại hay xóa Proposal (`DELETE /proposals/:id`, `PATCH /proposals/:id`, `POST /proposals/:id/generate`, `POST /proposals/:id/ui-brief`).
     - ❌ Không được nạp thêm (`Ingest`) hoặc xóa tài liệu khỏi Knowledge Vault (`DELETE /knowledge/documents/:id`).
-    - ❌ Không được phê duyệt đề xuất hoặc can thiệp bảng đơn giá Rate Cards.
-    - ❌ Giao diện Frontend tự động ẩn hoặc vô hiệu hóa các nút chức năng: **Delete**, **Confirm Delete**, **Ingest**, **Chạy AI Intake**.
+    - ❌ Không được phê duyệt đề xuất, không được **áp** kết quả tính giá vào Proposal (`apply:true` — chặn tại `RateCardUseCases.ts:237`), không được nạp/chỉnh sửa transcript họp.
+    - ❌ Không được quản lý Rate Cards, Client Profiles, thành viên, Audit Log, hay thu hồi phiên Portal.
+    - ⚠️ **Ngoại lệ chưa siết:** `POST /portal/sessions` (tạo link chia sẻ) vẫn mở cho `VIEWER` — xem ghi chú ma trận mục 4.
+    - ✅ Giao diện Frontend tự động ẩn các nút ghi: **Delete**, **Confirm Delete**, **Ingest**, **Chạy AI Intake**, và từ 15/11/2026 bổ sung **Submit for Review**, **Approve Proposal**, **Sinh lại 10 Sheets**, **Tạo/Làm mới AI UI Brief**.
 
 ---
 
@@ -106,36 +111,45 @@ Hệ thống bảo vệ tài nguyên dựa trên 2 tầng kiểm soát đồng t
 | 2.1 | Xem danh sách & Chi tiết Lead | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | 2.2 | Phân tích AI Intake Parser từ RFP | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | 2.3 | Tạo mới Lead từ bản nháp Intake | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| 2.4 | Chấm điểm Thẩm định BANT | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+| 2.4 | Chấm điểm Thẩm định BANT | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | 2.5 | Cập nhật thông tin Lead | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| 2.6 | Xóa Lead | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
+| 2.6 | Xóa Lead | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | **3** | **Cuộc họp Kỹ thuật (Meetings)** | | | | | | |
 | 3.1 | Xem danh sách & Biên bản họp | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| 3.2 | Nạp Transcript & Ghi chú họp | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
-| 3.3 | Chạy AI trích xuất Decisions & Gaps | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+| 3.2 | Nạp Transcript & Ghi chú họp | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| 3.3 | Chạy AI trích xuất Decisions & Gaps | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | **4** | **Soạn thảo Đề xuất (10 Sheets Proposal)** | | | | | | |
 | 4.1 | Xem chi tiết 10 Sheets đề xuất | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| 4.2 | Sinh Proposal bằng AI RAG tự động | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
-| 4.3 | Chỉnh sửa nội dung các Sheet | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+| 4.2 | Sinh Proposal bằng AI RAG tự động | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| 4.3 | Chỉnh sửa nội dung các Sheet | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | 4.4 | Phê duyệt đề xuất (`APPROVED`) | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
 | 4.5 | Xuất file Excel (`.xlsx`) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | 4.6 | Xuất file PDF Chuẩn in ấn (`.pdf`) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| 4.7 | Xóa Proposal | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| 4.7 | Xóa Proposal | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | **5** | **Kho Tri thức (Knowledge Vault)** | | | | | | |
 | 5.1 | Xem danh sách tài liệu & Thống kê | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| 5.2 | Nạp tài liệu (`Ingest & Embeddings`) | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+| 5.2 | Nạp tài liệu (`Ingest & Embeddings`) | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | 5.3 | Tìm kiếm Hybrid & Hỏi đáp AI (`Ask`) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| 5.4 | Xóa tài liệu khỏi Vault | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| 5.4 | Xóa tài liệu khỏi Vault | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | **6** | **Cổng Khách hàng (Client Portal)** | | | | | | |
-| 6.1 | Tạo phiên làm việc Portal (Tạo Link) | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| 6.2 | Ký duyệt cấp link Portal lần đầu | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| 6.1 | Tạo phiên làm việc Portal (Tạo Link) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 6.2 | Thu hồi phiên Portal / Quản lý materials | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | 6.3 | Khách hàng xem Overview & 10 Sheets | ✅ (Client) | ✅ (Client) | ✅ (Client) | ✅ (Client) | ✅ (Client) | ❌ |
 | 6.4 | Khách hàng bình luận & Chat với AI | ✅ (Client) | ✅ (Client) | ✅ (Client) | ✅ (Client) | ✅ (Client) | ❌ |
 | **7** | **Cấu hình Doanh nghiệp & Kiểm toán** | | | | | | |
 | 7.1 | Xem bảng giá Rate Cards & Khách hàng | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | 7.2 | Sửa / Xóa Rate Cards & Khách hàng | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| 7.3 | Quản trị Thành viên (`Members`) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| 7.4 | Xem Nhật ký Kiểm toán (`Audit Log`) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| 7.3 | Xem Danh sách Thành viên (`GET /users`) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 7.4 | Mời / Đổi role / Vô hiệu hóa Thành viên | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| 7.5 | Xem Nhật ký Kiểm toán (`Audit Log`) | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| 7.6 | Xem trước kết quả tính giá (`apply:false`) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 7.7 | Áp kết quả tính giá vào Proposal DRAFT | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+
+**Ghi chú ma trận (đối chiếu code, 15/11/2026):**
+- Cột `❌` ở các dòng 2.x–5.x, 6.2, 7.7 là do `requireNotViewer` (middleware) hoặc guard trong use case; **không có dòng nào** phân biệt `PRESALE_CONSULTANT` / `SOLUTION_ARCHITECT` / `SALES_REP`.
+- Dòng 6.1: `POST /portal/sessions` **không** kiểm tra role và **không** kiểm tra trạng thái Proposal (`PortalUseCases.ts:39` ghi rõ đây là quyết định sản phẩm). Vì vậy `VIEWER` vẫn tạo được link — đây là điểm **rò rỉ ý đồ "VIEWER chỉ đọc"**, cần quyết định có siết lại hay không.
+- `PORTAL_FIRST_SHARE_ROLES` chỉ tồn tại ở frontend (`types/portal.ts:71`) và **không được tham chiếu ở bất kỳ đâu**; backend khai báo `APPROVED_PROPOSAL_SHARE_ROLES` (`PortalUseCases.ts:11`) nhưng chưa dùng. Không còn dòng "ký duyệt chia sẻ lần đầu" nào trong API.
+- `GET /users` (dòng 7.3) mở cho mọi thành viên đã đăng nhập; chỉ riêng tra cứu **cross-organization** mới giới hạn `ADMIN` (`UserUseCases.ts:108`).
 
 ---
 
@@ -180,7 +194,7 @@ Hệ thống bảo vệ tài nguyên dựa trên 2 tầng kiểm soát đồng t
 ## 6. CƠ CHẾ KỸ THUẬT BẢO ĐẢM AN TOÀN TRONG SOURCE CODE
 
 1. **Middleware `requireAuth` & `requireOrganization`:**
-   Mọi route xử lý nghiệp vụ đều bắt buộc phải vượt qua việc xác thực chữ ký số JWT và kiểm tra sự tồn tại của `organizationId`.
+   Mọi route xử lý nghiệp vụ đều bắt buộc phải vượt qua việc xác thực chữ ký số JWT và kiểm tra sự tồn tại của `organizationId`. Token truy vấn có **TTL 24 giờ** (`AuthTokenService.ts:8`), refresh token 30 ngày; **không có** hiệu lực 15 phút như mô tả bản cũ — role gắn với token nên thu hồi quyền phải chờ token hết hạn hoặc logout.
 2. **Middleware `requireNotViewer`:**
    Đặt tại toàn bộ các endpoint ghi/sửa/xóa (`POST`, `PUT`, `PATCH`, `DELETE`). Khi yêu cầu có `req.auth.role === 'VIEWER'`, middleware lập tức trả về lỗi:
    ```json
@@ -190,6 +204,7 @@ Hệ thống bảo vệ tài nguyên dựa trên 2 tầng kiểm soát đồng t
      "statusCode": 403
    }
    ```
+   Bản cũ định nghĩa hàm này **hai lần** (`requireAuth.ts` và `requireRole.ts`); từ 15/11/2026 chỉ còn bản trong `requireAuth.ts`, vì toàn bộ route import từ đó.
 3. **Multi-Tenant Scoping tại tầng Cơ sở dữ liệu (PostgreSQL):**
    Mọi câu lệnh truy vấn đều kèm mệnh đề `AND organization_id = $x`. Ví dụ:
    ```sql
@@ -198,9 +213,16 @@ Hệ thống bảo vệ tài nguyên dựa trên 2 tầng kiểm soát đồng t
    DELETE FROM leads WHERE id = $1 AND organization_id = $2;
    ```
    Điều này đảm bảo ngăn chặn hoàn toàn việc người dùng can thiệp dữ liệu chéo tổ chức.
-4. **Đồng bộ phân quyền Portal (`PORTAL_MANAGER_ROLES`):**
-   Thống nhất danh sách role được phép tạo phiên làm việc Client Portal giữa Backend (`PortalUseCases.ts`) và Frontend (`types/portal.ts`):
-   `['ADMIN', 'PRESALE_LEAD', 'SALES_REP', 'PRESALE_CONSULTANT', 'SOLUTION_ARCHITECT']`.
+   Đã kiểm chứng lại 15/11/2026 và vá hai chỗ lọt lưới:
+   - `POST /proposals/generate-from-lead`: `SELECT` lead + meetings **không** có mệnh đề org → đọc được RFP và biên bản họp của tổ chức khác nếu biết UUID. Nay dùng `GenerateProposalFromLeadInput.organizationId` (bắt buộc) và scope meetings qua `JOIN leads`.
+   - `IProposalRepository.findByLeadId(leadId, organizationId)` bổ sung tham số org, `PostgresProposalRepository.ts:111` thêm `AND organization_id = $2`.
+   - Nhánh fallback của `GET /proposals/:id/export-excel|export-pdf` không còn dùng org mặc định hard-code `00000000-…-001`, mà lấy từ token (`ProposalController.exportExcel/exportPdf`).
+4. **Không nhận tenant từ phía client:**
+   Bản cũ cho phép `x-organization-id` hoặc `body.organizationId` làm giá trị dự phòng khi token không có org. Cả hai đường này đã bị gỡ tại `LeadIntakeController.analyze`; `organizationId`/`userId` bây giờ **chỉ** đến từ `req.auth`.
+5. **Gate theo mode môi trường:**
+   `POST /auth/dev-login` (đăng nhập không cần mật khẩu theo email) trả `403 Forbidden` khi `NODE_ENV=production`; trước 15/11/2026 endpoint này mở ở mọi môi trường.
+6. **Đồng bộ phân quyền Portal (`PORTAL_MANAGER_ROLES`):**
+   Danh sách `['ADMIN', 'PRESALE_LEAD', 'SALES_REP', 'PRESALE_CONSULTANT', 'SOLUTION_ARCHITECT']` được khai báo ở `PortalUseCases.ts:10` và **chỉ enforce ở backend** cho: thu hồi phiên (`:151`), tạo material (`:162`), xóa material (`:187`). Bản sao trong `frontend/src/types/portal.ts:64,71` hiện **không được component nào tham chiếu**, nên không thể coi là lớp kiểm soát thứ hai.
 
 ---
 *Presaleee Enterprise Solutions Platform — Tài liệu kỹ thuật lưu hành nội bộ.*

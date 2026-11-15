@@ -7,6 +7,7 @@ import { NotFoundError, ValidationError } from '../../domain/errors/AppError.js'
 
 export interface GenerateProposalFromLeadInput {
   leadId: string;
+  organizationId: string;
   customInstructions?: string;
   userId?: string | null;
 }
@@ -23,19 +24,28 @@ export class GenerateProposalFromLeadUseCase {
     if (!input.leadId) {
       throw new ValidationError('Lead ID is required to generate a proposal.');
     }
+    if (!input.organizationId) {
+      throw new ValidationError('Authenticated organization is required to generate a proposal.');
+    }
 
     // 1. Fetch Lead from database
-    const leadRes = await this.dbPool.query('SELECT * FROM leads WHERE id = $1 LIMIT 1;', [input.leadId]);
+    const leadRes = await this.dbPool.query(
+      'SELECT * FROM leads WHERE id = $1 AND organization_id = $2 LIMIT 1;',
+      [input.leadId, input.organizationId]
+    );
     if (leadRes.rows.length === 0) {
       throw new NotFoundError(`Lead with ID ${input.leadId} not found.`);
     }
     const lead = leadRes.rows[0];
     const meta = lead.extracted_metadata || {};
 
-    // 2. Fetch Discovery Meetings for this lead
+    // 2. Fetch Discovery Meetings for this lead (scoped through the lead, matching PostgresMeetingRepository)
     const meetingsRes = await this.dbPool.query(
-      `SELECT * FROM meetings WHERE lead_id = $1 ORDER BY meeting_order ASC;`,
-      [input.leadId]
+      `SELECT m.* FROM meetings m
+       JOIN leads l ON l.id = m.lead_id
+       WHERE m.lead_id = $1 AND l.organization_id = $2
+       ORDER BY m.meeting_order ASC;`,
+      [input.leadId, input.organizationId]
     );
     const meetings = meetingsRes.rows;
 
@@ -387,11 +397,11 @@ Return ONLY the raw JSON object without markdown code fences:
     ];
 
     // 7. Check if proposal already exists for this lead
-    const existingProposal = await this.proposalRepo.findByLeadId(input.leadId);
+    const existingProposal = await this.proposalRepo.findByLeadId(input.leadId, input.organizationId);
 
     if (existingProposal) {
       // Update existing proposal header
-      await this.proposalRepo.update(existingProposal.id, {
+      await this.proposalRepo.update(existingProposal.id, input.organizationId, {
         title,
         status: 'DRAFT',
         totalCost: grandTotal,
@@ -401,16 +411,17 @@ Return ONLY the raw JSON object without markdown code fences:
 
       // Update all sheets
       for (const s of sheets) {
-        await this.proposalRepo.updateSheet(existingProposal.id, s.sheetName, s.sheetData, true);
+        await this.proposalRepo.updateSheet(existingProposal.id, input.organizationId, s.sheetName, s.sheetOrder, s.sheetData, true);
       }
 
-      const refreshed = await this.proposalRepo.findById(existingProposal.id);
+      const refreshed = await this.proposalRepo.findById(existingProposal.id, input.organizationId);
       return refreshed!;
     } else {
       // Create new proposal with all 10 sheets
       const created = await this.proposalRepo.create({
         title,
         leadId: input.leadId,
+        organizationId: input.organizationId,
         createdBy: input.userId || null,
         version: 'v1.0',
         status: 'DRAFT',

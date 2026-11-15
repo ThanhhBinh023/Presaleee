@@ -126,6 +126,11 @@ export class PostgresProposalRepository implements IProposalRepository {
     conditions.push(`organization_id = $${idx++}`);
     values.push(filter.organizationId);
 
+    if (filter.leadId) {
+      conditions.push(`lead_id = $${idx++}`);
+      values.push(filter.leadId);
+    }
+
     if (filter.status) {
       conditions.push(`status = $${idx++}`);
       values.push(filter.status);

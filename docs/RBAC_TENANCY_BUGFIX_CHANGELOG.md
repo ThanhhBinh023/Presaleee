@@ -363,18 +363,17 @@ Backend chạy thật trên `:5000`, đăng nhập `POST /auth/dev-login`, gọi
 
 `npm run dev` **chết ngay** ở `PdfProposalExporterService.ts:5` với `Cannot find module 'pdfmake'`, dù `backend/package.json:30` khai `"pdfmake": "^0.3.14"` và `package-lock.json` đã pin 0.3.14 — package **không có trong `node_modules` gốc** (workspace lồng nhau). Mình chữa cục bộ bằng `npm install pdfmake@0.3.14 --no-save` để chạy được verification; **không đổi** `package.json`/lock. Nghĩa là: backend chưa từng boot được trong workspace này trước hôm nay, và máy khác `npm ci` xong vẫn có thể thiếu.
 
-## 35. Phát hiện mới — **chưa sửa**, cần quyết định
-
+## 35. Phát hiện mới — N22 **chưa sửa** (cần quyết định), N23 **đã sửa ngay sau đó** (mục 38)
 | # | Phát hiện | Bằng chứng **đo được hôm nay** | Vì sao chưa sửa |
 |---|---|---|---|
 | **N22** | **Một cột `bant_details`, ba schema khác nhau.** `POST /:id/qualify` lưu shape snake_case `{qualification_score, readiness_level, breakdown, project_brief, project_title}`; `POST /:id/qualifications` khai shape camelCase `LeadQualification {score, criteria:{budget,authority,need,timeline}, risks, nextSteps}`; `GET /:id/qualifications/latest` **đọc camelCase** (`LeadUseCases.ts:346-347` cast `bantDetails as LeadQualification`). Hệ quả thật: (a) `latest` trả 200 nhưng body là shape khác với type khai; (b) `LeadsDirectory.tsx:31` chặn bằng `isLeadQualification` (`types/lead.ts:137-141`: cần `score` **và** `criteria`) ⇒ **panel chi tiết BANT** (`:102`) vẫn trống với lead do `/qualify` ghi (cột BANT `:453`/`:502` đọc thẳng `bantScore` nên đã hiện bình thường) | Case G3/G5: `latest` 200 với `detailsKeys=breakdown,project_brief,project_title,readiness_level,qualification_score`. **Và đường camelCase đang chết hẳn**: `POST /:id/qualifications` ⇒ **409 `"Qualification service returned invalid criteria."`** trên AI service thật (Gemini trả shape cũ), để lại `bantScore=null`, `bantDetails={}`, `latest` 404 | Đây chính là gap schema đã ghi nhận từ trước ("3 incompatible BANT shapes"), nằm **ngoài** 6 defect của đợt này. Đóng nó phải chọn nguồn đúng: hoặc gateway map sang `criteria`, hoặc `latest`/UI chỉ nhận snake. Cả hai đều đổi hợp đồng API đang có 3 consumer |
-| **N23** | `GET /proposals/lead/:leadId` **không lọc theo lead**: controller gọi `listUseCase.execute({leadId,…,limit:1})` (`ProposalController.ts:99`) nhưng `PostgresProposalRepository.findAll:121-140` **không có nhánh `filter.leadId` nào** trong `conditions` ⇒ luôn lấy proposal `updated_at DESC` **của cả org**, rồi `findById` của nó | Probe 2 lead khác nhau (`3cd4f3da…` và `138d902c…`) **cùng trả về một proposal `8b89987a…`**, dù `3cd4f3da…` có proposal riêng là `ed84f7b4…`. Repository **đã có** `findByLeadId:96-98` viết đúng (`WHERE lead_id = $1 AND organization_id = $2`) nhưng controller không dùng | Một dòng đổi delegate, **nhưng** nó là chỗ N18 vừa nối vào: modal Portal của lead A có thể đang render proposal của lead B. Cần xác nhận có endpoint/luồng nào khác dựa vào `findAll` với `leadId` không đã. Ngoài phạm vi 6 defect |
+| **N23** | `GET /proposals/lead/:leadId` **không lọc theo lead**: controller gọi `listUseCase.execute({leadId,…,limit:1})` (`ProposalController.ts:99`) nhưng `PostgresProposalRepository.findAll:121-140` **không có nhánh `filter.leadId` nào** trong `conditions` ⇒ luôn lấy proposal `updated_at DESC` **của cả org**, rồi `findById` của nó | Probe 2 lead khác nhau (`3cd4f3da…` và `138d902c…`) **cùng trả về một proposal `8b89987a…`**, dù `3cd4f3da…` có proposal riêng là `ed84f7b4…`. Repository **đã có** `findByLeadId:96-98` viết đúng (`WHERE lead_id = $1 AND organization_id = $2`) nhưng controller không dùng | **Đã sửa ngay cùng ngày 15/11 — xem mục 38.** Không đổi delegate mà sửa đúng nguồn gốc: `findAll` nay honour `filter.leadId` nên **cả hai** endpoint cùng đúng |
 
 ## 36. Còn tồn (kế + mới)
 
 | # | Việc | Ghi chú |
 |---|---|---|
-| 1 | **N22, N23** (mục 35) | chờ quyết định — N23 nên chốt trước vì nó làm giảm giá trị N18 |
+| 1 | **N22** (mục 35) — ba schema trên một cột `bant_details` | chờ quyết định; **N23 đã sửa xong, xem mục 38** |
 | 2 | **N17**: `SALES_REP` vẫn không vào được danh bạ khách hàng/liên hệ | quyết định sản phẩm, chưa được trả lời từ đợt 4 |
 | 3 | `POST /portal/sessions` mở cho `VIEWER` | quyết định sản phẩm, chưa được trả lời |
 | 4 | **N10, N11** | chưa được giao phạm vi |
@@ -385,14 +384,50 @@ Backend chạy thật trên `:5000`, đăng nhập `POST /auth/dev-login`, gọi
 | 9 | **Chưa bấm thử UI**: N18/N13/N19 mới chắc về **data contract** (`GET /proposals/lead/:id` trả đủ 10 sheet với key thật) và `tsc` 0 lỗi; chưa mở browser xem modal + file `.txt` tải về | `pdfmake` chỉ `--no-save`; `npm ci` máy khác vẫn có thể thiếu |
 | 10 | `rate_cards` trống ở org chưa có bảng đơn giá | defect dữ liệu, chưa nằm trong đợt nào |
 
-## 37. Tài liệu đã cập nhật (đợt 5)
+## 37. N23 — `leadId` bị `findAll` âm thầm bỏ rơi (sửa ngay sau khi báo cáo, 15/11/2026)
 
-- File này: thêm `# ĐỢT 5` (31 bảng defect, 32 backend, 33 kiểm chứng runtime 22 case, 34 `pdfmake`, 35 N22–N23, 36 còn tồn, 37 mục này).
+**Root cause không nằm ở controller.** `ListProposalsUseCase` **khai báo và validate** filter `leadId` rồi đóng vào `ProposalFilterParams` (`IProposalRepository.ts:33`), nhưng `PostgresProposalRepository.findAll` dựng `conditions` từ đúng 3 nhánh (`organization_id`, `status`, `search`) — **không có nhánh `leadId`**, nên tham số bị bỏ mà không ai báo lỗi. Vì vậy sửa một dòng trong `findAll` là **cả hai** endpoint cùng đúng, thay vì chỉ đổi delegate cho `getByLeadId`.
+
+**Hai endpoint bị ảnh hưởng** (đều đi qua `ListProposalsUseCase`):
+
+| Endpoint | Consumer thật | Trước | Sau |
+|---|---|---|---|
+| `GET /proposals/lead/:leadId` | `AIWorkspace.tsx:206` (modal Portal — chính chỗ N18 vừa nối), `ProposalStudioTab.tsx:297` | trả proposal `updated_at DESC` **của cả org** ⇒ lead `3cd4f3da…` nhận proposal của lead `138d902c…` | mỗi lead nhận đúng proposal của nó, vẫn kèm đủ 10 sheet |
+| `GET /proposals?leadId=…` | `ProposalController.list:203-212` forward query param này | bộ lọc **không có tác dụng**: total vẫn bằng tổng của cả org | total đúng theo lead |
+
+**Thay đổi:**
+- `PostgresProposalRepository.findAll`: thêm nhánh `if (filter.leadId) { conditions.push('lead_id = $n'); values.push(filter.leadId); }` — **tham số hoá**, và vì `conditions`/`values` được dựng **trước** khi push `limit`/`offset` nên cả `COUNT(*)` lẫn `SELECT` danh sách cùng nhận filter (không lệch phân trang).
+- `ListProposalsUseCase`: `leadId` qua `optionalUuid(dto.leadId,'leadId') ?? undefined`. Cần thiết vì chính nhánh SQL mới biến `?leadId=rac` thành **500** (pg `22P02` invalid input syntax for uuid); này trả `400 "leadId must be a valid UUID or null.""`, và `?leadId=` rỗng/ngoại lệ `null` được coi là **không lọc** thay vì 400 — khớp cách `optionalUuid` định nghĩa.
+- **Không** đổi `getByLeadId` sang `findByLeadId`: sẽ phải thêm use case mới và sửa chuỗi 10 tham số vị trí của `ProposalController`; đường hiện tại đã đúng sau fix `findAll` (2 query thay vì 1 — chên lệch không đáng để đổi).
+
+**Kiểm chứng runtime — 13/13 PASS** (`dev-login` = ADMIN org DUT, `ntbinh1@gmail.com`):
+
+| Case | Kết quả đo được |
+|---|---|
+| T1–T3 | lead `3cd4f3da…` → `ed84f7b4…`; lead `138d902c…` → `8b89987a…`; **hai id khác nhau** (trước khi sửa: cả hai cùng trả `8b89987a…`) |
+| T4 | payload vẫn đủ `sheets.length === 10` cho cả hai lead |
+| T5 | lead của org khác (`990e44f4…`, org 'Thanh Hoa', có 3 proposal) ⇒ `200` với `data: null` — **không rò proposal cross-tenant** |
+| T6 | lead id không tồn tại ⇒ `data: null` |
+| T7 | `GET /proposals?leadId=<A>` ⇒ `meta.total = 1`, đúng dòng `ed84f7b4` |
+| T8 | `GET /proposals` không filter ⇒ `total = 2` (toàn org, hành vi cũ giữ nguyên) |
+| T9 | `?leadId=<uuid không có proposal>` ⇒ `total = 0` (trước khi sửa sẽ ra 2) |
+| T10 | `?leadId=` rỗng ⇒ 200, `total = 2` (coi như không lọc, không phải 400) |
+| T11–T12 | `?leadId=not-a-uuid` và path `/proposals/lead/not-a-uuid` ⇒ **400** `"leadId must be a valid UUID or null."` |
+
+**Tĩnh**: `tsc --noEmit` backend **34 → 34**, `grep "error TS" | grep -i proposal` → **rỗng** (2 file sửa không sinh lỗi). Không ghi DB nào trong phần này.
+
+**Chưa làm (không tự ý)**: `proposals.lead_id` **không có index** — kiểm kê `src/database/migrations/` chỉ có `idx_meetings_lead_date` (`006_discovery_meetings.sql:18`), không có index nào trên `proposals` liên quan lead. Với 156 dòng thì seq scan không đáng kể nên mình **không thêm migration**; nếu bảng lớn lên thì đó là một `CREATE INDEX idx_proposals_lead ON proposals (organization_id, lead_id, updated_at DESC)`.
+
+## 38. Tài liệu đã cập nhật (đợt 5 + N23)
+
+- File này: thêm `# ĐỢT 5` (31 bảng defect, 32 backend, 33 kiểm chứng runtime 22 case, 34 `pdfmake`, 35 N22–N23, 36 còn tồn, **37 N23 đã sửa + 13 case runtime**, 38 mục này).
 - `docs/RBAC_ROLES_AND_PERMISSIONS_GUIDE.md` **v2.8 → v2.9**:
   - Mục 3.5 (`SALES_REP`): bỏ 3 chữ "still mock/still hard-coded" đã thành thật — `.txt` và modal giờ đọc sheet thật (N18/N13), telemetry đã đổi nhãn đúng schema (N19); duty "nhập thông tin liên hệ" vẫn bất khả (N17).
   - Mục 6 **13**: cập nhật N20 đã đóng (một cửa `SaveQualificationUseCase`, `CASE` guard, bằng chứng H3) và bỏ ghi chú "lỗ chưa đóng"; thêm N20-b (lý do cộng `NEW/IN_REVIEW → QUALIFIED` và điều kiện bắt buộc có điểm).
   - Mục 6 **14**: `bantDetails` đã vào list, 6 field bịa đã xoá (N21), kèm số đo 14 key / 0 key snake.
-  - Mục 6 thêm **15**: hai defect mới **chưa sửa** — N22 (ba schema trên một cột `bant_details`, `POST /qualifications` 409 với AI thật) và N23 (`GET /proposals/lead/:leadId` không lọc lead, hai lead cùng trả một proposal).
+- `docs/RBAC_ROLES_AND_PERMISSIONS_GUIDE.md` **v2.9 → v2.10** (riêng mục này tăng do N23):
+  - Mục 6 **15** giữ cho **N22** (ba schema trên một cột `bant_details`, `POST /qualifications` 409 với AI thật) — vẫn **chưa sửa**.
+  - Mục 6 thêm **16**: N23 đã đóng — `leadId` là filter khai báo nhưng chưa từng được thi hành, cách sửa một nhánh SQL cho cả hai endpoint, `optionalUuid` để không biến 500 pg thành 500, 13 case runtime, và ghi chú `proposals.lead_id` **chưa có index**.
   - Mục "Ma trận quyền theo endpoint": lead `PATCH /:id` từ chối `status`, `PATCH /:id/status` + `POST /:id/qualify` + `POST /:id/qualifications` giờ enforce state machine; `GET /leads` có `meta` và camelCase.
 
 

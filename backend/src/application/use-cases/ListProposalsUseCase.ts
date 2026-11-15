@@ -1,6 +1,7 @@
 import { IProposalRepository, ProposalFilterParams } from '../../domain/repositories/IProposalRepository.js';
 import { Proposal } from '../../domain/entities/Proposal.js';
 import { ValidationError } from '../../domain/errors/AppError.js';
+import { optionalUuid } from '../services/RequestValidation.js';
 import { ProposalStatus } from '../../domain/entities/Proposal.js';
 
 export interface ListProposalsDTO {
@@ -35,7 +36,7 @@ export class ListProposalsUseCase {
 
     const filter: ProposalFilterParams = {
       organizationId: dto.organizationId,
-      leadId: dto.leadId,
+      leadId: dto.leadId === undefined ? undefined : optionalUuid(dto.leadId, 'leadId') ?? undefined,
       status: dto.status,
       search: dto.search,
       limit,

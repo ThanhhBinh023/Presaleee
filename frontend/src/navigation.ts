@@ -14,7 +14,9 @@ export type RouteName =
   | 'portal'
   | 'client-portal'
   | 'ai-workspace'
-  | 'vault';
+  | 'vault'
+  | 'pipelines'
+  | 'analytics';
 
 export const navigateTo = (route: RouteName, query?: Record<string, string>): void => {
   const params = query && Object.keys(query).length > 0 ? `?${new URLSearchParams(query).toString()}` : '';

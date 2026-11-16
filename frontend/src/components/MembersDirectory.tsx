@@ -7,6 +7,7 @@ import { formatDateTime } from '../utils/format';
 import type { MemberListQuery } from '../services/userService';
 import type { MemberDirectoryEntry } from '../types/user';
 import type { UserRole, UserStatus } from '../types/auth';
+import { AppSidebar } from './workspace/AppSidebar';
 
 const ROLES: UserRole[] = ['ADMIN', 'PRESALE_LEAD', 'PRESALE_CONSULTANT', 'SOLUTION_ARCHITECT', 'SALES_REP', 'VIEWER'];
 const STATUSES: UserStatus[] = ['ACTIVE', 'INVITED', 'DEACTIVATED'];
@@ -28,8 +29,6 @@ export const MembersDirectory: React.FC<MembersDirectoryProps> = ({ onBackToOver
   const [allOrganizations, setAllOrganizations] = useState(false);
   const [page, setPage] = useState(1);
 
-  const [showInvite, setShowInvite] = useState(false);
-  const [invite, setInvite] = useState({ email: '', fullName: '', password: '', role: 'VIEWER' as UserRole });
   const [actionError, setActionError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -86,17 +85,6 @@ export const MembersDirectory: React.FC<MembersDirectoryProps> = ({ onBackToOver
     }
   };
 
-  const submitInvite = async () => {
-    const ok = await runAction(
-      () => userService.addMember({ email: invite.email, fullName: invite.fullName, password: invite.password, role: invite.role }),
-      'Member added.'
-    );
-    if (ok) {
-      setInvite({ email: '', fullName: '', password: '', role: 'VIEWER' });
-      setShowInvite(false);
-    }
-  };
-
   const changeRole = (id: string, next: UserRole) =>
     runAction(() => userService.updateMember(id, { role: next }), 'Role updated.');
 
@@ -109,24 +97,24 @@ export const MembersDirectory: React.FC<MembersDirectoryProps> = ({ onBackToOver
   const totalPages = meta?.totalPages ?? 1;
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] px-4 py-8 font-sans text-slate-900 md:px-10">
-      <div className="mx-auto max-w-6xl">
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <button onClick={onBackToOverview} className="text-xs font-mono font-bold text-brand-700 hover:underline">
-              &larr; OVERVIEW
-            </button>
+    <div className="min-h-screen bg-[#f8fafc] flex text-slate-900 font-sans">
+      <AppSidebar
+        activeItem="Members (RBAC)"
+        onNavigateOverview={onBackToOverview}
+      />
+      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto px-4 py-8 md:px-10">
+        <div className="mx-auto max-w-6xl w-full">
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <button onClick={onBackToOverview} className="text-xs font-mono font-bold text-brand-700 hover:underline">
+                &larr; OVERVIEW
+              </button>
             <h1 className="mt-1 text-2xl font-bold tracking-tight">Members &amp; Organizations</h1>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Danh bạ người dùng tổ chức. System Admin được tạo cố định qua seed script; người dùng mới tự đăng ký tài khoản.
+            </p>
           </div>
           <div className="flex gap-2">
-            {canManage && (
-              <button
-                onClick={() => setShowInvite((value) => !value)}
-                className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-bold text-white hover:bg-brand-700"
-              >
-                {showInvite ? 'Close' : 'Add member'}
-              </button>
-            )}
             <button
               onClick={() => navigateTo('profile')}
               className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50"
@@ -138,51 +126,6 @@ export const MembersDirectory: React.FC<MembersDirectoryProps> = ({ onBackToOver
 
         {actionError && <p className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{actionError}</p>}
         {notice && <p className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{notice}</p>}
-
-        {showInvite && (
-          <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4">
-            <div className="grid gap-3 md:grid-cols-2">
-              <input
-                value={invite.fullName}
-                onChange={(event) => setInvite({ ...invite, fullName: event.target.value })}
-                placeholder="Full name"
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              />
-              <input
-                type="email"
-                value={invite.email}
-                onChange={(event) => setInvite({ ...invite, email: event.target.value })}
-                placeholder="name@company.com"
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              />
-              <input
-                type="password"
-                value={invite.password}
-                onChange={(event) => setInvite({ ...invite, password: event.target.value })}
-                placeholder="Password (min 12 characters)"
-                minLength={12}
-                maxLength={128}
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              />
-              <select
-                value={invite.role}
-                onChange={(event) => setInvite({ ...invite, role: event.target.value as UserRole })}
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              >
-                {ROLES.map((item) => (
-                  <option key={item} value={item}>{item}</option>
-                ))}
-              </select>
-            </div>
-            <button
-              onClick={submitInvite}
-              disabled={isSubmitting || !invite.email || !invite.fullName || invite.password.length < 12}
-              className="mt-3 rounded-lg bg-brand-600 px-4 py-2 text-sm font-bold text-white disabled:bg-slate-300"
-            >
-              Create account
-            </button>
-          </div>
-        )}
 
         <div className="mb-4 flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-4">
           <label className="flex flex-col gap-1 text-[10px] font-mono font-bold text-slate-500">
@@ -394,6 +337,7 @@ export const MembersDirectory: React.FC<MembersDirectoryProps> = ({ onBackToOver
         </div>
       </div>
     </div>
+  </div>
   );
 };
 

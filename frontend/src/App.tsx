@@ -24,6 +24,8 @@ import { MeetingsWorkspace } from './components/MeetingsWorkspace';
 import { ProposalsStudio } from './components/ProposalsStudio';
 import { PortalDesk } from './components/PortalDesk';
 import { ClientPortalPage } from './components/ClientPortalPage';
+import { RolePipelines } from './components/RolePipelines';
+import { AdminAnalytics } from './components/AdminAnalytics';
 import { RequireAuth } from './components/common/RequireAuth';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { ToastProvider } from './components/common/Toast';
@@ -45,13 +47,16 @@ type Page =
   | 'meetings'
   | 'proposals'
   | 'portal'
-  | 'client-portal';
+  | 'client-portal'
+  | 'pipelines'
+  | 'analytics';
 
 function pageFromHash(hash: string): Page {
   const route = hash.split('?')[0];
   if (route === '#signin') return 'signin';
   if (route === '#reset-password') return 'reset-password';
   if (route === '#overview') return 'overview';
+  if (route === '#analytics') return 'analytics';
   if (route === '#ai-workspace') return 'ai-workspace';
   if (route === '#rfps') return 'rfps';
   if (route === '#vault') return 'vault';
@@ -65,6 +70,7 @@ function pageFromHash(hash: string): Page {
   if (route === '#proposals') return 'proposals';
   if (route === '#portal') return 'portal';
   if (route === '#client-portal') return 'client-portal';
+  if (route === '#pipelines') return 'pipelines';
   return 'home';
 }
 
@@ -84,6 +90,16 @@ const AppShell: React.FC = () => {
     }
   }, [status, currentPage]);
 
+  // Admin isolation guard: redirect Admin away from presale deal workspaces to Overview
+  useEffect(() => {
+    if (status === 'authenticated' && user?.role === 'ADMIN') {
+      const presalePages: Page[] = ['ai-workspace', 'rfps', 'leads', 'portal', 'meetings', 'proposals'];
+      if (presalePages.includes(currentPage)) {
+        goTo('overview');
+      }
+    }
+  }, [status, user, currentPage]);
+
   const goTo = (page: Page) => {
     window.location.hash = page === 'home' ? '' : `#${page}`;
     setCurrentPage(page);
@@ -93,6 +109,7 @@ const AppShell: React.FC = () => {
   const navigateToHome = () => goTo('home');
   const navigateToSignIn = () => goTo('signin');
   const navigateToOverview = () => goTo('overview');
+  const navigateToAnalytics = () => goTo('analytics');
   const navigateToAIWorkspace = () => goTo('ai-workspace');
   const navigateToRfps = () => goTo('rfps');
   const navigateToVault = () => goTo('vault');
@@ -104,6 +121,7 @@ const AppShell: React.FC = () => {
   const navigateToMeetings = () => goTo('meetings');
   const navigateToProposals = () => goTo('proposals');
   const navigateToPortal = () => goTo('portal');
+  const navigateToPipelines = () => goTo('pipelines');
 
   const handleLogout = async () => {
     try {
@@ -115,6 +133,22 @@ const AppShell: React.FC = () => {
 
   const signedInName = status === 'authenticated' && user ? user.fullName : null;
 
+  if (currentPage === 'analytics') {
+    return (
+      <RequireAuth>
+        <AdminAnalytics
+          onLogout={handleLogout}
+          onNavigateOverview={navigateToOverview}
+          onNavigateMembers={navigateToMembers}
+          onNavigateAudit={navigateToAudit}
+          onNavigateClients={navigateToClients}
+          onNavigateRateCards={navigateToRateCards}
+          onNavigatePipelines={navigateToPipelines}
+        />
+      </RequireAuth>
+    );
+  }
+
   if (currentPage === 'ai-workspace') {
     return (
       <RequireAuth>
@@ -122,6 +156,7 @@ const AppShell: React.FC = () => {
           onNavigateOverview={navigateToOverview}
           onNavigateRfps={navigateToRfps}
           onNavigateVault={navigateToVault}
+          onNavigatePipelines={navigateToPipelines}
           onLogout={handleLogout}
         />
       </RequireAuth>
@@ -144,6 +179,8 @@ const AppShell: React.FC = () => {
           onNavigateMeetings={navigateToMeetings}
           onNavigateProposals={navigateToProposals}
           onNavigatePortal={navigateToPortal}
+          onNavigatePipelines={navigateToPipelines}
+          onNavigateAnalytics={navigateToAnalytics}
         />
       </RequireAuth>
     );
@@ -216,6 +253,18 @@ const AppShell: React.FC = () => {
 
   if (currentPage === 'client-portal') {
     return <ClientPortalPage />;
+  }
+
+  if (currentPage === 'pipelines') {
+    return (
+      <RequireAuth>
+        <RolePipelines
+          onLogout={handleLogout}
+          onNavigateOverview={navigateToOverview}
+          onNavigateAIWorkspace={navigateToAIWorkspace}
+        />
+      </RequireAuth>
+    );
   }
 
   if (currentPage === 'clients') {

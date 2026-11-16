@@ -8,6 +8,7 @@ import { navigateTo } from '../navigation';
 import { formatDateTime } from '../utils/format';
 import { CLIENT_INDUSTRIES, LEAD_STATUSES } from '../types/client';
 import type { ClientRecord } from '../types/client';
+import { AppSidebar } from './workspace/AppSidebar';
 
 const PAGE_SIZE = 20;
 const LEAD_PAGE_SIZE = 10;
@@ -251,13 +252,18 @@ export const ClientsDirectory: React.FC<ClientsDirectoryProps> = ({ onBackToOver
   const fieldClass = 'rounded-lg border border-slate-300 px-3 py-2 text-sm';
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] px-4 py-8 font-sans text-slate-900 md:px-10">
-      <div className="mx-auto max-w-6xl">
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <button onClick={onBackToOverview} className="text-xs font-mono font-bold text-brand-700 hover:underline">
-              &larr; OVERVIEW
-            </button>
+    <div className="min-h-screen bg-[#f8fafc] flex text-slate-900 font-sans">
+      <AppSidebar
+        activeItem="Clients"
+        onNavigateOverview={onBackToOverview}
+      />
+      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto px-4 py-8 md:px-10">
+        <div className="mx-auto max-w-6xl w-full">
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <button onClick={onBackToOverview} className="text-xs font-mono font-bold text-brand-700 hover:underline">
+                &larr; OVERVIEW
+              </button>
             <h1 className="mt-1 text-2xl font-bold tracking-tight">Clients</h1>
           </div>
           <div className="flex gap-2">
@@ -675,7 +681,8 @@ export const ClientsDirectory: React.FC<ClientsDirectoryProps> = ({ onBackToOver
         )}
       </div>
     </div>
-  );
+  </div>
+);
 };
 
 export default ClientsDirectory;

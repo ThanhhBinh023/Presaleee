@@ -25,6 +25,12 @@ export function createLeadIntakeRouter(controller: LeadIntakeController): Router
   // Latest stored BANT result (strictly scoped to user's organization)
   router.get('/:id/qualifications/latest', requireAuth, requireOrganization, controller.latestQualification);
 
+  // PBAC: Quản lý thành viên trong dự án (Project Memberships)
+  router.get('/:id/members', requireAuth, requireOrganization, controller.listMembers);
+  router.post('/:id/members', requireAuth, requireOrganization, requireNotViewer, controller.addMember);
+  router.patch('/:id/members/:userId', requireAuth, requireOrganization, requireNotViewer, controller.updateMemberRole);
+  router.delete('/:id/members/:userId', requireAuth, requireOrganization, requireNotViewer, controller.removeMember);
+
   // Update lead fields (prohibited for VIEWER, strictly scoped to user's organization).
   // Rejects `status`: status changes only go through PATCH /:id/status, which enforces the state machine.
   router.patch('/:id', requireAuth, requireOrganization, requireNotViewer, controller.updateLead);

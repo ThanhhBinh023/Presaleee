@@ -19,7 +19,9 @@ const APPLIED_PROBES: Record<string, string> = {
   '005_auth_sessions_and_credentials': `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'password_hash') AS applied`,
   '006_discovery_meetings': `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'meetings' AND column_name = 'organization_id') AS applied`,
   '007_client_portal': `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'portal_sessions') AS applied`,
-  '008_reference_data_and_audit_indexes': `SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'uq_clients_org_company') AS applied`
+  '008_reference_data_and_audit_indexes': `SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'uq_clients_org_company') AS applied`,
+  '009_project_memberships': `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'project_memberships') AS applied`,
+  '010_seed_system_admin': `SELECT EXISTS (SELECT 1 FROM users WHERE email = 'admin@presaleee.io') AS applied`
 };
 
 async function runPendingMigrations(): Promise<void> {

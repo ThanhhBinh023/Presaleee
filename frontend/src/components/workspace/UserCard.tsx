@@ -3,8 +3,9 @@ import {
   LogOut, 
   ChevronRight, 
   X, 
-  Sparkles, 
-  Check 
+  Check,
+  ShieldCheck,
+  SlidersHorizontal
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { navigateTo } from '../../navigation';
@@ -26,16 +27,16 @@ export const ROLE_DETAILS: Record<UserRole, {
   keyPermissions: string[];
 }> = {
   ADMIN: {
-    nameVi: 'Quản trị hệ thống (Admin)',
+    nameVi: 'Quản trị viên Hệ thống (System Admin)',
     badgeClass: 'bg-purple-100 text-purple-700 border-purple-200',
     colorClass: 'text-purple-700',
-    iconBg: 'bg-purple-500',
-    description: 'Toàn quyền điều hành workspace, phân bổ vai trò, quản lý tổ chức và giám sát hệ thống.',
+    iconBg: 'bg-purple-600',
+    description: 'Tài khoản quản trị hệ thống hoạt động tách biệt, chỉ tập trung vào cấp độ hạ tầng, cấu hình workspace và bảo mật đa người dùng (Multi-tenant). Tuyệt đối không can thiệp vào các vai trò hay việc tạo dự án.',
     keyPermissions: [
-      'Toàn quyền tạo/sửa/xóa Lead, Proposals & Documents',
-      'Quản lý thành viên & phân quyền 6 vai trò',
-      'Phê duyệt & phát hành hồ sơ lên Client Portal',
-      'Cấu hình chính sách bảo mật Multi-tenant'
+      'Quản trị cấp độ hệ thống & thiết lập chung của workspace',
+      'Cấu hình bảo mật đa người dùng & cách ly dữ liệu Multi-tenant',
+      'Giám sát hạ tầng máy chủ & nhật ký kiểm toán bất biến (Audit Trail)',
+      'Hoạt động tách biệt: Không can thiệp tạo dự án & không có quyền trong Lead Workspace nếu không được Leader mời'
     ]
   },
   PRESALE_LEAD: {
@@ -106,20 +107,11 @@ export const ROLE_DETAILS: Record<UserRole, {
 };
 
 export const UserCard: React.FC<UserCardProps> = ({ onLogout, logoutTitle = 'Sign out' }) => {
-  const { user, setSimulatedRole } = useAuth();
+  const { user } = useAuth();
   const [showModal, setShowModal] = useState(false);
 
   const roleName = user?.role || 'VIEWER';
   const roleInfo = ROLE_DETAILS[roleName] || ROLE_DETAILS.VIEWER;
-  const isSimulated = typeof window !== 'undefined' && !!localStorage.getItem('presaleee_simulated_role');
-
-  const handleSwitchRole = (r: UserRole) => {
-    setSimulatedRole(r);
-  };
-
-  const handleResetRole = () => {
-    setSimulatedRole(null);
-  };
 
   return (
     <>
@@ -143,11 +135,6 @@ export const UserCard: React.FC<UserCardProps> = ({ onLogout, logoutTitle = 'Sig
           <div className="truncate min-w-0">
             <div className="text-xs font-bold text-slate-800 truncate flex items-center gap-1.5">
               <span>{user?.fullName || 'Not signed in'}</span>
-              {isSimulated && (
-                <span className="text-[9px] bg-amber-100 text-amber-700 px-1 rounded font-mono font-normal">
-                  test
-                </span>
-              )}
             </div>
             <div className="flex items-center gap-1 mt-0.5">
               <span className={`inline-block px-1.5 py-0.2 text-[9px] font-mono font-bold uppercase rounded border ${roleInfo.badgeClass}`}>
@@ -184,7 +171,7 @@ export const UserCard: React.FC<UserCardProps> = ({ onLogout, logoutTitle = 'Sig
               </div>
               <button 
                 onClick={() => setShowModal(false)}
-                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -194,7 +181,7 @@ export const UserCard: React.FC<UserCardProps> = ({ onLogout, logoutTitle = 'Sig
             <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider">
-                  VAI TRÒ HIỆN TẠI
+                  VAI TRÒ HỆ THỐNG HIỆN TẠI
                 </span>
                 <span className={`px-2.5 py-0.5 rounded-full text-xs font-mono font-bold border ${roleInfo.badgeClass}`}>
                   {roleName}
@@ -215,54 +202,37 @@ export const UserCard: React.FC<UserCardProps> = ({ onLogout, logoutTitle = 'Sig
               </div>
             </div>
 
-            {/* Role Simulator Switcher for fast verification */}
-            <div className="space-y-3 pt-1">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="text-xs font-bold text-slate-900 uppercase font-mono tracking-wider flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-brand-600" />
-                    <span>Chuyển đổi vai trò thử nghiệm (6 Roles)</span>
-                  </h4>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    Chọn nhanh vai trò để kiểm thử giao diện &amp; quyền hạn ngay trong phiên làm việc này.
-                  </p>
-                </div>
-                {isSimulated && (
-                  <button
-                    onClick={handleResetRole}
-                    className="text-[11px] font-mono text-brand-700 hover:underline font-semibold"
-                  >
-                    Khôi phục gốc
-                  </button>
-                )}
+            {/* Role Governance Policy Note (Strictly governed - No arbitrary role switcher) */}
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+              <div className="flex items-center gap-2 font-bold font-mono text-xs text-slate-800">
+                <ShieldCheck className="w-4 h-4 text-brand-600 shrink-0" />
+                <span>Chính sách phân quyền bảo mật &amp; Ranh giới hệ thống</span>
               </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                {(Object.keys(ROLE_DETAILS) as UserRole[]).map((r) => {
-                  const info = ROLE_DETAILS[r];
-                  const isCurrent = user?.role === r;
-                  return (
-                    <button
-                      key={r}
-                      onClick={() => handleSwitchRole(r)}
-                      className={`flex flex-col text-left p-2.5 rounded-xl border transition-all ${
-                        isCurrent
-                          ? 'border-brand-500 bg-brand-50/50 shadow-xs ring-1 ring-brand-500'
-                          : 'border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between w-full mb-1">
-                        <span className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded border ${info.badgeClass}`}>
-                          {r}
-                        </span>
-                        {isCurrent && <Check className="w-3.5 h-3.5 text-brand-600 shrink-0" />}
-                      </div>
-                      <span className="text-xs font-bold text-slate-800 line-clamp-1">{info.nameVi.split('(')[0]}</span>
-                    </button>
-                  );
-                })}
-              </div>
+              <p className="text-xs text-slate-600 leading-relaxed font-sans">
+                Hệ thống áp dụng cơ chế phân quyền bảo mật nghiêm ngặt. <strong>Tài khoản Quản trị hệ thống (System Admin)</strong> hoạt động hoàn toàn tách biệt, chuyên trách hạ tầng máy chủ, cấu hình workspace và bảo mật đa người dùng (Multi-tenant), không can thiệp vào các vai trò hay việc tạo dự án. Mọi quyền hạn trong từng dự án cụ thể (PBAC) do <strong>Trưởng dự án (PRESALE_LEAD)</strong> của dự án đó toàn quyền phân bổ. Admin không thể truy cập vào Lead Workspace nếu không được Leader dự án mời tham gia.
+              </p>
             </div>
+
+            {/* Link to Settings / Role Pipelines Documentation */}
+            <button
+              type="button"
+              onClick={() => {
+                setShowModal(false);
+                navigateTo('pipelines');
+              }}
+              className="w-full p-3.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold flex items-center justify-between transition-all group shadow-xs cursor-pointer"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center text-brand-400 shrink-0">
+                  <SlidersHorizontal className="w-4 h-4" />
+                </div>
+                <div className="text-left">
+                  <div className="font-bold text-sm">Cài đặt &amp; Hướng dẫn: Quy trình 6 Vai trò (Role Pipelines)</div>
+                  <div className="text-[11px] text-slate-400 font-normal">Xem thẩm quyền phê duyệt, ma trận trách nhiệm RACI và checklist từng role</div>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
+            </button>
 
             {/* Footer Actions */}
             <div className="flex items-center justify-between pt-3 border-t border-slate-100 text-xs">
@@ -271,7 +241,7 @@ export const UserCard: React.FC<UserCardProps> = ({ onLogout, logoutTitle = 'Sig
                   setShowModal(false);
                   navigateTo('profile');
                 }}
-                className="inline-flex items-center gap-1.5 text-slate-600 hover:text-slate-900 font-semibold"
+                className="inline-flex items-center gap-1.5 text-slate-600 hover:text-slate-900 font-semibold cursor-pointer"
               >
                 <span>Hồ sơ chi tiết &amp; Đổi mật khẩu</span>
                 <ChevronRight className="w-3.5 h-3.5" />
@@ -282,7 +252,7 @@ export const UserCard: React.FC<UserCardProps> = ({ onLogout, logoutTitle = 'Sig
                   setShowModal(false);
                   onLogout();
                 }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 font-semibold transition-all"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 font-semibold transition-all cursor-pointer"
               >
                 <LogOut className="w-3.5 h-3.5" />
                 <span>Đăng xuất</span>

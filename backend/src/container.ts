@@ -52,7 +52,7 @@ import {
   GetLatestQualificationUseCase
 } from './application/use-cases/LeadUseCases.js';
 import { PostgresDashboardRepository } from './infrastructure/database/repositories/PostgresDashboardRepository.js';
-import { GetDashboardOverviewUseCase, ListDashboardActivityUseCase, ListDashboardLeadsUseCase } from './application/use-cases/DashboardUseCases.js';
+import { GetDashboardAdminAnalyticsUseCase, GetDashboardOverviewUseCase, ListDashboardActivityUseCase, ListDashboardLeadsUseCase } from './application/use-cases/DashboardUseCases.js';
 import { DashboardController } from './presentation/controllers/DashboardController.js';
 import { KnowledgeController } from './presentation/controllers/KnowledgeController.js';
 import { ListKnowledgeDocumentsUseCase, GetKnowledgeDocumentUseCase, DeleteKnowledgeDocumentUseCase } from './application/use-cases/KnowledgeVaultUseCases.js';
@@ -256,7 +256,8 @@ export function createContainer(): ServiceContainer {
   const dashboardController = new DashboardController(
     new GetDashboardOverviewUseCase(dashboardRepository),
     new ListDashboardLeadsUseCase(dashboardRepository),
-    new ListDashboardActivityUseCase(dashboardRepository)
+    new ListDashboardActivityUseCase(dashboardRepository),
+    new GetDashboardAdminAnalyticsUseCase(dashboardRepository)
   );
   const knowledgeController = new KnowledgeController(
     ingestDocumentUseCase,

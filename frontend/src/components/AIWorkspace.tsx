@@ -16,7 +16,6 @@ import {
   ShieldCheck, 
   Zap, 
   Globe,
-  Settings, 
   Cpu, 
   ArrowRight,
   Eye,
@@ -34,10 +33,12 @@ import {
   ShieldAlert,
   FileCheck,
   Users,
-  Lock
+  Lock,
+  SlidersHorizontal
 } from 'lucide-react';
 import { navigateTo } from '../navigation';
 import { ClientPortalModal } from './ClientPortalModal';
+import { ProjectMembersModal } from './ProjectMembersModal';
 import { DiscoveryMeetingsTab } from './DiscoveryMeetingsTab';
 import { ProposalStudioTab } from './ProposalStudioTab';
 import { useToast } from './common/Toast';
@@ -54,6 +55,7 @@ interface AIWorkspaceProps {
   onLogout: () => void;
   onNavigateRfps?: () => void;
   onNavigateVault?: () => void;
+  onNavigatePipelines?: () => void;
 }
 
 const BANT_PILLARS = ['budget', 'authority', 'need', 'timeline'] as const;
@@ -62,7 +64,8 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
   onNavigateOverview, 
   onLogout,
   onNavigateRfps,
-  onNavigateVault: _onNavigateVault
+  onNavigateVault: _onNavigateVault,
+  onNavigatePipelines
 }) => {
   const toast = useToast();
   const { user } = useAuth();
@@ -72,6 +75,9 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
   const [projects, setProjects] = useState<LeadItem[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [loadingProjects, setLoadingProjects] = useState<boolean>(true);
+
+  // PBAC Modal state
+  const [isProjectMembersModalOpen, setIsProjectMembersModalOpen] = useState(false);
 
   // Requirement 2: Default subnav is 'Intake & Scope'
   const [activeSubnav, setActiveSubnav] = useState<'Intake & Scope' | 'Discovery Meetings' | 'Technical Sessions' | 'Proposal Builder v2.4' | 'Client Intelligence'>('Intake & Scope');
@@ -84,12 +90,6 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isQualifying, setIsQualifying] = useState(false);
-
-  // Role info & checks
-  const isViewer = user?.role === 'VIEWER';
-  const userRole = (user?.role || 'VIEWER') as UserRole;
-  const isOrganizationAdmin = userRole === 'ADMIN' || userRole === 'PRESALE_LEAD';
-  const roleInfo = ROLE_DETAILS[userRole] || ROLE_DETAILS.VIEWER;
 
   // Deal Team Allocation state (Requirement: not every lead needs all 6 roles)
   const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
@@ -133,6 +133,37 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
   }, []);
 
   const selectedProject = projects.find(p => p.id === selectedProjectId) || null;
+
+  // PBAC (Project-Based Access Control) calculation
+  const isOrgAdmin = user?.role === 'ADMIN';
+
+  // System Admin is separated: cannot access lead workspace unless invited by project leader
+  const isAdminInvited = React.useMemo(() => {
+    if (!isOrgAdmin || !selectedProject) return true;
+    if (Array.isArray(selectedProject.projectMembers)) {
+      return selectedProject.projectMembers.some(m => m.userId === user?.id);
+    }
+    return false;
+  }, [isOrgAdmin, selectedProject, user]);
+
+  const effectiveProjectRole: UserRole = React.useMemo(() => {
+    if (!selectedProject) return (user?.role || 'VIEWER') as UserRole;
+    if (isOrgAdmin) {
+      if (isAdminInvited && selectedProject.myRoleInProject) {
+        return selectedProject.myRoleInProject;
+      }
+      return 'VIEWER';
+    }
+    if (selectedProject.myRoleInProject) return selectedProject.myRoleInProject;
+    if (selectedProject.createdBy === user?.id || selectedProject.assignedTo === user?.id) return 'PRESALE_LEAD';
+    return (user?.role || 'VIEWER') as UserRole;
+  }, [selectedProject, user, isOrgAdmin, isAdminInvited]);
+
+  const isProjectLeader = !isOrgAdmin && effectiveProjectRole === 'PRESALE_LEAD';
+  const isProjectViewer = isOrgAdmin || effectiveProjectRole === 'VIEWER';
+  const isViewer = isProjectViewer;
+  const userRole = effectiveProjectRole;
+  const roleInfo = ROLE_DETAILS[userRole] || ROLE_DETAILS.VIEWER;
 
   /**
    * The stored BANT result. `/qualify` and `/qualifications` both persist the canonical
@@ -310,9 +341,13 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
     }
   };
 
-  // Handle Delete Lead
+  // Handle Delete Lead (PBAC: Only Project Leader or Org Admin)
   const handleDeleteLead = async () => {
     if (!selectedProject) return;
+    if (!isProjectLeader) {
+      toast.error('Chỉ Presale Lead phụ trách dự án này hoặc Quản trị viên mới có quyền xóa dự án.', 'Từ chối quyền hạn');
+      return;
+    }
     const confirmDelete = window.confirm(`Bạn có chắc chắn muốn xóa Intake "${selectedProject.title}" và toàn bộ dữ liệu họp / đề xuất liên quan không?`);
     if (!confirmDelete) return;
 
@@ -420,11 +455,26 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
           </nav>
         </div>
 
-        {/* User Card at bottom of sidebar */}
-        <div className="p-3 border-t border-slate-100 space-y-2">
-          <button className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-xs font-medium text-slate-500 hover:text-slate-900 hover:bg-slate-50">
-            <Settings className="w-3.5 h-3.5" />
-            <span>Settings</span>
+        {/* Settings / Guide & User Card at bottom of sidebar */}
+        <div className="p-3 border-t border-slate-100 space-y-1.5">
+          <button 
+            onClick={() => {
+              if (onNavigatePipelines) {
+                onNavigatePipelines();
+              } else {
+                navigateTo('pipelines');
+              }
+            }}
+            className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100/80 transition-all cursor-pointer"
+            title="Cài đặt & Hướng dẫn phân quyền 6 vai trò (Role Pipelines)"
+          >
+            <div className="flex items-center gap-2.5">
+              <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500" />
+              <span>Cài đặt &amp; Hướng dẫn</span>
+            </div>
+            <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-brand-700 border border-brand-200">
+              6 Roles
+            </span>
           </button>
 
           <UserCard onLogout={onLogout} subtitle="role" />
@@ -455,7 +505,27 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
           </div>
 
           {/* Quick Action - Only when project selected */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            {onNavigatePipelines && (
+              <button 
+                onClick={onNavigatePipelines}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-brand-700 border border-brand-200 shadow-xs cursor-pointer transition-colors"
+                title="Xem hướng dẫn quy trình và thẩm quyền phê duyệt của 6 role"
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5 text-brand-600" />
+                <span>Hướng dẫn Role</span>
+              </button>
+            )}
+            {selectedProject && (
+              <button 
+                onClick={() => setIsProjectMembersModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 shadow-xs cursor-pointer transition-colors"
+                title="Quản lý thành viên và phân quyền trong dự án này (PBAC)"
+              >
+                <Users className="w-3.5 h-3.5 text-slate-600" />
+                <span>Thành viên deal ({selectedProject.projectMembers?.length || 1})</span>
+              </button>
+            )}
             {selectedProject && (
               <button 
                 onClick={() => setPortalModalOpen(true)}
@@ -474,9 +544,9 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
           
           <div className="max-w-7xl mx-auto space-y-3">
             
-            {/* Dynamic Role Banner for All 6 Roles */}
+            {/* Dynamic Role Banner for All 6 Roles (PBAC-Aware & Admin Adaptive) */}
             <div className={`px-4 py-2.5 rounded-2xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-              userRole === 'ADMIN' ? 'bg-purple-50/70 border-purple-200 text-purple-900' :
+              user?.role === 'ADMIN' ? 'bg-gradient-to-r from-purple-900 via-indigo-900 to-purple-950 border-purple-700 text-white shadow-sm' :
               userRole === 'PRESALE_LEAD' ? 'bg-amber-50/70 border-amber-200 text-amber-900' :
               userRole === 'PRESALE_CONSULTANT' ? 'bg-emerald-50/70 border-brand-200 text-brand-950' :
               userRole === 'SOLUTION_ARCHITECT' ? 'bg-sky-50/70 border-sky-200 text-sky-950' :
@@ -484,33 +554,40 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
               'bg-slate-100 border-slate-300 text-slate-800'
             }`}>
               <div className="flex items-center gap-2.5 min-w-0">
-                <span className={`px-2 py-0.5 rounded-md font-mono font-bold text-[10px] uppercase border shrink-0 ${roleInfo.badgeClass}`}>
-                  {userRole}
+                <span className={`px-2 py-0.5 rounded-md font-mono font-bold text-[10px] uppercase border shrink-0 ${
+                  user?.role === 'ADMIN' ? 'bg-purple-800 text-purple-100 border-purple-500' : roleInfo.badgeClass
+                }`}>
+                  {user?.role === 'ADMIN' ? '👑 SYSTEM ADMIN' : selectedProject?.myRoleInProject ? `PBAC: ${userRole}` : userRole}
                 </span>
                 <span className="font-semibold text-xs truncate sm:whitespace-normal">
-                  {userRole === 'ADMIN' && '👑 Quản trị viên: toàn quyền trong tổ chức — phê duyệt Proposal, Clients, Rate Cards, thành viên, audit log.'}
-                  {userRole === 'PRESALE_LEAD' && '⭐ Presale Lead: backend cấp quyền y hệt ADMIN trong tổ chức — Phê duyệt Proposal, Rate Cards, Clients, thành viên.'}
-                  {userRole === 'PRESALE_CONSULTANT' && '💡 Presale Consultant: tạo/sửa Lead, Proposal, Cuộc họp, Knowledge. Không được Approve, Rate Cards, Clients, thành viên.'}
-                  {userRole === 'SOLUTION_ARCHITECT' && '📐 Solution Architect: backend không phân biệt với Consultant — được các quyền ghi nghiệp vụ, mất Approve, Rate Cards, Clients, thành viên.'}
-                  {userRole === 'SALES_REP' && '🚀 Sales Rep: backend không phân biệt với Consultant — toàn bộ quyền ghi nghiệp vụ trừ các endpoint chỉ ADMIN/PRESALE_LEAD.'}
-                  {userRole === 'VIEWER' && '🔒 Chỉ đọc: mọi API ghi nghiệp vụ chặn 403, riêng POST /portal/sessions (tạo phiên chia sẻ) chưa gate role. Xem và xuất Excel/PDF bình thường.'}
+                  {user?.role === 'ADMIN' && '👑 Quản trị viên hệ thống (Audit View): Giám sát hạ tầng & dữ liệu. Không can thiệp sửa đổi nội dung thương thảo hay phân bổ nhân sự bên trong deal.'}
+                  {user?.role !== 'ADMIN' && userRole === 'PRESALE_LEAD' && '⭐ Trưởng dự án Presale: toàn quyền phân rã deal, mời thành viên, submit xét duyệt, duyệt kiến trúc & xóa dự án.'}
+                  {user?.role !== 'ADMIN' && userRole === 'PRESALE_CONSULTANT' && '💡 Tư vấn viên Presale: khám phá nhu cầu, soạn thảo tài liệu proposal, chuẩn bị hồ sơ thầu trong deal này.'}
+                  {user?.role !== 'ADMIN' && userRole === 'SOLUTION_ARCHITECT' && '📐 Kiến trúc sư giải pháp: thiết kế giải pháp kỹ thuật, hạ tầng, SLA, phân tích tính khả thi trong deal này.'}
+                  {user?.role !== 'ADMIN' && userRole === 'SALES_REP' && '🚀 Đại diện kinh doanh: quản lý mối quan hệ khách hàng, chốt ngân sách BANT, thương thảo trong deal này.'}
+                  {user?.role !== 'ADMIN' && userRole === 'VIEWER' && '🔒 Người quan sát: xem dữ liệu tổng hợp, không được sửa đổi dữ liệu hay xóa dự án này.'}
                 </span>
               </div>
-              <div className="text-[11px] font-mono text-slate-500 shrink-0 flex items-center gap-1.5">
-                {isViewer ? (
+              <div className="text-[11px] font-mono shrink-0 flex items-center gap-1.5">
+                {user?.role === 'ADMIN' ? (
+                  <span className="text-purple-200 flex items-center gap-1">
+                    <ShieldCheck className="w-3.5 h-3.5 text-purple-300" />
+                    <span>Giám sát Hệ thống (Read-Only Deal)</span>
+                  </span>
+                ) : isProjectLeader ? (
+                  <>
+                    <Zap className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Dự án: Trưởng Deal (Toàn quyền)</span>
+                  </>
+                ) : isViewer ? (
                   <>
                     <Lock className="w-3.5 h-3.5 text-slate-400" />
-                    <span>Chỉ đọc (Read-Only)</span>
-                  </>
-                ) : isOrganizationAdmin ? (
-                  <>
-                    <Zap className="w-3.5 h-3.5 text-brand-600" />
-                    <span>Toàn quyền trong tổ chức</span>
+                    <span>Dự án: Chỉ đọc (PBAC Viewer)</span>
                   </>
                 ) : (
                   <>
                     <Zap className="w-3.5 h-3.5 text-brand-600" />
-                    <span>Chỉnh sửa nghiệp vụ — không có quyền quản trị tổ chức</span>
+                    <span>Dự án: Thành viên đóng góp ({userRole})</span>
                   </>
                 )}
               </div>
@@ -716,10 +793,10 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                             </option>
                           ))}
                         </select>
-                        {!isViewer && (
+                        {isProjectLeader && (
                           <button
                             onClick={handleDeleteLead}
-                            title="Xóa Intake này"
+                            title="Xóa Intake này (Chỉ dành cho Trưởng dự án)"
                             className="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-all shrink-0"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -769,7 +846,32 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
               </div>
 
               {/* Detail View of Selected Project OR Empty State */}
-              {!selectedProject ? (
+              {isOrgAdmin && !isAdminInvited && selectedProject ? (
+                <div className="bg-white rounded-3xl border border-purple-200 shadow-card p-12 text-center space-y-4 max-w-2xl mx-auto my-6">
+                  <div className="w-16 h-16 rounded-3xl bg-purple-50 border border-purple-200 text-purple-600 flex items-center justify-center mx-auto">
+                    <Lock className="w-8 h-8 text-purple-600" />
+                  </div>
+                  <div className="space-y-2">
+                    <span className="px-3 py-1 rounded-full text-xs font-mono font-bold bg-purple-100 text-purple-800 border border-purple-200">
+                      CHÍNH SÁCH BẢO VỆ LEAD WORKSPACE (PBAC)
+                    </span>
+                    <h3 className="text-lg font-bold text-slate-900">
+                      Lead Workspace Đang Bị Khóa Đối Với System Admin
+                    </h3>
+                    <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed font-sans">
+                      Tài khoản <strong>Quản trị hệ thống (System Admin)</strong> hoạt động tách biệt ở cấp độ hạ tầng, cấu hình workspace và bảo mật đa người dùng. Bạn không có quyền truy cập vào Lead Workspace của dự án <strong>"{selectedProject.title}"</strong> nếu không được Leader dự án mời tham gia.
+                    </p>
+                  </div>
+                  <div className="pt-2">
+                    <button
+                      onClick={() => navigateTo('overview')}
+                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold shadow-md transition-all cursor-pointer"
+                    >
+                      Quay về Tổng quan Quản trị
+                    </button>
+                  </div>
+                </div>
+              ) : !selectedProject ? (
                 <div className="bg-white rounded-3xl border border-slate-200 shadow-card p-12 text-center space-y-4">
                   <div className="w-16 h-16 rounded-3xl bg-brand-50 border border-brand-200 text-brand-600 flex items-center justify-center mx-auto">
                     <FolderOpen className="w-8 h-8 text-brand-600" />
@@ -1993,6 +2095,21 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
 
           </div>
         </div>
+      )}
+
+      {/* PBAC: Project Members Modal */}
+      {selectedProject && (
+        <ProjectMembersModal
+          isOpen={isProjectMembersModalOpen}
+          onClose={() => setIsProjectMembersModalOpen(false)}
+          leadId={selectedProject.id}
+          leadTitle={selectedProject.title}
+          currentUserProjectRole={effectiveProjectRole}
+          isOrgAdmin={isOrgAdmin}
+          onMembersUpdated={() => {
+            loadProjects(selectedProject.id);
+          }}
+        />
       )}
 
     </div>

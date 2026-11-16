@@ -60,3 +60,72 @@ export interface DashboardOverview {
   activeLeads: DashboardLead[];
   generatedAt: string;
 }
+
+export interface IntakeTrendPoint {
+  date: string;
+  count: number;
+}
+
+export interface ScoreDistributionTier {
+  tier: string;
+  label: string;
+  range: string;
+  count: number;
+  percentage: number;
+}
+
+export interface StatusBreakdownItem {
+  status: string;
+  count: number;
+  percentage: number;
+}
+
+export interface SourceBreakdownItem {
+  source: string;
+  count: number;
+  percentage: number;
+}
+
+export interface MeetingTrendPoint {
+  date: string;
+  count: number;
+}
+
+export interface AdminPlatformAnalytics {
+  timeHorizon: '7d' | '30d' | '90d' | '365d' | 'all';
+  generatedAt: string;
+  intakeAnalytics: {
+    totalIntakes: number;
+    trend: IntakeTrendPoint[];
+    growthPercentage: number;
+  };
+  workspaceBantAnalytics: {
+    averageScore: number;
+    totalScored: number;
+    scoreDistribution: ScoreDistributionTier[];
+    scoredLeads: Array<{
+      id: string;
+      title: string;
+      bantScore: number;
+      status: string;
+      clientName: string | null;
+      createdAt: string;
+    }>;
+  };
+  leadPipelineAnalytics: {
+    totalLeads: number;
+    statusBreakdown: StatusBreakdownItem[];
+    sourceBreakdown: SourceBreakdownItem[];
+  };
+  discoveryMeetingAnalytics: {
+    totalMeetings: number;
+    trend: MeetingTrendPoint[];
+    withGapAnalysis: number;
+  };
+  systemResourceTelemetry: {
+    totalActiveUsers: number;
+    totalProposals: number;
+    totalKnowledgeDocs: number;
+    auditEventsCount: number;
+  };
+}

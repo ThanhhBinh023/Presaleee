@@ -1,4 +1,4 @@
-import { AppError, AuthenticationError, ConflictError, NotFoundError, ValidationError } from '../../domain/errors/AppError.js';
+import { AppError, AuthenticationError, ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../domain/errors/AppError.js';
 import { AuthUser, PublicAuthUser } from '../../domain/entities/AuthUser.js';
 import { MemberDirectoryEntry, OrganizationSummary, USER_ROLES, USER_STATUSES, UserAccount, UserRole, UserStatus } from '../../domain/entities/User.js';
 import { IAuthRepository } from '../../domain/repositories/IAuthRepository.js';
@@ -152,6 +152,9 @@ export class AddMemberUseCase {
     const fullName = requiredText(dto.fullName, 'fullName', 255);
     const password = validatePasswordStrength(dto.password);
     const role = dto.role === undefined ? 'VIEWER' : parseRole(dto.role, 'role');
+    if (role === 'ADMIN') {
+      throw new ForbiddenError('Tài khoản quản trị cấp cao nhất (System Admin) chỉ được khởi tạo cứng qua mã nguồn/seed script, không thể tạo qua giao diện.');
+    }
 
     const existing = await this.authRepository.findUserByEmail(email);
     if (existing) throw new ConflictError('That email is already registered.');
@@ -195,6 +198,10 @@ export class UpdateMemberUseCase {
     assignIfPresent(dto, updates, 'role', value => parseRole(value, 'role'));
     assignIfPresent(dto, updates, 'status', value => optionalEnum(value, USER_STATUSES, 'status'));
     if (Object.keys(updates).length === 0) throw new ValidationError('At least one editable field is required.');
+
+    if (updates.role === 'ADMIN' && target.role !== 'ADMIN') {
+      throw new ForbiddenError('Tài khoản quản trị cấp cao nhất (System Admin) chỉ được khởi tạo cứng qua mã nguồn/seed script, không thể nâng cấp qua giao diện.');
+    }
 
     const losesAdmin = target.role === 'ADMIN'
       && ((updates.role !== undefined && updates.role !== 'ADMIN') || (updates.status !== undefined && updates.status !== 'ACTIVE'));

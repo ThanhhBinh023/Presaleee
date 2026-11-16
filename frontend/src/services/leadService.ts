@@ -1,5 +1,5 @@
 import { apiRequest, apiRequestWithMeta } from './apiClient';
-import type { ListMeta } from '../types/auth';
+import type { ListMeta, UserRole } from '../types/auth';
 import type {
   AnalyzeLeadResult,
   LeadExtractedMetadata,
@@ -42,6 +42,17 @@ export interface ExtractedMetadata {
   assigned_roles?: string[];
 }
 
+export interface ProjectMember {
+  id?: string;
+  userId: string;
+  email: string;
+  fullName: string;
+  avatarUrl?: string | null;
+  projectRole: UserRole;
+  systemRole?: string;
+  createdAt?: string;
+}
+
 export interface LeadItem {
   id: string;
   organizationId?: string;
@@ -55,6 +66,8 @@ export interface LeadItem {
   extractedMetadata?: ExtractedMetadata;
   bantScore?: number | null;
   bantDetails?: Record<string, unknown> | null;
+  myRoleInProject?: UserRole;
+  projectMembers?: ProjectMember[];
   createdAt?: string;
   updatedAt?: string;
 }
@@ -117,6 +130,30 @@ export async function updateLeadStatus(leadId: string, status: string): Promise<
 
 export async function deleteLead(leadId: string): Promise<void> {
   await apiRequest<void>(`${LEADS_PREFIX}/${encodeURIComponent(leadId)}`, {
+    method: 'DELETE'
+  });
+}
+
+export async function fetchProjectMembers(leadId: string): Promise<ProjectMember[]> {
+  return apiRequest<ProjectMember[]>(`${LEADS_PREFIX}/${encodeURIComponent(leadId)}/members`);
+}
+
+export async function addProjectMember(leadId: string, email: string, projectRole: UserRole): Promise<ProjectMember> {
+  return apiRequest<ProjectMember>(`${LEADS_PREFIX}/${encodeURIComponent(leadId)}/members`, {
+    method: 'POST',
+    body: { email, projectRole }
+  });
+}
+
+export async function updateProjectMemberRole(leadId: string, userId: string, projectRole: UserRole): Promise<ProjectMember> {
+  return apiRequest<ProjectMember>(`${LEADS_PREFIX}/${encodeURIComponent(leadId)}/members/${encodeURIComponent(userId)}`, {
+    method: 'PATCH',
+    body: { projectRole }
+  });
+}
+
+export async function removeProjectMember(leadId: string, userId: string): Promise<void> {
+  return apiRequest<void>(`${LEADS_PREFIX}/${encodeURIComponent(leadId)}/members/${encodeURIComponent(userId)}`, {
     method: 'DELETE'
   });
 }

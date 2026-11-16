@@ -8,6 +8,7 @@ import { navigateTo } from '../navigation';
 import { formatDateTime, formatMoney } from '../utils/format';
 import { RATE_CARD_LEVELS } from '../types/rateCard';
 import type { PricingInputLine, PricingResponse, ProposalSummary, RateCardLevel, RateCardRecord } from '../types/rateCard';
+import { AppSidebar } from './workspace/AppSidebar';
 
 const PAGE_SIZE = 20;
 
@@ -263,13 +264,18 @@ export const RateCardsDirectory: React.FC<RateCardsDirectoryProps> = ({ onBackTo
   const fieldClass = 'rounded-lg border border-slate-300 px-3 py-2 text-sm';
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] px-4 py-8 font-sans text-slate-900 md:px-10">
-      <div className="mx-auto max-w-6xl">
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <button onClick={onBackToOverview} className="text-xs font-mono font-bold text-brand-700 hover:underline">
-              &larr; OVERVIEW
-            </button>
+    <div className="min-h-screen bg-[#f8fafc] flex text-slate-900 font-sans">
+      <AppSidebar
+        activeItem="Rate Cards"
+        onNavigateOverview={onBackToOverview}
+      />
+      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto px-4 py-8 md:px-10">
+        <div className="mx-auto max-w-6xl w-full">
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <button onClick={onBackToOverview} className="text-xs font-mono font-bold text-brand-700 hover:underline">
+                &larr; OVERVIEW
+              </button>
             <h1 className="mt-1 text-2xl font-bold tracking-tight">Rate cards &amp; pricing</h1>
             <p className="mt-1 text-sm text-slate-500">
               Tenant-scoped rate cards. Arithmetic is owned by the backend, not the LLM.
@@ -599,5 +605,6 @@ export const RateCardsDirectory: React.FC<RateCardsDirectoryProps> = ({ onBackTo
         </section>
       </div>
     </div>
-  );
+  </div>
+);
 };

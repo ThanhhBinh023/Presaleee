@@ -29,20 +29,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     const restoreSession = async (): Promise<SessionData | null> => {
       try {
+        localStorage.removeItem('presaleee_simulated_role');
         const session = await authService.me();
-        const simRole = localStorage.getItem('presaleee_simulated_role') as UserRole | null;
-        if (session && simRole) {
-          session.user.role = simRole;
-        }
         return session;
       } catch (error) {
         if (error instanceof ApiError && error.status === 401) {
           try {
             const session = await authService.refresh();
-            const simRole = localStorage.getItem('presaleee_simulated_role') as UserRole | null;
-            if (session && simRole) {
-              session.user.role = simRole;
-            }
             return session;
           } catch {
             return null;
@@ -64,22 +57,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, []);
 
   const login = useCallback(async (input: LoginInput) => {
+    localStorage.removeItem('presaleee_simulated_role');
     const session = await authService.login(input);
-    const simRole = localStorage.getItem('presaleee_simulated_role') as UserRole | null;
-    if (simRole) {
-      session.user.role = simRole;
-    }
     setUser(session.user);
     setStatus('authenticated');
     return session.user;
   }, []);
 
   const devLogin = useCallback(async (email: string = 'ntbinh1@gmail.com') => {
+    localStorage.removeItem('presaleee_simulated_role');
     const session = await authService.devLogin(email);
-    const simRole = localStorage.getItem('presaleee_simulated_role') as UserRole | null;
-    if (simRole) {
-      session.user.role = simRole;
-    }
     setUser(session.user);
     setStatus('authenticated');
     return session.user;
@@ -106,16 +93,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setUser(next);
   }, []);
 
-  const setSimulatedRole = useCallback((role: UserRole | null) => {
-    if (role) {
-      localStorage.setItem('presaleee_simulated_role', role);
-      setUser(prev => prev ? { ...prev, role } : null);
-    } else {
-      localStorage.removeItem('presaleee_simulated_role');
-      void authService.me().then(session => {
-        if (session) setUser(session.user);
-      }).catch(() => {});
-    }
+  const setSimulatedRole = useCallback((_role: UserRole | null) => {
+    localStorage.removeItem('presaleee_simulated_role');
   }, []);
 
   const value = useMemo(

@@ -8,5 +8,6 @@ export function createDashboardRouter(controller: DashboardController): Router {
   router.get('/overview', controller.overview);
   router.get('/leads', controller.leads);
   router.get('/activity', controller.activity);
+  router.get('/admin-analytics', controller.adminAnalytics);
   return router;
 }

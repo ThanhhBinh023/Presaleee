@@ -1,6 +1,11 @@
 import { Request, Response, NextFunction } from 'express';
-import { UnauthorizedError } from '../../domain/errors/AppError.js';
-import { GetDashboardOverviewUseCase, ListDashboardActivityUseCase, ListDashboardLeadsUseCase } from '../../application/use-cases/DashboardUseCases.js';
+import { ForbiddenError, UnauthorizedError } from '../../domain/errors/AppError.js';
+import { 
+  GetDashboardAdminAnalyticsUseCase, 
+  GetDashboardOverviewUseCase, 
+  ListDashboardActivityUseCase, 
+  ListDashboardLeadsUseCase 
+} from '../../application/use-cases/DashboardUseCases.js';
 
 function organizationId(req: Request): string {
   if (!req.auth?.organizationId) throw new UnauthorizedError('Authenticated organization is required.');
@@ -24,7 +29,8 @@ export class DashboardController {
   constructor(
     private readonly overviewUseCase: GetDashboardOverviewUseCase,
     private readonly leadsUseCase: ListDashboardLeadsUseCase,
-    private readonly activityUseCase: ListDashboardActivityUseCase
+    private readonly activityUseCase: ListDashboardActivityUseCase,
+    private readonly adminAnalyticsUseCase?: GetDashboardAdminAnalyticsUseCase
   ) {}
 
   overview = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
@@ -49,6 +55,20 @@ export class DashboardController {
       const limit = requestedLimit(requested) ?? 20;
       const data = await this.activityUseCase.execute(organizationId(req), requested);
       res.status(200).json({ success: true, data, meta: { total: data.length, limit } });
+    } catch (error) { next(error); }
+  };
+
+  adminAnalytics = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (req.auth?.role !== 'ADMIN') {
+        throw new ForbiddenError('Chỉ tài khoản Quản trị hệ thống (System Admin) mới có quyền truy cập dữ liệu thống kê nền tảng.');
+      }
+      if (!this.adminAnalyticsUseCase) {
+        throw new Error('Admin analytics use case is not configured.');
+      }
+      const period = queryScalar(req.query.period) as string | undefined;
+      const data = await this.adminAnalyticsUseCase.execute(organizationId(req), period);
+      res.status(200).json({ success: true, data });
     } catch (error) { next(error); }
   };
 }

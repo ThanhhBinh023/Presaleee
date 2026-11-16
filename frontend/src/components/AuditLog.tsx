@@ -5,6 +5,7 @@ import { navigateTo } from '../navigation';
 import { formatDateTime } from '../utils/format';
 import { AUDIT_RESULT_STATUSES } from '../types/audit';
 import type { AuditResultStatus } from '../types/audit';
+import { AppSidebar } from './workspace/AppSidebar';
 
 const ACTION_SUGGESTIONS = [
   'CLIENT_CREATED',
@@ -92,19 +93,25 @@ export const AuditLog: React.FC<AuditLogProps> = ({ onBackToOverview }) => {
 
   if (!canRead) {
     return (
-      <div className="min-h-screen bg-[#f8fafc] px-4 py-8 font-sans text-slate-900 md:px-10">
-        <div className="mx-auto max-w-3xl rounded-xl border border-slate-200 bg-white p-6">
-          <button onClick={onBackToOverview} className="text-xs font-mono font-bold text-brand-700 hover:underline">
-            &larr; OVERVIEW
-          </button>
-          <h1 className="mt-2 text-xl font-bold">Audit trail</h1>
-          <p className="mt-3 text-sm text-slate-600">
-            Only admins and presale leads can read the audit trail. Your current role is
-            {user?.role ? ` ${user.role}` : ' unknown'}, so this page calls no endpoint.
-          </p>
-          <p className="mt-2 text-sm text-slate-500">
-            Sign in with an ADMIN or PRESALE_LEAD account, or ask a member of your organization who has that role.
-          </p>
+      <div className="min-h-screen bg-[#f8fafc] flex text-slate-900 font-sans">
+        <AppSidebar
+          activeItem="Audit Trail"
+          onNavigateOverview={onBackToOverview}
+        />
+        <div className="flex-1 flex flex-col min-w-0 overflow-y-auto px-4 py-8 md:px-10">
+          <div className="mx-auto max-w-3xl rounded-xl border border-slate-200 bg-white p-6">
+            <button onClick={onBackToOverview} className="text-xs font-mono font-bold text-brand-700 hover:underline">
+              &larr; OVERVIEW
+            </button>
+            <h1 className="mt-2 text-xl font-bold">Audit trail</h1>
+            <p className="mt-3 text-sm text-slate-600">
+              Only admins and presale leads can read the audit trail. Your current role is
+              {user?.role ? ` ${user.role}` : ' unknown'}, so this page calls no endpoint.
+            </p>
+            <p className="mt-2 text-sm text-slate-500">
+              Sign in with an ADMIN or PRESALE_LEAD account, or ask a member of your organization who has that role.
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -115,13 +122,18 @@ export const AuditLog: React.FC<AuditLogProps> = ({ onBackToOverview }) => {
     'rounded-lg border border-slate-300 px-2 py-1.5 text-sm font-sans font-normal normal-case tracking-normal';
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] px-4 py-8 font-sans text-slate-900 md:px-10">
-      <div className="mx-auto max-w-6xl">
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <button onClick={onBackToOverview} className="text-xs font-mono font-bold text-brand-700 hover:underline">
-              &larr; OVERVIEW
-            </button>
+    <div className="min-h-screen bg-[#f8fafc] flex text-slate-900 font-sans">
+      <AppSidebar
+        activeItem="Audit Trail"
+        onNavigateOverview={onBackToOverview}
+      />
+      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto px-4 py-8 md:px-10">
+        <div className="mx-auto max-w-6xl w-full">
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <button onClick={onBackToOverview} className="text-xs font-mono font-bold text-brand-700 hover:underline">
+                &larr; OVERVIEW
+              </button>
             <h1 className="mt-1 text-2xl font-bold tracking-tight">Audit trail</h1>
             <p className="mt-1 text-xs text-slate-500">
               Read-only ledger. Newest first. Proposal sheet writes, meetings and knowledge ingest are not recorded. FAILED is empty unless a fixture row exists — writers never emit it.
@@ -360,6 +372,7 @@ export const AuditLog: React.FC<AuditLogProps> = ({ onBackToOverview }) => {
         </div>
       </div>
     </div>
+  </div>
   );
 };
 

@@ -6,7 +6,7 @@ import { ROLE_DETAILS } from './workspace/UserCard';
 import { ClientPortalModal } from './ClientPortalModal';
 import { useToast } from './common/Toast';
 import { navigateTo } from '../navigation';
-import { fetchLeads, updateLead } from '../services/leadService';
+import { fetchLeads, updateLead, updateLeadStatus } from '../services/leadService';
 import type { LeadItem } from '../services/leadService';
 import { 
   fetchProposalByLead, 
@@ -186,7 +186,7 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
   // Lead's assigned roles list
   const assignedRolesList: UserRole[] = React.useMemo(() => {
     if (!selectedProject) return [];
-    const meta = selectedProject.extracted_metadata as any;
+    const meta = (selectedProject.extractedMetadata || {}) as any;
     const roles = meta?.assigned_roles || meta?.assignedRoles;
     if (Array.isArray(roles) && roles.length > 0) {
       return roles as UserRole[];
@@ -214,12 +214,12 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
     try {
       setIsSubmitting(true);
       const updatedMetadata = {
-        ...(selectedProject.extracted_metadata || {}),
+        ...(selectedProject.extractedMetadata || {}),
         assigned_roles: selectedDealRoles,
         assignedRoles: selectedDealRoles
       };
       const updated = await updateLead(selectedProject.id, {
-        extracted_metadata: updatedMetadata
+        extractedMetadata: updatedMetadata
       });
       setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
       toast.success(`Đã cập nhật đội ngũ (${selectedDealRoles.length} vai trò) cho lead "${updated.title}"!`, 'Presale Deal Team');
@@ -312,9 +312,7 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
           // continue
         }
       }
-      const updated = await updateLead(selectedProject.id, {
-        status: decision === 'WON' ? 'WON' : 'LOST'
-      });
+      const updated = await updateLeadStatus(selectedProject.id, decision === 'WON' ? 'WON' : 'LOST');
       setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
       toast.success(
         decision === 'WON' 
@@ -357,7 +355,7 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
           <nav className="p-3 space-y-1">
             <button
               onClick={onNavigateOverview}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all"
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all cursor-pointer"
             >
               <LayoutGrid className="w-4 h-4 text-slate-400" />
               <span>Overview</span>
@@ -365,7 +363,7 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
 
             <button 
               onClick={() => navigateTo('rfps')}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all"
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all cursor-pointer"
             >
               <FileText className="w-4 h-4 text-slate-400" />
               <span>RFPs &amp; Specs</span>
@@ -373,26 +371,15 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
 
             <button 
               onClick={() => onNavigateAIWorkspace?.()}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all"
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all cursor-pointer"
             >
               <Sparkles className="w-4 h-4 text-slate-400" />
               <span>AI Workspace</span>
             </button>
 
-            {/* Active Role Pipeline tab */}
-            <button className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-semibold bg-brand-500 text-white shadow-sm shadow-brand-500/30 transition-all">
-              <div className="flex items-center gap-3">
-                <SlidersHorizontal className="w-4 h-4 text-white" />
-                <span>Role Pipelines</span>
-              </div>
-              <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-brand-600 text-white">
-                Active
-              </span>
-            </button>
-
             <button
               onClick={() => navigateTo('leads')}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all"
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all cursor-pointer"
             >
               <Zap className="w-4 h-4 text-slate-400" />
               <span>Leads</span>
@@ -400,7 +387,7 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
 
             <button
               onClick={() => navigateTo('portal')}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all"
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all cursor-pointer"
             >
               <Globe className="w-4 h-4 text-slate-400" />
               <span>Client portal</span>
@@ -408,7 +395,21 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
           </nav>
         </div>
 
-        <div className="p-3 border-t border-slate-100">
+        {/* Settings / Guide & User Card at bottom of sidebar */}
+        <div className="p-3 border-t border-slate-100 space-y-1.5">
+          <button
+            className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold bg-slate-900 text-white shadow-xs"
+            title="Cài đặt & Hướng dẫn phân quyền quy trình Role Pipelines"
+          >
+            <div className="flex items-center gap-2.5">
+              <SlidersHorizontal className="w-3.5 h-3.5 text-brand-400" />
+              <span>Cài đặt &amp; Hướng dẫn</span>
+            </div>
+            <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-brand-500 text-white">
+              6 Roles
+            </span>
+          </button>
+
           <UserCard onLogout={onLogout} subtitle="role" />
         </div>
       </aside>
@@ -425,6 +426,8 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
             >
               Workspace
             </button>
+            <span className="text-slate-300">/</span>
+            <span className="text-slate-500">Cài đặt &amp; Hướng dẫn</span>
             <span className="text-slate-300">/</span>
             <span className="font-semibold text-brand-700">Role Pipelines</span>
             <span className="text-slate-300">/</span>
@@ -454,14 +457,14 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
               <div>
                 <div className="flex items-center gap-2.5 mb-1">
                   <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-                    Hệ Thống Pipeline Phân Theo Role
+                    Cài Đặt &amp; Hướng Dẫn: Quy Trình Role Pipelines
                   </h1>
                   <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-brand-50 text-brand-700 border border-brand-200">
-                    6 ROLES RBAC
+                    6 ROLES GOVERNANCE
                   </span>
                 </div>
                 <p className="text-xs sm:text-sm text-slate-500 max-w-2xl leading-relaxed">
-                  Mỗi vai trò trong hệ thống Presaleee đảm nhiệm một giai đoạn chuyên biệt trong vòng đời cơ hội kinh doanh.
+                  Tài liệu quy chuẩn phân quyền, thẩm quyền xét duyệt và luồng công việc tương tác giữa 6 vai trò trong hệ thống Presaleee.
                 </p>
               </div>
 
@@ -554,7 +557,7 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
                       Proposal: <strong>{proposal?.status || 'Chưa khởi tạo'}</strong>
                     </span>
                     <span className="px-3 py-1 rounded-xl bg-white border border-slate-200 text-brand-700 font-bold shadow-2xs">
-                      Budget: <strong>${(selectedProject?.extracted_metadata?.budgetUsd || 80000).toLocaleString()} USD</strong>
+                      Budget: <strong>${(selectedProject?.extractedMetadata?.budgetUsd || 80000).toLocaleString()} USD</strong>
                     </span>
                   </div>
                 </div>
@@ -645,17 +648,17 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
                         <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
                           <span className="text-slate-400 text-[10px] block uppercase font-bold">THÔNG TIN KHÁCH HÀNG</span>
                           <div className="font-bold text-slate-800 text-sm truncate">{selectedProject.title}</div>
-                          <div className="text-slate-500 text-[11px]">Ngành: {selectedProject.extracted_metadata?.clientIndustry || 'Công nghệ thông tin'}</div>
+                          <div className="text-slate-500 text-[11px]">Ngành: {selectedProject.extractedMetadata?.clientIndustry || 'Công nghệ thông tin'}</div>
                         </div>
 
                         <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
                           <span className="text-slate-400 text-[10px] block uppercase font-bold">BANT QUALIFICATION SCORE</span>
                           <div className="flex items-center gap-2">
                             <span className="text-xl font-bold font-mono text-brand-700">
-                              {selectedProject.qualification_score ? `${selectedProject.qualification_score}/100` : '90/100'}
+                              {selectedProject.bantDetails?.score ? `${selectedProject.bantDetails.score}/100` : '90/100'}
                             </span>
                             <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-100 text-brand-800 font-bold">
-                              {selectedProject.extracted_metadata?.qualification?.readiness_level || 'Tier-1 High Priority'}
+                              {(selectedProject.extractedMetadata?.qualification as any)?.readiness_level || 'Tier-1 High Priority'}
                             </span>
                           </div>
                           <div className="text-slate-500 text-[11px]">Đã xác thực tính khả thi ngân sách &amp; tiến độ.</div>
@@ -664,9 +667,9 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
                         <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1">
                           <span className="text-slate-400 text-[10px] block uppercase font-bold">NGÂN SÁCH &amp; TIẾN ĐỘ CAM KẾT</span>
                           <div className="font-bold text-brand-700 text-sm">
-                            ${(selectedProject.extracted_metadata?.budgetUsd || 80000).toLocaleString()} USD
+                            ${(selectedProject.extractedMetadata?.budgetUsd || 80000).toLocaleString()} USD
                           </div>
-                          <div className="text-slate-500 text-[11px]">Thời gian dự kiến: {selectedProject.extracted_metadata?.timelineWeeks || 16} Tuần</div>
+                          <div className="text-slate-500 text-[11px]">Thời gian dự kiến: {selectedProject.extractedMetadata?.timelineWeeks || 16} Tuần</div>
                         </div>
                       </div>
 
@@ -791,7 +794,7 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
                           <span className="font-mono text-sm text-brand-700">Tỷ suất an toàn: 15% Margin</span>
                         </div>
                         <p className="text-slate-700 leading-relaxed font-sans">
-                          Tổng chi phí nhân sự ước tính từ cấu trúc Rate Cards đạt khoảng <strong>$68,000 USD</strong> trên tổng ngân sách khách hàng <strong>${(selectedProject.extracted_metadata?.budgetUsd || 80000).toLocaleString()} USD</strong>. Đảm bảo biên độ lợi nhuận an toàn cho công ty mà vẫn tối ưu giá thầu cho khách hàng.
+                          Tổng chi phí nhân sự ước tính từ cấu trúc Rate Cards đạt khoảng <strong>$68,000 USD</strong> trên tổng ngân sách khách hàng <strong>${(selectedProject.extractedMetadata?.budgetUsd || 80000).toLocaleString()} USD</strong>. Đảm bảo biên độ lợi nhuận an toàn cho công ty mà vẫn tối ưu giá thầu cho khách hàng.
                         </p>
                       </div>
 
@@ -914,7 +917,7 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
                             />
                           </div>
                           <p className="text-[11px] text-slate-600 leading-relaxed">
-                            Cấu trúc giá trọn gói (${(selectedProject.extracted_metadata?.budgetUsd || 80000).toLocaleString()} USD), tiến độ 4 đợt thanh toán (Mobilization 20%, Architecture 25%, UAT 35%, Go-live 20%) hợp lý.
+                            Cấu trúc giá trọn gói (${(selectedProject.extractedMetadata?.budgetUsd || 80000).toLocaleString()} USD), tiến độ 4 đợt thanh toán (Mobilization 20%, Architecture 25%, UAT 35%, Go-live 20%) hợp lý.
                           </p>
                         </div>
 
@@ -1005,7 +1008,7 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
 
                           <div className="text-right">
                             <div className="text-xl font-bold font-mono text-brand-700">
-                              ${(proposal?.totalCost || selectedProject.extracted_metadata?.budgetUsd || 80000).toLocaleString()} USD
+                              ${(proposal?.totalCost || selectedProject.extractedMetadata?.budgetUsd || 80000).toLocaleString()} USD
                             </div>
                             <div className="text-[11px] font-mono text-slate-400">
                               Thời gian: {proposal?.estimatedTimelineWeeks || 16} Tuần triển khai
@@ -1393,20 +1396,20 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
                 {selectedRole === 'ADMIN' && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
                     <div className="p-4 rounded-2xl bg-purple-50/60 border border-purple-200 space-y-1">
-                      <div className="font-bold text-purple-900">1. Quản trị Tổ chức &amp; Tenant</div>
-                      <p className="text-[11px] text-slate-600">Thiết lập cấu hình tổ chức, domain và hạn ngạch dữ liệu.</p>
+                      <div className="font-bold text-purple-900">1. Quản Trị Workspace &amp; Tổ Chức</div>
+                      <p className="text-[11px] text-slate-600">Thiết lập cấu hình tổ chức, domain và hạn ngạch dữ liệu cấp nền tảng.</p>
                     </div>
                     <div className="p-4 rounded-2xl bg-purple-50/60 border border-purple-200 space-y-1">
-                      <div className="font-bold text-purple-900">2. Quản lý Thành viên &amp; RBAC</div>
-                      <p className="text-[11px] text-slate-600">Mời thành viên, phân quyền 6 vai trò và kích hoạt tài khoản.</p>
+                      <div className="font-bold text-purple-900">2. Bảo Mật Đa Người Dùng (Multi-Tenant)</div>
+                      <p className="text-[11px] text-slate-600">Thiết lập cách ly dữ liệu tenant, phân vùng bảo mật và kiểm toán an ninh.</p>
                     </div>
                     <div className="p-4 rounded-2xl bg-purple-50/60 border border-purple-200 space-y-1">
-                      <div className="font-bold text-purple-900">3. Giám sát Audit Trail</div>
-                      <p className="text-[11px] text-slate-600">Xem nhật ký kiểm toán bất biến các thao tác trong hệ thống.</p>
+                      <div className="font-bold text-purple-900">3. Giám Sát Hạ Tầng &amp; Máy Chủ</div>
+                      <p className="text-[11px] text-slate-600">Theo dõi hoạt động server API, database và lưu trữ Audit Trail bất biến.</p>
                     </div>
                     <div className="p-4 rounded-2xl bg-purple-50/60 border border-purple-200 space-y-1">
-                      <div className="font-bold text-purple-900">4. Phê duyệt &amp; Toàn quyền Can thiệp</div>
-                      <p className="text-[11px] text-slate-600">Kế thừa toàn bộ quyền hạn duyệt, ký phát hành và quản lý thầu.</p>
+                      <div className="font-bold text-purple-900">4. Tách Biệt Khỏi Dự Án Thầu (PBAC)</div>
+                      <p className="text-[11px] text-slate-600">Không can thiệp tạo dự án, không gán role; chỉ vào Lead Workspace khi Leader mời.</p>
                     </div>
                   </div>
                 )}

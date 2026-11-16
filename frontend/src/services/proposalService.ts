@@ -81,7 +81,7 @@ export async function updateProposalSheet(
 
 export async function updateProposalLifecycle(
   proposalId: string, 
-  status: 'DRAFT' | 'IN_REVIEW' | 'APPROVED' | 'REJECTED'
+  status: 'DRAFT' | 'IN_REVIEW' | 'APPROVED' | 'SENT_TO_CLIENT' | 'ACCEPTED' | 'REJECTED'
 ): Promise<ProposalItem> {
   return await apiRequest<ProposalItem>(`${PREFIX}/${encodeURIComponent(proposalId)}/lifecycle`, {
     method: 'PATCH',

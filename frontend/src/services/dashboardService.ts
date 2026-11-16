@@ -1,6 +1,6 @@
 import { apiRequest, apiRequestWithMeta } from './apiClient';
 import type { ListMeta } from '../types/auth';
-import type { DashboardActivity, DashboardLead, DashboardOverview } from '../types/dashboard';
+import type { AdminPlatformAnalytics, DashboardActivity, DashboardLead, DashboardOverview } from '../types/dashboard';
 
 const PREFIX = '/api/v1/dashboard';
 
@@ -8,6 +8,11 @@ export const dashboardService = {
   getOverview: (leadLimit?: number) => {
     const query = leadLimit !== undefined ? `?leadLimit=${encodeURIComponent(String(leadLimit))}` : '';
     return apiRequest<DashboardOverview>(`${PREFIX}/overview${query}`);
+  },
+
+  getAdminAnalytics: (period?: string) => {
+    const query = period ? `?period=${encodeURIComponent(period)}` : '';
+    return apiRequest<AdminPlatformAnalytics>(`${PREFIX}/admin-analytics${query}`);
   },
 
   listLeads: async (limit?: number): Promise<{ leads: DashboardLead[]; meta: ListMeta | null }> => {

@@ -36,3 +36,12 @@ export class ListDashboardActivityUseCase {
     return this.dashboardRepository.listActivity({ organizationId }, limit);
   }
 }
+
+export class GetDashboardAdminAnalyticsUseCase {
+  constructor(private readonly dashboardRepository: IDashboardRepository) {}
+  async execute(organizationId: string, period?: string) {
+    if (!organizationId) throw new UnauthorizedError('Authenticated organization is required.');
+    const validPeriod = period || '30d';
+    return this.dashboardRepository.getAdminAnalytics({ organizationId }, validPeriod);
+  }
+}

@@ -6,7 +6,6 @@ import { UserCard } from './workspace/UserCard';
 import { navigateTo } from '../navigation';
 import { formatDateTime, formatMoney } from '../utils/format';
 import type { CurrencyAmount } from '../types/dashboard';
-import { ROLE_DETAILS } from './workspace/UserCard';
 import type { UserRole } from '../types/auth';
 import { 
   LayoutGrid, 
@@ -82,7 +81,6 @@ export const Overview: React.FC<OverviewProps> = ({
   });
 
   const userRole = (user?.role || 'VIEWER') as UserRole;
-  const roleInfo = ROLE_DETAILS[userRole] || ROLE_DETAILS.VIEWER;
 
   // Role-specific greeting and subtitle
   const roleGreetings: Record<UserRole, { title: string; subtitle: string; actionText: string; onAction?: () => void }> = {
@@ -683,10 +681,6 @@ export const Overview: React.FC<OverviewProps> = ({
                   <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
                     Chào mừng, {currentGreeting.title}
                   </h1>
-                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono font-bold border ${roleInfo.badgeClass}`}>
-                    <span className="w-1.5 h-1.5 rounded-full bg-brand-500 animate-pulse"></span>
-                    {roleInfo.nameVi}
-                  </span>
                 </div>
                 <p className="text-xs sm:text-sm text-slate-500 max-w-xl leading-relaxed">
                   {currentGreeting.subtitle}

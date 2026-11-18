@@ -11,7 +11,9 @@ export class SubmitProposalForReviewUseCase {
     const targetId = requiredUuid(proposalId, 'proposalId');
     const existing = await this.proposalRepository.findById(targetId, organizationId);
     if (!existing) throw new NotFoundError('Proposal not found.');
-    if (existing.status !== 'DRAFT') throw new ConflictError('Only a DRAFT proposal can be submitted for review.');
+    if (existing.status !== 'DRAFT' && existing.status !== 'REJECTED') {
+      throw new ConflictError('Only a DRAFT or REJECTED proposal can be submitted for review.');
+    }
     const submitted = await this.proposalRepository.submitForReview(targetId, organizationId, actorId);
     if (!submitted) throw new ConflictError('Proposal status changed concurrently. Reload and retry.');
     return submitted;

@@ -138,7 +138,32 @@ export class LeadIntakeController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      const result = await this.qualifyLeadUseCase.execute(req.params.id, this.leadScope(req));
+      const scope = this.leadScope(req);
+      const leadId = req.params.id;
+      if (this.dbPool) {
+        const checkRes = await this.dbPool.query(`
+          SELECT project_role FROM project_memberships WHERE project_id = $1 AND user_id = $2;
+        `, [leadId, scope.userId]);
+        let projectRole = checkRes.rows[0]?.project_role;
+        if (!projectRole) {
+          const leadCheck = await this.dbPool.query(`
+            SELECT created_by, assigned_to FROM leads WHERE id = $1;
+          `, [leadId]);
+          const leadRow = leadCheck.rows[0];
+          if (leadRow?.created_by === scope.userId || leadRow?.assigned_to === scope.userId) {
+            projectRole = 'PRESALE_LEAD';
+          } else {
+            projectRole = scope.claims?.role || 'VIEWER';
+          }
+        }
+        if (projectRole === 'PRESALE_CONSULTANT') {
+          throw new ForbiddenError('Chuyên viên tư vấn (PRESALE_CONSULTANT) không có quyền chạy thẩm định BANT. Chức năng này thuộc về SALES_REP hoặc PRESALE_LEAD.');
+        }
+        if (projectRole === 'VIEWER') {
+          throw new ForbiddenError('Tài khoản Quan sát viên (VIEWER) không có quyền chạy thẩm định BANT.');
+        }
+      }
+      const result = await this.qualifyLeadUseCase.execute(req.params.id, scope);
       res.status(200).json({ success: true, data: result });
     } catch (error) {
       console.error('[LeadIntakeController.qualify] Error:', error);
@@ -265,15 +290,20 @@ export class LeadIntakeController {
         }
       }
 
-      const leadsWithRole = result.leads.map(lead => {
+      // Filter leads: user must be in project_memberships OR be creator/assignedTo
+      const userLeads = result.leads.filter(lead => {
+        if (membershipMap[lead.id]) return true;
+        if (lead.createdBy === scope.userId || lead.assignedTo === scope.userId) return true;
+        return false;
+      });
+
+      const leadsWithRole = userLeads.map(lead => {
         let myRoleInProject = membershipMap[lead.id];
         if (!myRoleInProject) {
-          if (lead.createdBy === scope.userId || lead.assignedTo === scope.userId || !lead.createdBy) {
+          if (lead.createdBy === scope.userId || lead.assignedTo === scope.userId) {
             myRoleInProject = 'PRESALE_LEAD';
-          } else if (scope.claims?.role === 'ADMIN') {
-            myRoleInProject = 'VIEWER';
           } else {
-            myRoleInProject = 'PRESALE_LEAD';
+            myRoleInProject = 'VIEWER';
           }
         }
         return {
@@ -285,7 +315,7 @@ export class LeadIntakeController {
       res.status(200).json({
         success: true,
         data: leadsWithRole,
-        meta: { total: result.total, page: result.page, limit: result.limit, totalPages: result.totalPages }
+        meta: { total: leadsWithRole.length, page: result.page, limit: result.limit, totalPages: result.totalPages }
       });
     } catch (error) {
       console.error('[LeadIntakeController.listLeads] Error:', error);
@@ -321,7 +351,7 @@ export class LeadIntakeController {
           myRoleInProject = myMembership.projectRole;
         } else if (myMembership) {
           myRoleInProject = myMembership.projectRole;
-        } else if (!lead.createdBy || lead.createdBy === scope.userId || lead.assignedTo === scope.userId) {
+        } else if (lead.createdBy === scope.userId || lead.assignedTo === scope.userId) {
           myRoleInProject = 'PRESALE_LEAD';
           // Ensure auto-insert into project_memberships so subsequent actions find it
           if (scope.userId) {
@@ -332,7 +362,7 @@ export class LeadIntakeController {
             `, [leadId, scope.userId]).catch(() => {});
           }
         } else {
-          myRoleInProject = 'VIEWER';
+          throw new ForbiddenError('Bạn chưa được bổ nhiệm hoặc mời tham gia dự án này.');
         }
       }
 
@@ -360,14 +390,54 @@ export class LeadIntakeController {
       const leadId = routeParam(req, 'id');
       const scope = this.leadScope(req);
 
-      if (scope.claims?.role === 'ADMIN') {
-        if (!this.dbPool) throw new Error('Database pool not available.');
+      if (this.dbPool) {
         const checkRes = await this.dbPool.query(`
           SELECT project_role FROM project_memberships WHERE project_id = $1 AND user_id = $2;
         `, [leadId, scope.userId]);
-        const projectRole = checkRes.rows[0]?.project_role;
-        if (!projectRole || projectRole === 'VIEWER') {
+        let projectRole = checkRes.rows[0]?.project_role;
+
+        if (!projectRole) {
+          const leadCheck = await this.dbPool.query(`
+            SELECT created_by, assigned_to, status FROM leads WHERE id = $1;
+          `, [leadId]);
+          const leadRow = leadCheck.rows[0];
+          if (leadRow?.created_by === scope.userId || leadRow?.assigned_to === scope.userId) {
+            projectRole = 'PRESALE_LEAD';
+          } else {
+            projectRole = scope.claims?.role || 'VIEWER';
+          }
+        }
+
+        if (scope.claims?.role === 'ADMIN' && projectRole === 'VIEWER') {
           throw new ForbiddenError('Tài khoản Quản trị hệ thống (System Admin) không thể chỉnh sửa dữ liệu dự án của các nhóm khác nếu không được Leader dự án mời tham gia với vai trò phù hợp.');
+        }
+
+        // SALES_REP cannot edit project SOW/intake or raw RFP
+        if (projectRole === 'SALES_REP') {
+          throw new ForbiddenError('Đại diện kinh doanh (SALES_REP) không có quyền chỉnh sửa thông tin kỹ thuật dự án (SOW / Raw RFP). Vai trò này chịu trách nhiệm tiếp nhận RFP, thẩm định BANT và khởi tạo Client Portal.');
+        }
+
+        if (projectRole === 'PRESALE_CONSULTANT') {
+          throw new ForbiddenError('Chuyên viên tư vấn (PRESALE_CONSULTANT) không có quyền chỉnh sửa thông tin Intake gốc. Vai trò này tập trung vào soạn thảo, hoàn thiện 10 sheets Proposal.');
+        }
+
+        if (projectRole === 'VIEWER') {
+          throw new ForbiddenError('Tài khoản Quan sát viên (VIEWER) ở chế độ chỉ đọc, không có quyền chỉnh sửa dự án.');
+        }
+
+        // Check if lead or proposal is completed / approved
+        const statusRes = await this.dbPool.query(`
+          SELECT l.status as lead_status, p.status as proposal_status
+          FROM leads l
+          LEFT JOIN proposals p ON p.lead_id = l.id
+          WHERE l.id = $1
+          LIMIT 1;
+        `, [leadId]);
+        const leadStatus = statusRes.rows[0]?.lead_status;
+        const propStatus = statusRes.rows[0]?.proposal_status;
+
+        if ((leadStatus === 'APPROVED' || leadStatus === 'WON' || propStatus === 'APPROVED' || propStatus === 'SENT_TO_CLIENT') && projectRole !== 'PRESALE_LEAD') {
+          throw new ForbiddenError('Dự án đã được phê duyệt hoàn thành. Ngoại trừ Trưởng dự án (Presale Lead), không có vai trò nào được phép điều chỉnh.');
         }
       }
 
@@ -487,12 +557,17 @@ export class LeadIntakeController {
       }
 
       const userRes = await this.dbPool.query(`
-        SELECT id, email, full_name as "fullName" FROM users WHERE LOWER(email) = LOWER($1) AND organization_id = $2;
-      `, [email.trim(), organizationId]);
+        SELECT id, email, full_name as "fullName", organization_id FROM users WHERE LOWER(email) = LOWER($1);
+      `, [email.trim()]);
       if (userRes.rows.length === 0) {
-        throw new NotFoundError(`Không tìm thấy tài khoản với email "${email}" trong tổ chức.`);
+        throw new NotFoundError(`Không tìm thấy tài khoản với email "${email}" trong hệ thống.`);
       }
       const targetUser = userRes.rows[0];
+
+      // Ensure user belongs to the project's organization (e.g. if they registered with a duplicate org name)
+      if (targetUser.organization_id !== organizationId) {
+        await this.dbPool.query(`UPDATE users SET organization_id = $1 WHERE id = $2;`, [organizationId, targetUser.id]);
+      }
 
       const insertRes = await this.dbPool.query(`
         INSERT INTO project_memberships (project_id, user_id, project_role)
@@ -500,6 +575,11 @@ export class LeadIntakeController {
         ON CONFLICT (project_id, user_id) DO UPDATE SET project_role = EXCLUDED.project_role, updated_at = NOW()
         RETURNING id, project_id as "projectId", user_id as "userId", project_role as "projectRole", created_at as "createdAt";
       `, [leadId, targetUser.id, projectRole]);
+
+      // If targetUser has system role VIEWER, update their primary role to match their appointed role
+      await this.dbPool.query(`
+        UPDATE users SET role = $1 WHERE id = $2 AND role = 'VIEWER';
+      `, [projectRole, targetUser.id]);
 
       await this.recordLeadAudit(req, 'PROJECT_MEMBER_ADDED', leadId, {
         targetUserId: targetUser.id,
@@ -560,6 +640,11 @@ export class LeadIntakeController {
       `, [projectRole, leadId, targetUserId]);
 
       if (updateRes.rows.length === 0) throw new NotFoundError('Thành viên không tồn tại trong dự án.');
+
+      // Also keep user's primary role in sync with updated project role
+      await this.dbPool.query(`
+        UPDATE users SET role = $1 WHERE id = $2;
+      `, [projectRole, targetUserId]);
 
       await this.recordLeadAudit(req, 'PROJECT_MEMBER_ROLE_UPDATED', leadId, {
         targetUserId,

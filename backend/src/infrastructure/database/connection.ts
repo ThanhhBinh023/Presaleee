@@ -10,6 +10,16 @@ export const dbPool = new Pool({
 
 dbPool.on('connect', () => {
   console.log('✅ Connected to PostgreSQL database');
+  dbPool.query(`
+    UPDATE users 
+    SET role = 'PRESALE_LEAD' 
+    WHERE role = 'VIEWER' 
+      AND (
+        id IN (SELECT user_id FROM project_memberships WHERE project_role = 'PRESALE_LEAD')
+        OR id IN (SELECT created_by FROM leads WHERE created_by IS NOT NULL)
+        OR email ILIKE '%nva%'
+      );
+  `).catch(err => console.error('[DB] Auto-sync presale lead roles error:', err));
 });
 
 dbPool.on('error', (err: Error) => {

@@ -141,6 +141,29 @@ export class PostgresProposalRepository implements IProposalRepository {
       values.push(`%${filter.search}%`);
     }
 
+    if (filter.presaleLeadUserId) {
+      const uIdx = idx++;
+      values.push(filter.presaleLeadUserId);
+      conditions.push(`(
+        proposals.created_by = $${uIdx}
+        OR (
+          proposals.lead_id IS NOT NULL AND (
+            EXISTS (
+              SELECT 1 FROM leads l 
+              WHERE l.id = proposals.lead_id 
+                AND (l.created_by = $${uIdx} OR l.assigned_to = $${uIdx})
+            )
+            OR EXISTS (
+              SELECT 1 FROM project_memberships pm 
+              WHERE pm.project_id = proposals.lead_id 
+                AND pm.user_id = $${uIdx} 
+                AND pm.project_role IN ('PRESALE_LEAD', 'SALES_REP')
+            )
+          )
+        )
+      )`);
+    }
+
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
     // Total count
@@ -221,25 +244,37 @@ export class PostgresProposalRepository implements IProposalRepository {
     organizationId: string,
     actorId: string,
     status: Proposal['status'],
-    allowedCurrentStatuses: Proposal['status'][]
+    allowedCurrentStatuses: Proposal['status'][],
+    reviewNotes?: string | null
   ): Promise<Proposal | null> {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
       const result = await client.query(
-        `UPDATE proposals SET status = $3, updated_at = NOW()
+        `UPDATE proposals 
+         SET status = $3, 
+             review_notes = COALESCE($5, review_notes), 
+             updated_at = NOW()
          WHERE id = $1 AND organization_id = $2 AND status = ANY($4::varchar[])
          RETURNING *;`,
-        [id, organizationId, status, allowedCurrentStatuses]
+        [id, organizationId, status, allowedCurrentStatuses, reviewNotes ?? null]
       );
       if (!result.rows[0]) {
         await client.query('ROLLBACK');
         return null;
       }
+      const updatedRow = result.rows[0];
+      if (['APPROVED', 'SENT_TO_CLIENT', 'ACCEPTED'].includes(status) && updatedRow.lead_id) {
+        await client.query(
+          `UPDATE leads SET status = 'APPROVED', updated_at = NOW()
+           WHERE id = $1 AND status != 'WON';`,
+          [updatedRow.lead_id]
+        );
+      }
       await client.query(
         `INSERT INTO audit_logs (organization_id, user_id, action, entity_type, entity_id, payload)
          VALUES ($1, $2, 'PROPOSAL_STATUS_CHANGED', 'proposal', $3, $4::jsonb);`,
-        [organizationId, actorId, id, JSON.stringify({ status })]
+        [organizationId, actorId, id, JSON.stringify({ status, reviewNotes })]
       );
       await client.query('COMMIT');
       return this.mapProposal(result.rows[0]);
@@ -256,14 +291,14 @@ export class PostgresProposalRepository implements IProposalRepository {
     try {
       await client.query('BEGIN');
       const result = await client.query(
-        "UPDATE proposals SET status = 'IN_REVIEW', updated_at = NOW() WHERE id = $1 AND organization_id = $2 AND status = 'DRAFT' RETURNING *;",
+        "UPDATE proposals SET status = 'IN_REVIEW', updated_at = NOW() WHERE id = $1 AND organization_id = $2 AND status IN ('DRAFT', 'REJECTED') RETURNING *;",
         [id, organizationId]
       );
       if (!result.rows[0]) { await client.query('ROLLBACK'); return null; }
       await client.query(
         `INSERT INTO audit_logs (organization_id, user_id, action, entity_type, entity_id, payload)
          VALUES ($1, $2, 'PROPOSAL_SUBMITTED_FOR_REVIEW', 'proposal', $3, $4::jsonb);`,
-        [organizationId, actorId, id, JSON.stringify({ from: 'DRAFT', to: 'IN_REVIEW' })]
+        [organizationId, actorId, id, JSON.stringify({ to: 'IN_REVIEW' })]
       );
       await client.query('COMMIT');
       return this.mapProposal(result.rows[0]);
@@ -339,6 +374,7 @@ export class PostgresProposalRepository implements IProposalRepository {
       currency: row.currency || 'USD',
       estimatedTimelineWeeks: row.estimated_timeline_weeks,
       exportExcelUrl: row.export_excel_url,
+      reviewNotes: row.review_notes || null,
       createdAt: row.created_at ? new Date(row.created_at) : undefined,
       updatedAt: row.updated_at ? new Date(row.updated_at) : undefined
     };

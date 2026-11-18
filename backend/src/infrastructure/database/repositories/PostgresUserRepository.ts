@@ -58,12 +58,21 @@ export class PostgresUserRepository implements IUserRepository {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
-      const organizationResult = await client.query<OrganizationRow>(
-        `INSERT INTO organizations (name, domain, plan) VALUES ($1, $2, 'FREE')
-         RETURNING id, name, domain, plan, created_at;`,
-        [input.organizationName, input.organizationDomain]
+      const existingOrg = await client.query<OrganizationRow>(
+        `SELECT id, name, domain, plan, created_at FROM organizations WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) LIMIT 1;`,
+        [input.organizationName]
       );
-      const organization = mapOrganization(organizationResult.rows[0]);
+      let organization: Organization;
+      if (existingOrg.rows.length > 0) {
+        organization = mapOrganization(existingOrg.rows[0]);
+      } else {
+        const organizationResult = await client.query<OrganizationRow>(
+          `INSERT INTO organizations (name, domain, plan) VALUES ($1, $2, 'FREE')
+           RETURNING id, name, domain, plan, created_at;`,
+          [input.organizationName, input.organizationDomain]
+        );
+        organization = mapOrganization(organizationResult.rows[0]);
+      }
       const userResult = await client.query<UserRow>(
         `INSERT INTO users (organization_id, email, full_name, role, status, password_hash)
          VALUES ($1, $2, $3, 'VIEWER', 'ACTIVE', $4)

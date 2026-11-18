@@ -228,7 +228,8 @@ export function createContainer(): ServiceContainer {
     exportProposalToPdfUseCase,
     submitProposalForReviewUseCase,
     generateProposalFromLeadUseCase,
-    generateUIDesignBriefUseCase
+    generateUIDesignBriefUseCase,
+    llmGateway
   );
   const leadIntakeController = new LeadIntakeController(
     analyzeLeadIntakeUseCase,
@@ -272,7 +273,8 @@ export function createContainer(): ServiceContainer {
     new GetMeetingUseCase(meetingRepository),
     new SaveMeetingTranscriptUseCase(meetingRepository),
     new AnalyzeMeetingUseCase(meetingRepository, leadRepository, llmGateway),
-    new UpdateMeetingStatusUseCase(meetingRepository)
+    new UpdateMeetingStatusUseCase(meetingRepository),
+    dbPool
   );
   const getPortalProposalUseCase = new GetPortalProposalUseCase(proposalRepository);
   const portalController = new PortalController(

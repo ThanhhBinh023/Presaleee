@@ -15,6 +15,7 @@ export interface UpdateProposalDTO {
   currency?: string;
   estimatedTimelineWeeks?: number | null;
   exportExcelUrl?: string | null;
+  reviewNotes?: string | null;
 }
 
 export class UpdateProposalUseCase {
@@ -58,18 +59,25 @@ export class UpdateProposalUseCase {
     if (dto.status !== undefined && Object.keys(updates).length > 0) {
       throw new ValidationError('Update proposal metadata and status in separate requests.');
     }
-    if (Object.keys(updates).length > 0 && existing.status !== 'DRAFT') {
-      throw new ConflictError('Only a DRAFT proposal can be edited.');
+    if (Object.keys(updates).length > 0 && !['DRAFT', 'REJECTED', 'IN_REVIEW'].includes(existing.status)) {
+      if (!['ADMIN', 'PRESALE_LEAD'].includes(dto.actorRole)) {
+        throw new ForbiddenError('Dự án đã được phê duyệt hoàn thành. Ngoại trừ Trưởng dự án (Presale Lead), không có vai trò nào được phép điều chỉnh.');
+      }
     }
     if (dto.status !== undefined) {
       const privilegedTransitions: Proposal['status'][] = ['APPROVED', 'REJECTED', 'SENT_TO_CLIENT', 'ACCEPTED'];
-      if (privilegedTransitions.includes(dto.status) && !['ADMIN', 'PRESALE_LEAD'].includes(dto.actorRole)) {
-        if (existing.createdBy !== dto.actorId) {
-          throw new ForbiddenError('Your role cannot approve, reject, or send this proposal.');
+      if (privilegedTransitions.includes(dto.status)) {
+        if (dto.actorRole === 'SALES_REP') {
+          throw new ForbiddenError('Đại diện kinh doanh (SALES_REP) không có thẩm quyền phê duyệt hồ sơ đề xuất. Quyền này thuộc về Trưởng dự án (PRESALE_LEAD).');
+        }
+        if (!['ADMIN', 'PRESALE_LEAD'].includes(dto.actorRole)) {
+          if (existing.createdBy !== dto.actorId) {
+            throw new ForbiddenError('Chỉ Trưởng dự án (PRESALE_LEAD) mới có quyền phê duyệt hoặc từ chối hồ sơ đề xuất.');
+          }
         }
       }
       const transitions: Record<Proposal['status'], Proposal['status'][]> = {
-        DRAFT: ['IN_REVIEW', 'APPROVED', 'REJECTED'],
+        DRAFT: ['IN_REVIEW'],
         IN_REVIEW: ['DRAFT', 'APPROVED', 'REJECTED'],
         APPROVED: ['IN_REVIEW', 'SENT_TO_CLIENT', 'REJECTED', 'DRAFT'],
         SENT_TO_CLIENT: ['ACCEPTED', 'REJECTED', 'APPROVED'],
@@ -77,11 +85,11 @@ export class UpdateProposalUseCase {
         REJECTED: ['DRAFT', 'IN_REVIEW']
       };
       if (dto.status !== existing.status && !transitions[existing.status].includes(dto.status)) {
-        throw new ConflictError(`Proposal cannot transition from ${existing.status} to ${dto.status}.`);
+        throw new ConflictError(`Proposal cannot transition from ${existing.status} to ${dto.status}. Hồ sơ cần được Submit for Review trước khi Presale Lead phê duyệt.`);
       }
       if (dto.status !== existing.status) {
         const updatedStatus = await this.proposalRepo.updateStatus(
-          proposalId, dto.organizationId, dto.actorId, dto.status, [existing.status]
+          proposalId, dto.organizationId, dto.actorId, dto.status, [existing.status], dto.reviewNotes
         );
         if (!updatedStatus) throw new ConflictError('Proposal status changed concurrently. Reload and retry.');
       }

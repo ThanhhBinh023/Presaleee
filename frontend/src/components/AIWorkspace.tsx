@@ -37,7 +37,9 @@ import {
   Check,
   Search,
   Plus,
-  Building2
+  Building2,
+  XCircle,
+  Send
 } from 'lucide-react';
 import { navigateTo } from '../navigation';
 import { ClientPortalModal } from './ClientPortalModal';
@@ -47,7 +49,7 @@ import { ProposalStudioTab } from './ProposalStudioTab';
 import { useToast } from './common/Toast';
 import { portalStaffService } from '../services/portalService';
 import type { PortalSessionDetail, PortalMaterialDetail } from '../types/portal';
-import { fetchProposalByLead, updateProposalLifecycle } from '../services/proposalService';
+import { fetchProposalByLead, updateProposalLifecycle, submitProposalForReview } from '../services/proposalService';
 import type { ProposalItem } from '../services/proposalService';
 import { formatDateTime } from '../utils/format';
 import type { UserRole } from '../types/auth';
@@ -175,6 +177,8 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
   }, [selectedProject, user, isOrgAdmin, isAdminInvited]);
 
   const isProjectLeader = !isOrgAdmin && effectiveProjectRole === 'PRESALE_LEAD';
+  const isSalesRep = !isOrgAdmin && effectiveProjectRole === 'SALES_REP';
+  const isPresaleConsultant = !isOrgAdmin && effectiveProjectRole === 'PRESALE_CONSULTANT';
   const isProjectViewer = isOrgAdmin || effectiveProjectRole === 'VIEWER';
   const isViewer = isProjectViewer;
 
@@ -190,6 +194,10 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
   const [realSessions, setRealSessions] = useState<PortalSessionDetail[]>([]);
   const [realMaterials, setRealMaterials] = useState<PortalMaterialDetail[]>([]);
   const [isLoadingIntelligence, setIsLoadingIntelligence] = useState<boolean>(false);
+
+  // Completion check: Once a proposal/deal is approved, ONLY Presale Lead can edit
+  const isDealCompleted = selectedProject?.status === 'APPROVED' || selectedProject?.status === 'WON' || realProposal?.status === 'APPROVED' || realProposal?.status === 'SENT_TO_CLIENT';
+  const canEditLead = !isViewer && !isSalesRep && !isPresaleConsultant && (!isDealCompleted || isProjectLeader);
 
   useEffect(() => {
     if (!selectedProjectId) {
@@ -365,13 +373,53 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
     await handleDeleteLeadById(selectedProject.id, selectedProject.title);
   };
 
+  const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
+  const [rejectionFeedback, setRejectionFeedback] = useState('');
+  const [isRejecting, setIsRejecting] = useState(false);
+
+  // Handle Submit Proposal for Review
+  const handleSubmitProposalForReview = async () => {
+    if (!realProposal?.id) return;
+    try {
+      const updated = await submitProposalForReview(realProposal.id);
+      setRealProposal(prev => prev ? { ...prev, status: updated.status } : prev);
+      toast.success('Đã gửi hồ sơ Proposal để Presale Lead phê duyệt (IN_REVIEW)!', 'Gửi duyệt');
+    } catch (err: any) {
+      toast.error(`Lỗi gửi duyệt: ${err.message}`, 'Lỗi');
+    }
+  };
+
+  // Handle Reject Proposal (Presale Lead with feedback)
+  const handleConfirmRejectProposal = async () => {
+    if (!realProposal?.id) return;
+    if (!rejectionFeedback.trim()) {
+      toast.warning('Vui lòng nhập lý do từ chối hoặc yêu cầu chỉnh sửa.', 'Yêu cầu feedback');
+      return;
+    }
+    try {
+      setIsRejecting(true);
+      const updated = await updateProposalLifecycle(realProposal.id, 'REJECTED', rejectionFeedback.trim());
+      setRealProposal(prev => prev ? { ...prev, status: updated.status, reviewNotes: rejectionFeedback.trim() } : prev);
+      setIsRejectModalOpen(false);
+      setRejectionFeedback('');
+      toast.warning('Đã từ chối Proposal và gửi phản hồi yêu cầu đội ngũ chỉnh sửa lại.', 'Từ Chối Proposal');
+    } catch (err: any) {
+      toast.error(`Lỗi từ chối: ${err.message}`, 'Lỗi');
+    } finally {
+      setIsRejecting(false);
+    }
+  };
+
   // Handle Approve Proposal (PBAC: Presale Lead)
   const handleApproveProposal = async () => {
+    if (!realProposal?.id) return;
+    if (realProposal.status !== 'IN_REVIEW') {
+      toast.warning('Hồ sơ Proposal đang ở trạng thái DRAFT. Đội ngũ cần Submit for Review trước khi phê duyệt.', 'Cần Submit for Review');
+      return;
+    }
     try {
-      if (realProposal?.id) {
-        const updated = await updateProposalLifecycle(realProposal.id, 'APPROVED');
-        setRealProposal(prev => prev ? { ...prev, status: updated.status } : prev);
-      }
+      const updated = await updateProposalLifecycle(realProposal.id, 'APPROVED');
+      setRealProposal(prev => prev ? { ...prev, status: updated.status } : prev);
       toast.success('Đã phê duyệt hồ sơ Proposal (APPROVED)! Đề xuất sẵn sàng cấp phép lên Client Portal.', 'Phê Duyệt Proposal');
     } catch (err: any) {
       toast.error(`Lỗi phê duyệt: ${err.message}`, 'Lỗi');
@@ -446,11 +494,13 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold shadow-xs cursor-pointer transition-colors ${
                   isProjectLeader 
                     ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300' 
+                    : isSalesRep
+                    ? 'bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200'
                     : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
                 }`}
-                title="Quản lý thành viên và phân quyền trong dự án này (PBAC)"
+                title={isProjectLeader ? "Quản lý thành viên và phân quyền trong dự án này (PBAC)" : "Xem danh sách thành viên phụ trách deal"}
               >
-                <Users className={`w-3.5 h-3.5 ${isProjectLeader ? 'text-amber-700' : 'text-slate-600'}`} />
+                <Users className={`w-3.5 h-3.5 ${isProjectLeader ? 'text-amber-700' : isSalesRep ? 'text-indigo-600' : 'text-slate-600'}`} />
                 <span>{isProjectLeader ? 'Quản trị thành viên' : 'Thành viên deal'} ({selectedProject.projectMembers?.length || 1})</span>
               </button>
             )}
@@ -557,11 +607,17 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                 <div className="flex items-center gap-3 shrink-0">
                   <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full border-4 border-brand-500 flex items-center justify-center font-mono font-bold text-xs text-brand-700">
-                      {selectedProject.status === 'QUALIFIED' ? '90%' : '50%'}
+                      {selectedProject.status === 'APPROVED' || selectedProject.status === 'WON' || realProposal?.status === 'APPROVED' || realProposal?.status === 'SENT_TO_CLIENT'
+                        ? '100%'
+                        : selectedProject.status === 'QUALIFIED' ? '90%' : '50%'}
                     </div>
                     <div className="text-xs">
                       <div className="font-bold text-slate-800">Pipeline Status</div>
-                      <div className="text-[11px] text-slate-400 font-mono">{selectedProject.status}</div>
+                      <div className="text-[11px] text-slate-400 font-mono">
+                        {selectedProject.status === 'APPROVED' || selectedProject.status === 'WON' || realProposal?.status === 'APPROVED' || realProposal?.status === 'SENT_TO_CLIENT'
+                          ? 'COMPLETE'
+                          : selectedProject.status}
+                      </div>
                     </div>
                   </div>
 
@@ -605,7 +661,7 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                 })}
               </div>
 
-              {/* Direct Proposal Approval for Presale Lead (Image 2) */}
+              {/* Direct Proposal Approval for Presale Lead */}
               {selectedProject && isProjectLeader && (
                 <div className="flex items-center gap-2 shrink-0">
                   {realProposal?.status === 'APPROVED' ? (
@@ -623,15 +679,83 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                         <span>Client Portal</span>
                       </button>
                     </div>
+                  ) : realProposal?.status === 'IN_REVIEW' ? (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleApproveProposal}
+                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
+                        title="Trưởng dự án phê duyệt đề xuất (APPROVED)"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Phê Duyệt Proposal</span>
+                      </button>
+                      <button
+                        onClick={() => setIsRejectModalOpen(true)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
+                        title="Từ chối đề xuất và yêu cầu chỉnh sửa"
+                      >
+                        <XCircle className="w-3.5 h-3.5" />
+                        <span>Từ Chối (Yêu cầu sửa)</span>
+                      </button>
+                    </div>
+                  ) : realProposal?.status === 'REJECTED' ? (
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-50 text-rose-800 border border-rose-200 text-xs font-semibold">
+                        <XCircle className="w-3.5 h-3.5 text-rose-600" />
+                        <span>Đã Từ Chối (Chờ sửa lại)</span>
+                      </span>
+                      <button
+                        onClick={handleSubmitProposalForReview}
+                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        <span>Gửi Duyệt Lại</span>
+                      </button>
+                    </div>
                   ) : (
-                    <button
-                      onClick={handleApproveProposal}
-                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
-                      title="Trưởng dự án phê duyệt đề xuất (APPROVED)"
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleSubmitProposalForReview}
+                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
+                        title="Gửi hồ sơ lên Presale Lead để phê duyệt (Submit for Review)"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        <span>Submit for Review</span>
+                      </button>
+                      <span className="text-[11px] text-amber-700 font-mono hidden sm:inline" title="Hồ sơ đang ở trạng thái DRAFT">
+                        (Cần Submit để Lead duyệt)
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Proposal Tracking & Client Portal initiation for Sales Rep */}
+              {selectedProject && isSalesRep && (
+                <div className="flex items-center gap-2 shrink-0">
+                  {realProposal?.status === 'APPROVED' || realProposal?.status === 'SENT_TO_CLIENT' ? (
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-300 text-xs font-semibold">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Proposal Đã Phê Duyệt</span>
+                      </span>
+                      <button
+                        onClick={() => setPortalModalOpen(true)}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
+                        title="Khởi tạo Client Portal tương tác với khách hàng"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Khởi tạo Client Portal</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <span 
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 text-amber-800 border border-amber-200 text-xs font-semibold"
+                      title="Đang đợi Trưởng dự án (Presale Lead) duyệt Proposal trước khi bàn giao Client Portal"
                     >
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>Phê Duyệt Proposal</span>
-                    </button>
+                      <Clock className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Chờ Presale Lead phê duyệt</span>
+                    </span>
                   )}
                 </div>
               )}
@@ -703,7 +827,7 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                     </span>
                   ) : (
                     <>
-                      {selectedProject && (
+                      {selectedProject && !isPresaleConsultant && (
                         <button
                           onClick={handleQualifyActiveLead}
                           disabled={isQualifying}
@@ -799,8 +923,21 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                       <span className="px-3 py-1 rounded-full text-xs font-mono font-bold bg-emerald-50 text-brand-700 border border-brand-200">
                         Lead Status: {selectedProject.status}
                       </span>
+                      {/* Sales Rep indicator */}
+                      {isSalesRep && (
+                        <span className="px-2.5 py-1 rounded-full text-xs font-mono font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200" title="Đại diện kinh doanh (Sales Rep) chỉ theo dõi thông tin tổng quan">
+                          Sales Rep (Chỉ xem)
+                        </span>
+                      )}
+                      {/* Locked for non-leader when project completed */}
+                      {!isProjectLeader && isDealCompleted && !isSalesRep && !isViewer && (
+                        <span className="px-2.5 py-1 rounded-full text-xs font-mono font-semibold bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-1" title="Dự án đã được duyệt hoàn thành. Chỉ Presale Lead mới có quyền điều chỉnh.">
+                          <Lock className="w-3 h-3 text-amber-600" />
+                          <span>Đã duyệt (Khóa)</span>
+                        </span>
+                      )}
                       {/* Update button placed directly in the Lead Intake card */}
-                      {!isViewer && (
+                      {canEditLead && (
                         <button
                           onClick={openEditModal}
                           className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-mono font-semibold shadow-2xs transition-all cursor-pointer"
@@ -820,7 +957,7 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                           <h3 className="text-sm font-bold text-slate-900 font-mono">
                             Raw Client Intake Extract
                           </h3>
-                          {!isEditingRaw && !isViewer && (
+                          {!isEditingRaw && canEditLead && (
                             <button
                               onClick={() => {
                                 setEditedRawContent(selectedProject.rawRfpContent || '');
@@ -957,14 +1094,16 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                           <div className="text-xs font-mono text-slate-500">
                             Dự án này chưa được chạy thẩm định Qualification Engine (BANT).
                           </div>
-                          <button
-                            onClick={handleQualifyActiveLead}
-                            disabled={isQualifying}
-                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-bold transition-all shadow-xs"
-                          >
-                            <Zap className="w-3.5 h-3.5" />
-                            <span>{isQualifying ? 'Đang thẩm định...' : 'Chạy AI Thẩm Định BANT'}</span>
-                          </button>
+                          {!isPresaleConsultant && (
+                            <button
+                              onClick={handleQualifyActiveLead}
+                              disabled={isQualifying}
+                              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-bold transition-all shadow-xs"
+                            >
+                              <Zap className="w-3.5 h-3.5" />
+                              <span>{isQualifying ? 'Đang thẩm định...' : 'Chạy AI Thẩm Định BANT'}</span>
+                            </button>
+                          )}
                         </div>
                       )}
 
@@ -1014,6 +1153,7 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                 activeLeadId={selectedProjectId}
                 currentUserProjectRole={effectiveProjectRole}
                 isProjectLeader={isProjectLeader}
+                isDealCompleted={isDealCompleted}
                 onProceedToProposals={() => setActiveSubnav('Proposal Builder v2.4')} 
               />
             )
@@ -1912,6 +2052,7 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                     const industry = meta.clientIndustry || 'Chung';
                     const budget = meta.budgetUsd ? `$${Number(meta.budgetUsd).toLocaleString()} USD` : null;
                     const hasBant = p.bantScore !== null && p.bantScore !== undefined;
+                    const canDeleteP = !isOrgAdmin && (p.myRoleInProject === 'PRESALE_LEAD' || p.createdBy === user?.id || p.assignedTo === user?.id);
 
                     return (
                       <div
@@ -1939,17 +2080,19 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                                   Đang chọn
                                 </span>
                               )}
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void handleDeleteLeadById(p.id, p.title);
-                                }}
-                                title="Xóa dự án này"
-                                className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
+                              {canDeleteP && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void handleDeleteLeadById(p.id, p.title);
+                                  }}
+                                  title="Xóa dự án này (Chỉ dành cho Presale Lead)"
+                                  className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
                             </div>
                           </div>
 
@@ -2014,6 +2157,59 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* Rejection Feedback Modal for Presale Lead */}
+      {isRejectModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2 text-rose-600 font-bold text-sm">
+                <XCircle className="w-5 h-5 text-rose-600" />
+                <span>Từ Chối Proposal &amp; Yêu Cầu Chỉnh Sửa</span>
+              </div>
+              <button 
+                onClick={() => setIsRejectModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Vui lòng cung cấp phản hồi (Feedback) chi tiết cho đội ngũ tư vấn (Presale Consultant). Nội dung này sẽ được ghim vào đầu Proposal để đội ngũ nắm bắt và sửa lại các sheet.
+            </p>
+
+            <div>
+              <label className="text-xs font-mono font-bold text-slate-700 block mb-1">
+                LÝ DO TỪ CHỐI &amp; YÊU CẦU CHỈNH SỬA:
+              </label>
+              <textarea
+                rows={4}
+                value={rejectionFeedback}
+                onChange={(e) => setRejectionFeedback(e.target.value)}
+                placeholder="Ví dụ: Cần rà soát lại WBS phân hệ thanh toán, bổ sung NFRs về SLA 99.999% và điều chỉnh ngân sách rate cards..."
+                className="w-full text-xs font-sans p-3 rounded-xl border border-slate-200 focus:outline-none focus:border-rose-500 bg-slate-50/50"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                onClick={() => setIsRejectModalOpen(false)}
+                className="px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-xs font-semibold text-slate-600 cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={handleConfirmRejectProposal}
+                disabled={isRejecting || !rejectionFeedback.trim()}
+                className="px-4 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-xs font-bold shadow-xs cursor-pointer"
+              >
+                {isRejecting ? 'Đang gửi...' : 'Xác Nhận Từ Chối'}
+              </button>
+            </div>
           </div>
         </div>
       )}

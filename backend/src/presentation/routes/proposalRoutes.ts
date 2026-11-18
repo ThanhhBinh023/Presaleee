@@ -14,6 +14,7 @@ export function createProposalRouter(controller: ProposalController): Router {
   router.post('/:id/generate', requireNotViewer, controller.generateAll);
   router.post('/:id/sheets/:sheetName/generate', requireNotViewer, controller.generateSheet);
   router.post('/:id/sections/:sectionName/regenerate', requireNotViewer, controller.regenerateSection);
+  router.post('/:id/submit-for-review', requireNotViewer, controller.submitForReview);
   router.post('/:id/submit-review', requireNotViewer, controller.submitForReview);
 
   // Generate proposal dynamically from Lead Context using AI RAG
@@ -30,6 +31,11 @@ export function createProposalRouter(controller: ProposalController): Router {
 
   // Generate AI UI Design Brief
   router.post('/:id/ui-brief', requireNotViewer, controller.generateUIDesignBrief);
+
+  // Presale Consultant AI Copilot & 10-Sheet Self-Assessment
+  router.post('/:id/ai-assist', requireNotViewer, controller.aiAssist);
+  router.post('/:id/self-assess', requireNotViewer, controller.selfAssess10Sheets);
+  router.get('/:id/self-assess', controller.selfAssess10Sheets);
 
   // Proposal CRUD
   router.post('/', requireNotViewer, controller.create);

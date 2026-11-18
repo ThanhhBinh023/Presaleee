@@ -29,6 +29,7 @@ export interface Proposal {
   currency?: string;
   estimatedTimelineWeeks?: number | null;
   exportExcelUrl?: string | null;
+  reviewNotes?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }

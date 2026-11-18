@@ -45,8 +45,8 @@ export const LeadsDirectory: React.FC<LeadsDirectoryProps> = ({ onBackToOverview
   const [page, setPage] = useState(1);
   const [pipelineTab, setPipelineTab] = useState<'all' | 'in_process' | 'complete'>('all');
 
-  const IN_PROCESS_STATUSES: LeadStatus[] = ['NEW', 'IN_REVIEW', 'QUALIFYING', 'QUALIFIED', 'PROPOSAL_DRAFTING', 'APPROVED'];
-  const COMPLETE_STATUSES: LeadStatus[] = ['WON', 'LOST', 'REJECTED'];
+  const IN_PROCESS_STATUSES: LeadStatus[] = ['NEW', 'IN_REVIEW', 'QUALIFYING', 'QUALIFIED', 'PROPOSAL_DRAFTING'];
+  const COMPLETE_STATUSES: LeadStatus[] = ['APPROVED', 'WON', 'LOST', 'REJECTED'];
 
   const [detail, setDetail] = useState<LeadRecord | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);

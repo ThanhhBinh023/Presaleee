@@ -1,6 +1,6 @@
 import { IProposalRepository } from '../../domain/repositories/IProposalRepository.js';
 import { ProposalSheet } from '../../domain/entities/Proposal.js';
-import { ConflictError, NotFoundError, ValidationError } from '../../domain/errors/AppError.js';
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../../domain/errors/AppError.js';
 import { STANDARD_PROPOSAL_SHEETS } from '../../domain/entities/Proposal.js';
 import { requiredUuid } from '../services/RequestValidation.js';
 
@@ -10,6 +10,8 @@ export interface UpdateProposalSheetDTO {
   sheetName: string;
   sheetData: Record<string, any>;
   aiGenerated?: boolean;
+  actorRole?: string;
+  actorId?: string;
 }
 
 export class UpdateProposalSheetUseCase {
@@ -34,7 +36,14 @@ export class UpdateProposalSheetUseCase {
     const proposalId = requiredUuid(dto.proposalId, 'proposalId');
     const proposal = await this.proposalRepo.findById(proposalId, dto.organizationId);
     if (!proposal) throw new NotFoundError('Proposal not found.');
-    if (proposal.status !== 'DRAFT') throw new ConflictError('Only a DRAFT proposal can be edited.');
+    if (dto.actorRole === 'SALES_REP') {
+      throw new ForbiddenError('Đại diện kinh doanh (SALES_REP) chỉ có quyền xem đề xuất (Proposal), không có quyền chỉnh sửa nội dung Proposal.');
+    }
+    if (!['DRAFT', 'REJECTED', 'IN_REVIEW'].includes(proposal.status)) {
+      if (!['ADMIN', 'PRESALE_LEAD'].includes(dto.actorRole || '')) {
+        throw new ForbiddenError('Dự án đã được phê duyệt hoàn thành. Ngoại trừ Trưởng dự án (Presale Lead), không có vai trò nào được phép điều chỉnh.');
+      }
+    }
 
     const sheetDefinition = STANDARD_PROPOSAL_SHEETS.find(sheet => sheet.name === dto.sheetName.trim());
     if (!sheetDefinition) throw new ValidationError('Unknown proposal sheet name.');

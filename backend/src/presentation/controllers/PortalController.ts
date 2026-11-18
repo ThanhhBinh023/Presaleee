@@ -132,7 +132,12 @@ export class PortalController {
   listProposalSessions = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       if (!req.auth?.organizationId) throw new ForbiddenError('Authenticated organization is required.');
-      const sessions = await this.listSessionsUseCase.execute(routeParam(req, 'proposalId'), req.auth.organizationId);
+      const sessions = await this.listSessionsUseCase.execute(
+        routeParam(req, 'proposalId'),
+        req.auth.organizationId,
+        req.auth.sub,
+        req.auth.role
+      );
       res.status(200).json({ success: true, data: sessions, meta: { total: sessions.length } });
     } catch (error) { next(error); }
   };
@@ -140,7 +145,12 @@ export class PortalController {
   listProposalMaterials = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       if (!req.auth?.organizationId) throw new ForbiddenError('Authenticated organization is required.');
-      const materials = await this.listMaterialsStaffUseCase.execute(routeParam(req, 'proposalId'), req.auth.organizationId);
+      const materials = await this.listMaterialsStaffUseCase.execute(
+        routeParam(req, 'proposalId'),
+        req.auth.organizationId,
+        req.auth.sub,
+        req.auth.role
+      );
       res.status(200).json({ success: true, data: materials, meta: { total: materials.length } });
     } catch (error) { next(error); }
   };

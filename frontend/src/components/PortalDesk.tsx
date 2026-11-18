@@ -24,10 +24,6 @@ function statusClass(status: ProposalStatus): string {
 export const PortalDesk: React.FC<PortalDeskProps> = ({ onBackToOverview, onLogout }) => {
   const { user, logout } = useAuth();
   const handleLogout = onLogout || logout;
-  // Backend kiểm tra role ngay trong use case (PORTAL_MANAGER_ROLES ở PortalUseCases) cho 3 thao tác:
-  // thu hồi phiên, thêm material, xóa material — danh sách đó là mọi role trừ VIEWER nên VIEWER nhận 403.
-  // Riêng POST /portal/sessions không kiểm tra role: VIEWER vẫn tạo được phiên chia sẻ (quyết định mở, chưa chốt sửa).
-  const canManage = user?.role !== 'VIEWER';
 
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
@@ -35,10 +31,12 @@ export const PortalDesk: React.FC<PortalDeskProps> = ({ onBackToOverview, onLogo
   const { proposals, meta, isLoading, error, reload } = useProposalDirectory({
     page,
     limit: 20,
-    search: search || undefined
+    search: search || undefined,
+    presaleLeadOnly: true
   });
 
   const [selected, setSelected] = useState<ProposalRecord | null>(null);
+  const canManage = user?.role === 'ADMIN' || user?.role === 'PRESALE_LEAD' || Boolean(selected);
   const [sessions, setSessions] = useState<PortalSessionDetail[]>([]);
   const [materials, setMaterials] = useState<PortalMaterialDetail[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
@@ -202,7 +200,7 @@ export const PortalDesk: React.FC<PortalDeskProps> = ({ onBackToOverview, onLogo
           <div>
             <h1 className="text-2xl font-bold tracking-tight">Client portal desk</h1>
             <p className="mt-1 text-sm text-slate-500">
-              Staff sessions and materials. First share of an APPROVED proposal requires ADMIN or PRESALE_LEAD and flips status to SENT_TO_CLIENT.
+              Quản lý phiên tương tác Client Portal và tài liệu đính kèm. Trưởng dự án (Presale Lead) phê duyệt nội dung và Đại diện kinh doanh (Sales Rep) khởi tạo phiên tương tác cho khách hàng.
             </p>
           </div>
           <div className="flex gap-2">
@@ -218,11 +216,6 @@ export const PortalDesk: React.FC<PortalDeskProps> = ({ onBackToOverview, onLogo
         {!user?.organizationId && (
           <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
             Your account needs an organization before portal APIs will accept requests.
-          </p>
-        )}
-        {!canManage && (
-          <p className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
-            VIEWER được phép tạo phiên chia sẻ (backend không chặn) nhưng thu hồi phiên và thêm/xóa material trả 403.
           </p>
         )}
 
@@ -285,7 +278,11 @@ export const PortalDesk: React.FC<PortalDeskProps> = ({ onBackToOverview, onLogo
                 {isLoading ? (
                   <tr><td className="px-3 py-6 text-slate-400" colSpan={2}>Loading…</td></tr>
                 ) : proposals.length === 0 ? (
-                  <tr><td className="px-3 py-6 text-slate-400" colSpan={2}>No proposals match these filters.</td></tr>
+                  <tr>
+                    <td className="px-3 py-6 text-slate-400 text-xs leading-relaxed" colSpan={2}>
+                      Không có đề xuất nào do bạn phụ trách. Trưởng dự án (PRESALE_LEAD) và Đại diện kinh doanh (SALES_REP) của dự án mới có quyền xem và quản trị phiên Client Portal tương tác với khách hàng.
+                    </td>
+                  </tr>
                 ) : (
                   proposals.map((proposal) => (
                     <tr

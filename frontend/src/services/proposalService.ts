@@ -35,6 +35,7 @@ export interface ProposalItem {
   currency: string;
   estimatedTimelineWeeks?: number | null;
   exportExcelUrl?: string | null;
+  reviewNotes?: string | null;
   createdAt: string;
   updatedAt: string;
   sheets: ProposalSheetItem[];
@@ -81,16 +82,69 @@ export async function updateProposalSheet(
 
 export async function updateProposalLifecycle(
   proposalId: string, 
-  status: 'DRAFT' | 'IN_REVIEW' | 'APPROVED' | 'SENT_TO_CLIENT' | 'ACCEPTED' | 'REJECTED'
+  status: 'DRAFT' | 'IN_REVIEW' | 'APPROVED' | 'SENT_TO_CLIENT' | 'ACCEPTED' | 'REJECTED',
+  reviewNotes?: string
 ): Promise<ProposalItem> {
   return await apiRequest<ProposalItem>(`${PREFIX}/${encodeURIComponent(proposalId)}/lifecycle`, {
     method: 'PATCH',
-    body: { status }
+    body: { status, reviewNotes }
+  });
+}
+
+export async function submitProposalForReview(proposalId: string): Promise<ProposalItem> {
+  return await apiRequest<ProposalItem>(`${PREFIX}/${encodeURIComponent(proposalId)}/submit-for-review`, {
+    method: 'POST'
   });
 }
 
 export async function generateProposalUIDesignBrief(proposalId: string): Promise<UIDesignBrief> {
   return await apiRequest<UIDesignBrief>(`${PREFIX}/${encodeURIComponent(proposalId)}/ui-brief`, {
+    method: 'POST',
+    timeoutMs: AI_TIMEOUT_MS
+  });
+}
+
+export interface SheetAssessmentItem {
+  sheetOrder: number;
+  sheetName: string;
+  score: number;
+  status: 'PASSED' | 'NEEDS_REVISION';
+  criteria: string;
+  findings: string[];
+  recommendations: string;
+}
+
+export interface SelfAssessmentResult {
+  proposalId: string;
+  proposalTitle: string;
+  overallScore: number;
+  rating: string;
+  assessedByRole: string;
+  evaluatedAt: string;
+  summary: string;
+  sheets: SheetAssessmentItem[];
+}
+
+export interface AIAssistResult {
+  reply: string;
+  suggestedText?: string;
+  sheetName?: string;
+  selectedText?: string;
+}
+
+export async function aiAssistProposal(
+  proposalId: string,
+  params: { prompt?: string; selectedText?: string; sheetName?: string; currentSheetData?: any }
+): Promise<AIAssistResult> {
+  return await apiRequest<AIAssistResult>(`${PREFIX}/${encodeURIComponent(proposalId)}/ai-assist`, {
+    method: 'POST',
+    body: params,
+    timeoutMs: AI_TIMEOUT_MS
+  });
+}
+
+export async function selfAssessProposal(proposalId: string): Promise<SelfAssessmentResult> {
+  return await apiRequest<SelfAssessmentResult>(`${PREFIX}/${encodeURIComponent(proposalId)}/self-assess`, {
     method: 'POST',
     timeoutMs: AI_TIMEOUT_MS
   });
@@ -109,6 +163,8 @@ export interface ProposalListQuery {
   limit?: number;
   status?: ProposalStatus;
   search?: string;
+  leadId?: string;
+  presaleLeadOnly?: boolean;
 }
 
 export interface CreateProposalInput {
@@ -124,6 +180,8 @@ function toQueryString(query: ProposalListQuery): string {
   if (query.limit !== undefined) params.set('limit', String(query.limit));
   if (query.status) params.set('status', query.status);
   if (query.search) params.set('search', query.search);
+  if (query.leadId) params.set('leadId', query.leadId);
+  if (query.presaleLeadOnly) params.set('presaleLeadOnly', 'true');
   const serialized = params.toString();
   return serialized ? `?${serialized}` : '';
 }

@@ -9,7 +9,7 @@ import { PortalSession } from '../../domain/entities/Portal.js';
 import { UserRole } from '../../domain/entities/AuthUser.js';
 import { ConflictError, ExternalServiceError, ForbiddenError, NotFoundError, ValidationError } from '../../domain/errors/AppError.js';
 
-const PORTAL_MANAGER_ROLES: readonly UserRole[] = ['ADMIN', 'PRESALE_LEAD', 'SALES_REP', 'PRESALE_CONSULTANT', 'SOLUTION_ARCHITECT'];
+const PORTAL_MANAGER_ROLES: readonly UserRole[] = ['ADMIN', 'PRESALE_LEAD', 'SALES_REP'];
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export class CreatePortalSessionUseCase {
@@ -19,7 +19,7 @@ export class CreatePortalSessionUseCase {
     proposalId: string; organizationId: string; userId: string; role: UserRole;
     clientEmail: unknown; clientName?: unknown; expiresInHours?: unknown;
   }): Promise<PortalSession & { accessToken: string }> {
-    if (!PORTAL_MANAGER_ROLES.includes(input.role)) throw new ForbiddenError('Your role cannot create client portal sessions.');
+    if (!PORTAL_MANAGER_ROLES.includes(input.role)) throw new ForbiddenError('Chỉ Trưởng dự án (PRESALE_LEAD) hoặc Đại diện kinh doanh (SALES_REP) mới có quyền tạo phiên Client Portal.');
     if (!UUID_PATTERN.test(input.proposalId)) {
       throw new ValidationError('proposalId must be a valid UUID.');
     }
@@ -38,6 +38,9 @@ export class CreatePortalSessionUseCase {
     if (!Number.isInteger(hours) || hours < 1 || hours > 720) throw new ValidationError('expiresInHours must be an integer from 1 to 720.');
     const proposal = await this.proposalRepository.findById(input.proposalId, input.organizationId);
     if (!proposal) throw new NotFoundError('Proposal not found.');
+    if (input.role !== 'ADMIN' && input.role !== 'PRESALE_LEAD' && input.role !== 'SALES_REP' && proposal.createdBy !== input.userId) {
+      throw new ForbiddenError('Chỉ Trưởng dự án (PRESALE_LEAD) hoặc Đại diện kinh doanh (SALES_REP) phụ trách hồ sơ đề xuất này mới có quyền tạo phiên Client Portal.');
+    }
     // The status gate (APPROVED / SENT_TO_CLIENT / ACCEPTED) lives in PostgresPortalRepository.createSession
     // and also flips APPROVED to SENT_TO_CLIENT. Sharing is a PORTAL_MANAGER_ROLES action.
     const accessToken = createOpaqueToken();
@@ -46,7 +49,7 @@ export class CreatePortalSessionUseCase {
       clientEmail: input.clientEmail.trim().toLowerCase(), clientName,
       tokenHash: hashToken(accessToken), expiresAt: new Date(Date.now() + hours * 60 * 60 * 1000).toISOString()
     });
-    if (!session) throw new ConflictError('Proposal status changed while creating the portal session. Reload and retry.');
+    if (!session) throw new ConflictError('Hồ sơ đề xuất (Proposal) phải được Trưởng dự án (PRESALE_LEAD) phê duyệt (APPROVED) trước khi khởi tạo Client Portal.');
     return { ...session, accessToken };
   }
 }
@@ -211,20 +214,26 @@ export class DeletePortalMaterialUseCase {
 
 export class ListProposalPortalSessionsUseCase {
   constructor(private readonly repository: IPortalRepository, private readonly proposalRepository: IProposalRepository) {}
-  async execute(proposalId: string, organizationId: string) {
+  async execute(proposalId: string, organizationId: string, actorId?: string, actorRole?: UserRole) {
     if (!UUID_PATTERN.test(proposalId)) throw new ValidationError('proposalId must be a valid UUID.');
     const proposal = await this.proposalRepository.findById(proposalId, organizationId);
     if (!proposal) throw new NotFoundError('Proposal not found.');
+    if (actorRole && actorRole !== 'ADMIN' && actorRole !== 'PRESALE_LEAD' && actorRole !== 'SALES_REP' && actorId && proposal.createdBy !== actorId) {
+      throw new ForbiddenError('Chỉ Trưởng dự án (PRESALE_LEAD) hoặc Đại diện kinh doanh (SALES_REP) mới có quyền xem các phiên Client Portal của đề xuất này.');
+    }
     return this.repository.listSessionsForProposal(proposalId, organizationId);
   }
 }
 
 export class ListProposalPortalMaterialsUseCase {
   constructor(private readonly repository: IPortalRepository, private readonly proposalRepository: IProposalRepository) {}
-  async execute(proposalId: string, organizationId: string) {
+  async execute(proposalId: string, organizationId: string, actorId?: string, actorRole?: UserRole) {
     if (!UUID_PATTERN.test(proposalId)) throw new ValidationError('proposalId must be a valid UUID.');
     const proposal = await this.proposalRepository.findById(proposalId, organizationId);
     if (!proposal) throw new NotFoundError('Proposal not found.');
+    if (actorRole && actorRole !== 'ADMIN' && actorRole !== 'PRESALE_LEAD' && actorRole !== 'SALES_REP' && actorId && proposal.createdBy !== actorId) {
+      throw new ForbiddenError('Chỉ Trưởng dự án (PRESALE_LEAD) hoặc Đại diện kinh doanh (SALES_REP) mới có quyền xem tài liệu Client Portal của đề xuất này.');
+    }
     return this.repository.listMaterialsForStaff(proposalId, organizationId);
   }
 }

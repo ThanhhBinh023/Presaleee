@@ -35,7 +35,34 @@ export class PostgresAuthRepository implements IAuthRepository {
        FROM users WHERE lower(email) = $1 LIMIT 1;`,
       [email]
     );
-    return result.rows[0] ? mapUser(result.rows[0]) : null;
+    if (!result.rows[0]) return null;
+    const row = result.rows[0];
+    if (row.role === 'VIEWER') {
+      try {
+        const roleCheck = await this.pool.query(`
+          SELECT pm.project_role 
+          FROM project_memberships pm 
+          WHERE pm.user_id = $1 AND pm.project_role != 'VIEWER'
+          ORDER BY (CASE WHEN pm.project_role = 'PRESALE_LEAD' THEN 1 ELSE 2 END) ASC
+          LIMIT 1;
+        `, [row.id]);
+        if (roleCheck.rows[0]?.project_role) {
+          row.role = roleCheck.rows[0].project_role;
+          await this.pool.query(`UPDATE users SET role = $1 WHERE id = $2;`, [row.role, row.id]);
+        } else {
+          const leadCheck = await this.pool.query(`
+            SELECT 1 FROM leads WHERE created_by = $1 LIMIT 1;
+          `, [row.id]);
+          if (leadCheck.rows.length > 0) {
+            row.role = 'PRESALE_LEAD';
+            await this.pool.query(`UPDATE users SET role = 'PRESALE_LEAD' WHERE id = $1;`, [row.id]);
+          }
+        }
+      } catch (syncErr) {
+        console.error('[PostgresAuthRepository.findUserByEmail] Role sync error:', syncErr);
+      }
+    }
+    return mapUser(row);
   }
 
   async findUserById(id: string): Promise<AuthUser | null> {
@@ -44,7 +71,34 @@ export class PostgresAuthRepository implements IAuthRepository {
        FROM users WHERE id = $1 LIMIT 1;`,
       [id]
     );
-    return result.rows[0] ? mapUser(result.rows[0]) : null;
+    if (!result.rows[0]) return null;
+    const row = result.rows[0];
+    if (row.role === 'VIEWER') {
+      try {
+        const roleCheck = await this.pool.query(`
+          SELECT pm.project_role 
+          FROM project_memberships pm 
+          WHERE pm.user_id = $1 AND pm.project_role != 'VIEWER'
+          ORDER BY (CASE WHEN pm.project_role = 'PRESALE_LEAD' THEN 1 ELSE 2 END) ASC
+          LIMIT 1;
+        `, [row.id]);
+        if (roleCheck.rows[0]?.project_role) {
+          row.role = roleCheck.rows[0].project_role;
+          await this.pool.query(`UPDATE users SET role = $1 WHERE id = $2;`, [row.role, row.id]);
+        } else {
+          const leadCheck = await this.pool.query(`
+            SELECT 1 FROM leads WHERE created_by = $1 LIMIT 1;
+          `, [row.id]);
+          if (leadCheck.rows.length > 0) {
+            row.role = 'PRESALE_LEAD';
+            await this.pool.query(`UPDATE users SET role = 'PRESALE_LEAD' WHERE id = $1;`, [row.id]);
+          }
+        }
+      } catch (syncErr) {
+        console.error('[PostgresAuthRepository.findUserById] Role sync error:', syncErr);
+      }
+    }
+    return mapUser(row);
   }
 
   async createRefreshToken(

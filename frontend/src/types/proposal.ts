@@ -9,12 +9,12 @@ export const PROPOSAL_STATUSES = [
 export type ProposalStatus = (typeof PROPOSAL_STATUSES)[number];
 
 export const PROPOSAL_TRANSITIONS: Record<ProposalStatus, readonly ProposalStatus[]> = {
-  DRAFT: ['IN_REVIEW', 'REJECTED'],
+  DRAFT: ['IN_REVIEW'],
   IN_REVIEW: ['DRAFT', 'APPROVED', 'REJECTED'],
   APPROVED: ['IN_REVIEW', 'SENT_TO_CLIENT', 'REJECTED'],
   SENT_TO_CLIENT: ['ACCEPTED', 'REJECTED'],
   ACCEPTED: [],
-  REJECTED: ['DRAFT']
+  REJECTED: ['DRAFT', 'IN_REVIEW']
 };
 
 export const PRIVILEGED_PROPOSAL_STATUSES: readonly ProposalStatus[] = [
@@ -62,6 +62,7 @@ export interface ProposalRecord {
   currency: string;
   estimatedTimelineWeeks: number | null;
   exportExcelUrl: string | null;
+  reviewNotes?: string | null;
   createdAt: string;
   updatedAt: string;
 }

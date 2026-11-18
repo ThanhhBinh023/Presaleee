@@ -21,7 +21,8 @@ const APPLIED_PROBES: Record<string, string> = {
   '007_client_portal': `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'portal_sessions') AS applied`,
   '008_reference_data_and_audit_indexes': `SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'uq_clients_org_company') AS applied`,
   '009_project_memberships': `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'project_memberships') AS applied`,
-  '010_seed_system_admin': `SELECT EXISTS (SELECT 1 FROM users WHERE email = 'admin@presaleee.io') AS applied`
+  '010_seed_system_admin': `SELECT EXISTS (SELECT 1 FROM users WHERE email = 'admin@presaleee.io') AS applied`,
+  '011_add_proposal_review_notes': `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'proposals' AND column_name = 'review_notes') AS applied`
 };
 
 async function runPendingMigrations(): Promise<void> {

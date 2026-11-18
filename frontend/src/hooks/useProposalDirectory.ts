@@ -5,7 +5,7 @@ import type { ListMeta } from '../types/auth';
 import type { ProposalRecord } from '../types/proposal';
 
 export function useProposalDirectory(query: ProposalListQuery = {}) {
-  const { page = 1, limit = 20, status, search } = query;
+  const { page = 1, limit = 20, status, search, leadId, presaleLeadOnly } = query;
   const [proposals, setProposals] = useState<ProposalRecord[]>([]);
   const [meta, setMeta] = useState<ListMeta | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -17,7 +17,7 @@ export function useProposalDirectory(query: ProposalListQuery = {}) {
     setIsLoading(true);
     setError(null);
     proposalService
-      .list({ page, limit, status, search })
+      .list({ page, limit, status, search, leadId, presaleLeadOnly })
       .then((result) => {
         if (cancelled) return;
         setProposals(result.proposals);
@@ -32,7 +32,7 @@ export function useProposalDirectory(query: ProposalListQuery = {}) {
     return () => {
       cancelled = true;
     };
-  }, [page, limit, status, search, reloadToken]);
+  }, [page, limit, status, search, leadId, presaleLeadOnly, reloadToken]);
 
   return {
     proposals,

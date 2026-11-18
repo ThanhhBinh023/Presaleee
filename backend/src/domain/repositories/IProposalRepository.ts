@@ -26,6 +26,7 @@ export interface UpdateProposalParams {
   currency?: string;
   estimatedTimelineWeeks?: number | null;
   exportExcelUrl?: string | null;
+  reviewNotes?: string | null;
 }
 
 export interface ProposalFilterParams {
@@ -35,6 +36,7 @@ export interface ProposalFilterParams {
   search?: string;
   limit?: number;
   offset?: number;
+  presaleLeadUserId?: string;
 }
 
 export interface IProposalRepository {
@@ -48,7 +50,8 @@ export interface IProposalRepository {
     organizationId: string,
     actorId: string,
     status: Proposal['status'],
-    allowedCurrentStatuses: Proposal['status'][]
+    allowedCurrentStatuses: Proposal['status'][],
+    reviewNotes?: string | null
   ): Promise<Proposal | null>;
   submitForReview(id: string, organizationId: string, actorId: string): Promise<Proposal | null>;
   updateSheet(

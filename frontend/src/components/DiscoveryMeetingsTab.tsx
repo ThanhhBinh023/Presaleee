@@ -35,13 +35,15 @@ interface DiscoveryMeetingsTabProps {
   activeLeadId?: string;
   currentUserProjectRole?: UserRole;
   isProjectLeader?: boolean;
+  isDealCompleted?: boolean;
 }
 
 export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({ 
   onProceedToProposals, 
   activeLeadId,
   currentUserProjectRole,
-  isProjectLeader 
+  isProjectLeader,
+  isDealCompleted
 }) => {
   const toast = useToast();
   const { user } = useAuth();
@@ -49,6 +51,9 @@ export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({
   const isViewer = currentUserProjectRole 
     ? currentUserProjectRole === 'VIEWER' 
     : (isProjectLeader ? false : user?.role === 'VIEWER');
+  const isSalesRep = currentUserProjectRole === 'SALES_REP' || (!currentUserProjectRole && user?.role === 'SALES_REP');
+  const canModifyMeeting = !isViewer && !isSalesRep && (!isDealCompleted || isProjectLeader);
+  const canCreateMeeting = canModifyMeeting;
   const [leads, setLeads] = useState<LeadItem[]>([]);
   const [selectedLeadId, setSelectedLeadId] = useState<string>('');
   const [meetings, setMeetings] = useState<Meeting[]>([]);
@@ -249,11 +254,23 @@ export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({
               </div>
             )}
 
-            {isViewer ? (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 text-slate-500 border border-slate-200 text-xs font-mono font-semibold">
-                <Lock className="w-3.5 h-3.5 text-slate-400" />
-                <span>Chỉ đọc</span>
-              </span>
+            {!canCreateMeeting ? (
+              isSalesRep ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-mono font-semibold" title="Đại diện kinh doanh (Sales Rep) chỉ theo dõi tiến độ cuộc họp, không khởi tạo cuộc họp kỹ thuật.">
+                  <Lock className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Sales Rep (Chỉ xem cuộc họp)</span>
+                </span>
+              ) : isDealCompleted && !isProjectLeader ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 text-amber-800 border border-amber-200 text-xs font-mono font-semibold" title="Dự án đã duyệt hoàn thành. Chỉ Presale Lead mới có quyền điều chỉnh.">
+                  <Lock className="w-3.5 h-3.5 text-amber-500" />
+                  <span>Đã duyệt (Khóa)</span>
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 text-slate-500 border border-slate-200 text-xs font-mono font-semibold">
+                  <Lock className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Chỉ đọc</span>
+                </span>
+              )
             ) : (
               <button 
                 onClick={() => {
@@ -290,7 +307,7 @@ export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({
               <div className="p-6 rounded-2xl border border-dashed border-slate-200 text-center space-y-3 bg-slate-50/50">
                 <Video className="w-8 h-8 text-slate-300 mx-auto" />
                 <p className="text-xs text-slate-500">Chưa có cuộc họp nào cho Lead này.</p>
-                {!isViewer && (
+                {canCreateMeeting && (
                   <button
                     onClick={() => {
                       setNewTitle('Meeting #1');
@@ -559,8 +576,8 @@ export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({
                       <div className="pt-2 flex justify-end">
                         <button
                           onClick={openScheduleFollowupModal}
-                          disabled={isViewer}
-                          title={isViewer ? 'VIEWER không được tạo cuộc họp mới (403)' : undefined}
+                          disabled={!canCreateMeeting}
+                          title={!canCreateMeeting ? 'Bạn không có quyền tạo cuộc họp mới trên dự án này' : undefined}
                           className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold font-mono shadow-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <span>Tạo Meeting #{selectedMeeting.meetingOrder + 1} Kế Thừa Câu Hỏi Này</span>
@@ -592,8 +609,8 @@ export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({
                   {selectedMeeting.status === 'OPEN' && (
                     <button
                       onClick={() => handleLifecycleChange('LOCKED')}
-                      disabled={isTransitioning || isViewer}
-                      title={isViewer ? 'VIEWER bị backend chặn ghi (403)' : undefined}
+                      disabled={isTransitioning || !canModifyMeeting}
+                      title={!canModifyMeeting ? 'Chỉ Presale Lead / Solution Architect mới có quyền khóa/mở meeting' : undefined}
                       className="px-3.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 font-mono text-slate-700 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Lock className="w-3.5 h-3.5 text-slate-500" />
@@ -604,8 +621,8 @@ export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({
                   {selectedMeeting.status === 'LOCKED' && (
                     <button
                       onClick={() => handleLifecycleChange('OPEN')}
-                      disabled={isTransitioning || isViewer}
-                      title={isViewer ? 'VIEWER bị backend chặn ghi (403)' : undefined}
+                      disabled={isTransitioning || !canModifyMeeting}
+                      title={!canModifyMeeting ? 'Chỉ Presale Lead / Solution Architect mới có quyền khóa/mở meeting' : undefined}
                       className="px-3.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 font-mono text-slate-700 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Unlock className="w-3.5 h-3.5 text-slate-500" />
@@ -616,8 +633,8 @@ export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({
                   {selectedMeeting.status === 'INSPECTED' && (
                     <button
                       onClick={() => handleLifecycleChange('REOPENED')}
-                      disabled={isTransitioning || isViewer}
-                      title={isViewer ? 'VIEWER bị backend chặn ghi (403)' : undefined}
+                      disabled={isTransitioning || !canModifyMeeting}
+                      title={!canModifyMeeting ? 'Chỉ Presale Lead / Solution Architect mới có quyền khóa/mở meeting' : undefined}
                       className="px-3.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 font-mono text-slate-700 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Unlock className="w-3.5 h-3.5 text-slate-500" />
@@ -628,8 +645,8 @@ export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({
                   {selectedMeeting.status === 'REOPENED' && (
                     <button
                       onClick={() => handleLifecycleChange('LOCKED')}
-                      disabled={isTransitioning || isViewer}
-                      title={isViewer ? 'VIEWER bị backend chặn ghi (403)' : undefined}
+                      disabled={isTransitioning || !canModifyMeeting}
+                      title={!canModifyMeeting ? 'Chỉ Presale Lead / Solution Architect mới có quyền khóa/mở meeting' : undefined}
                       className="px-3.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 font-mono text-slate-700 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Lock className="w-3.5 h-3.5 text-slate-500" />
@@ -639,8 +656,8 @@ export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({
 
                   <button
                     onClick={handleRunAIInspect}
-                    disabled={isInspecting || isViewer}
-                    title={isViewer ? 'VIEWER bị backend chặn gọi AI trên meeting (403)' : undefined}
+                    disabled={isInspecting || !canModifyMeeting}
+                    title={!canModifyMeeting ? 'Bạn không có quyền chạy AI thẩm định meeting trên dự án này' : undefined}
                     className="px-4 py-2 rounded-xl bg-brand-500 hover:bg-brand-600 text-white font-mono font-semibold flex items-center gap-2 shadow-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <Sparkles className={`w-4 h-4 ${isInspecting ? 'animate-spin' : ''}`} />

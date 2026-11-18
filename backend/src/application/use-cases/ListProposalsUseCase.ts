@@ -11,6 +11,7 @@ export interface ListProposalsDTO {
   search?: string;
   page?: number;
   limit?: number;
+  presaleLeadUserId?: string;
 }
 
 export class ListProposalsUseCase {
@@ -40,7 +41,8 @@ export class ListProposalsUseCase {
       status: dto.status,
       search: dto.search,
       limit,
-      offset
+      offset,
+      presaleLeadUserId: dto.presaleLeadUserId
     };
 
     const { proposals, total } = await this.proposalRepo.findAll(filter);

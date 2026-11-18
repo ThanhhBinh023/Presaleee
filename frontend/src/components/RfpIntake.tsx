@@ -1,18 +1,13 @@
 import React, { useState } from 'react';
 import {
-  LayoutGrid,
-  Globe,
-  FileText,
-  Sparkles,
   CheckCircle2,
   AlertCircle,
   HelpCircle,
   ArrowRight,
-  Zap,
-  SlidersHorizontal
+  Sparkles,
+  Zap
 } from 'lucide-react';
-import { WorkspacePill } from './workspace/WorkspacePill';
-import { UserCard } from './workspace/UserCard';
+import { AppSidebar } from './workspace/AppSidebar';
 import { useAuth } from '../hooks/useAuth';
 import { useClientDirectory } from '../hooks/useClientDirectory';
 import { useMemberDirectory } from '../hooks/useMemberDirectory';
@@ -156,60 +151,12 @@ export const RfpIntake: React.FC<RfpIntakeProps> = ({
 
   return (
     <div className="min-h-screen bg-[#f8fafc] flex text-slate-900 font-sans">
-      <aside className="w-64 bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 hidden md:flex">
-        <div>
-          <div className="p-5 border-b border-slate-100">
-            <div className="flex items-center gap-2.5 mb-4">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white shadow-sm font-bold font-mono text-base">
-                P
-              </div>
-              <span className="text-xl font-bold tracking-tight text-slate-900">Presaleee</span>
-            </div>
-            <WorkspacePill />
-          </div>
-
-          <nav className="p-3 space-y-1">
-            <button onClick={onNavigateOverview} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50">
-              <LayoutGrid className="w-4 h-4 text-slate-400" />
-              <span>Overview</span>
-            </button>
-            <button className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-semibold bg-brand-500 text-white shadow-sm">
-              <div className="flex items-center gap-3">
-                <FileText className="w-4 h-4 text-white" />
-                <span>RFPs &amp; Specs</span>
-              </div>
-            </button>
-            <button onClick={onNavigateAIWorkspace} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50">
-              <Sparkles className="w-4 h-4 text-slate-400" />
-              <span>AI Workspace</span>
-            </button>
-            <button onClick={() => navigateTo('leads')} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50">
-              <Zap className="w-4 h-4 text-slate-400" />
-              <span>Leads</span>
-            </button>
-            <button onClick={() => navigateTo('portal')} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50">
-              <Globe className="w-4 h-4 text-slate-400" />
-              <span>Client portal</span>
-            </button>
-          </nav>
-        </div>
-        <div className="p-3 border-t border-slate-100 space-y-1.5">
-          <button 
-            onClick={() => navigateTo('pipelines')}
-            className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100/80 transition-all cursor-pointer"
-            title="Cài đặt & Hướng dẫn phân quyền 6 vai trò (Role Pipelines)"
-          >
-            <div className="flex items-center gap-2.5">
-              <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500" />
-              <span>Cài đặt &amp; Hướng dẫn</span>
-            </div>
-            <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-brand-700 border border-brand-200">
-              6 Roles
-            </span>
-          </button>
-          <UserCard onLogout={onLogout} subtitle="role" />
-        </div>
-      </aside>
+      <AppSidebar
+        activeItem="RFPs & Specs"
+        onLogout={onLogout}
+        onNavigateOverview={onNavigateOverview}
+        onNavigateAIWorkspace={onNavigateAIWorkspace}
+      />
 
       <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
         <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-slate-200 px-6 py-3 flex items-center justify-between gap-4">

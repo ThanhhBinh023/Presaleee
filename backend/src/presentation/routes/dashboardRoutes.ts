@@ -9,5 +9,7 @@ export function createDashboardRouter(controller: DashboardController): Router {
   router.get('/leads', controller.leads);
   router.get('/activity', controller.activity);
   router.get('/admin-analytics', controller.adminAnalytics);
+  router.get('/admin/export-excel', controller.exportExcel);
+  router.get('/admin/export-pdf', controller.exportPdf);
   return router;
 }

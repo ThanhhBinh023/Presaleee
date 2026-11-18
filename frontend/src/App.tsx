@@ -19,7 +19,6 @@ import { Profile } from './components/Profile';
 import { ClientsDirectory } from './components/ClientsDirectory';
 import { AuditLog } from './components/AuditLog';
 import { LeadsDirectory } from './components/LeadsDirectory';
-import { RateCardsDirectory } from './components/RateCardsDirectory';
 import { MeetingsWorkspace } from './components/MeetingsWorkspace';
 import { ProposalsStudio } from './components/ProposalsStudio';
 import { PortalDesk } from './components/PortalDesk';
@@ -65,7 +64,7 @@ function pageFromHash(hash: string): Page {
   if (route === '#clients') return 'clients';
   if (route === '#audit') return 'audit';
   if (route === '#leads') return 'leads';
-  if (route === '#rate-cards') return 'rate-cards';
+  if (route === '#rate-cards') return 'overview';
   if (route === '#meetings') return 'meetings';
   if (route === '#proposals') return 'proposals';
   if (route === '#portal') return 'portal';
@@ -93,7 +92,7 @@ const AppShell: React.FC = () => {
   // Admin isolation guard: redirect Admin away from presale deal workspaces to Overview
   useEffect(() => {
     if (status === 'authenticated' && user?.role === 'ADMIN') {
-      const presalePages: Page[] = ['ai-workspace', 'rfps', 'leads', 'portal', 'meetings', 'proposals'];
+      const presalePages: Page[] = ['ai-workspace', 'rfps', 'leads', 'portal', 'meetings', 'proposals', 'rate-cards'];
       if (presalePages.includes(currentPage)) {
         goTo('overview');
       }
@@ -117,7 +116,6 @@ const AppShell: React.FC = () => {
   const navigateToClients = () => goTo('clients');
   const navigateToAudit = () => goTo('audit');
   const navigateToLeads = () => goTo('leads');
-  const navigateToRateCards = () => goTo('rate-cards');
   const navigateToMeetings = () => goTo('meetings');
   const navigateToProposals = () => goTo('proposals');
   const navigateToPortal = () => goTo('portal');
@@ -142,7 +140,6 @@ const AppShell: React.FC = () => {
           onNavigateMembers={navigateToMembers}
           onNavigateAudit={navigateToAudit}
           onNavigateClients={navigateToClients}
-          onNavigateRateCards={navigateToRateCards}
           onNavigatePipelines={navigateToPipelines}
         />
       </RequireAuth>
@@ -175,7 +172,6 @@ const AppShell: React.FC = () => {
           onNavigateClients={navigateToClients}
           onNavigateAudit={navigateToAudit}
           onNavigateLeads={navigateToLeads}
-          onNavigateRateCards={navigateToRateCards}
           onNavigateMeetings={navigateToMeetings}
           onNavigateProposals={navigateToProposals}
           onNavigatePortal={navigateToPortal}
@@ -222,7 +218,21 @@ const AppShell: React.FC = () => {
   if (currentPage === 'rate-cards') {
     return (
       <RequireAuth>
-        <RateCardsDirectory onBackToOverview={navigateToOverview} />
+        <Overview
+          onNavigateAIWorkspace={navigateToAIWorkspace}
+          onNavigateRfps={navigateToRfps}
+          onNavigateVault={navigateToVault}
+          onNavigateMembers={navigateToMembers}
+          onNavigateClients={navigateToClients}
+          onNavigateAudit={navigateToAudit}
+          onNavigateLeads={navigateToLeads}
+          onNavigateMeetings={navigateToMeetings}
+          onNavigateProposals={navigateToProposals}
+          onNavigatePortal={navigateToPortal}
+          onNavigatePipelines={navigateToPipelines}
+          onNavigateAnalytics={navigateToAnalytics}
+          onLogout={handleLogout}
+        />
       </RequireAuth>
     );
   }

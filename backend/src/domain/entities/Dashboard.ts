@@ -76,6 +76,22 @@ export interface MeetingTrendPoint {
   count: number;
 }
 
+export interface PortalSessionAuditItem {
+  id: string;
+  proposalId: string;
+  proposalTitle: string;
+  leadTitle?: string | null;
+  clientEmail: string;
+  clientName: string | null;
+  expiresAt: string;
+  revokedAt: string | null;
+  lastAccessedAt: string | null;
+  createdAt: string;
+  createdByName?: string | null;
+  commentCount: number;
+  status: 'ACTIVE' | 'EXPIRED' | 'REVOKED';
+}
+
 export interface AdminPlatformAnalytics {
   timeHorizon: '7d' | '30d' | '90d' | '365d' | 'all';
   generatedAt: string;
@@ -112,5 +128,12 @@ export interface AdminPlatformAnalytics {
     totalProposals: number;
     totalKnowledgeDocs: number;
     auditEventsCount: number;
+  };
+  portalSessionAnalytics?: {
+    totalSessions: number;
+    activeSessions: number;
+    expiredOrRevokedSessions: number;
+    accessedSessions: number;
+    sessions: PortalSessionAuditItem[];
   };
 }

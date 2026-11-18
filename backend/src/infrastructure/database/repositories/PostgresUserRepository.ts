@@ -66,7 +66,7 @@ export class PostgresUserRepository implements IUserRepository {
       const organization = mapOrganization(organizationResult.rows[0]);
       const userResult = await client.query<UserRow>(
         `INSERT INTO users (organization_id, email, full_name, role, status, password_hash)
-         VALUES ($1, $2, $3, 'PRESALE_LEAD', 'ACTIVE', $4)
+         VALUES ($1, $2, $3, 'VIEWER', 'ACTIVE', $4)
          RETURNING ${USER_COLUMNS};`,
         [organization.id, input.email, input.fullName, input.passwordHash]
       );

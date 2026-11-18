@@ -1,11 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { WorkspacePill } from './workspace/WorkspacePill';
-import { UserCard } from './workspace/UserCard';
 import { ROLE_DETAILS } from './workspace/UserCard';
 import { ClientPortalModal } from './ClientPortalModal';
 import { useToast } from './common/Toast';
-import { navigateTo } from '../navigation';
 import { fetchLeads, updateLead, updateLeadStatus } from '../services/leadService';
 import type { LeadItem } from '../services/leadService';
 import { 
@@ -15,18 +12,23 @@ import {
   getProposalExcelDownloadUrl
 } from '../services/proposalService';
 import type { ProposalItem } from '../services/proposalService';
-import { rateCardService } from '../services/rateCardService';
-import type { RateCardRecord } from '../types/rateCard';
 import { portalStaffService } from '../services/portalService';
 import type { PortalSessionDetail } from '../types/portal';
 import type { UserRole } from '../types/auth';
 import { formatDateTime } from '../utils/format';
+import { AppSidebar } from './workspace/AppSidebar';
+
+export const ROLE_ENGLISH_NAMES: Record<UserRole, string> = {
+  ADMIN: 'System Admin',
+  PRESALE_LEAD: 'Presale Lead',
+  PRESALE_CONSULTANT: 'Presale Consultant',
+  SOLUTION_ARCHITECT: 'Solution Architect',
+  SALES_REP: 'Sales Rep',
+  VIEWER: 'Viewer',
+};
 import {
-  LayoutGrid,
   FileText,
   Sparkles,
-  Zap,
-  Globe,
   CheckCircle2,
   AlertTriangle,
   ArrowRight,
@@ -45,7 +47,6 @@ import {
   ThumbsUp,
   XCircle,
   RefreshCw,
-  SlidersHorizontal,
   FolderOpen
 } from 'lucide-react';
 
@@ -66,27 +67,24 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
   const toast = useToast();
 
   // Active Role selection for pipeline view
-  const currentRole = (user?.role || 'PRESALE_LEAD') as UserRole;
-  const [selectedRole, setSelectedRole] = useState<UserRole>(initialRole || (currentRole === 'VIEWER' ? 'PRESALE_LEAD' : currentRole));
+  const currentRole = (user?.role || 'VIEWER') as UserRole;
+  const [selectedRole, setSelectedRole] = useState<UserRole>(initialRole || currentRole);
 
   // Projects / Leads
   const [projects, setProjects] = useState<LeadItem[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
-  const [loadingProjects, setLoadingProjects] = useState<boolean>(true);
+  const [, setLoadingProjects] = useState<boolean>(true);
 
   // Proposal for selected lead
   const [proposal, setProposal] = useState<ProposalItem | null>(null);
   const [loadingProposal, setLoadingProposal] = useState<boolean>(false);
-
-  // Rate cards
-  const [rateCards, setRateCards] = useState<RateCardRecord[]>([]);
 
   // Portal sessions
   const [portalSessions, setPortalSessions] = useState<PortalSessionDetail[]>([]);
 
   // Presale Lead Pipeline Stages
   // Stage 1: INTAKE & TEAM ALLOCATION
-  // Stage 2: RATE CARDS & STAFFING
+  // Stage 2: STAFFING & SCOPE
   // Stage 3: MULTI-ANGLE REVIEW
   // Stage 4: APPROVAL GATE
   // Stage 5: PORTAL GATEKEEPER
@@ -113,8 +111,39 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
   const [createdPortalLink, setCreatedPortalLink] = useState<string | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
 
-  // Load leads
+  const isSystemAdmin = user?.role === 'ADMIN';
+
+  // Standard reference case for governance guide & admin inspection (no lead database leakage to admin)
+  const referenceProject: LeadItem = React.useMemo(() => ({
+    id: 'ref-governance-lead',
+    title: 'Hệ thống Mạng Doanh nghiệp Đa chi nhánh & Bảo mật Tập trung',
+    source: 'RFP_ENTERPRISE',
+    status: 'QUALIFIED',
+    bantDetails: {
+      score: 90,
+      budget_fit: 'HIGH',
+      authority_level: 'DECISION_MAKER',
+      need_urgency: 'HIGH',
+      timeline_feasibility: 'FEASIBLE'
+    },
+    extractedMetadata: {
+      budgetUsd: 85000,
+      clientIndustry: 'Tài chính - Ngân hàng & Công nghệ',
+      timelineWeeks: 16,
+      qualification: {
+        readiness_level: 'Tier-1 High Priority'
+      } as any,
+      assigned_roles: ['PRESALE_LEAD', 'PRESALE_CONSULTANT', 'SOLUTION_ARCHITECT', 'SALES_REP']
+    },
+    createdAt: new Date().toISOString()
+  } as unknown as LeadItem), []);
+
+  // Load leads (Only for Presale non-admin roles)
   useEffect(() => {
+    if (isSystemAdmin) {
+      setLoadingProjects(false);
+      return;
+    }
     async function loadData() {
       try {
         setLoadingProjects(true);
@@ -133,26 +162,46 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
       }
     }
     void loadData();
-  }, []);
+  }, [isSystemAdmin]);
 
-  // Load rate cards once
-  useEffect(() => {
-    async function loadRateCards() {
-      try {
-        const res = await rateCardService.list({ limit: 10 });
-        setRateCards(res.rateCards || []);
-      } catch (err) {
-        console.error('Failed to load rate cards:', err);
-      }
-    }
-    void loadRateCards();
-  }, []);
-
-  // Selected lead
-  const selectedProject = projects.find(p => p.id === selectedProjectId) || null;
+  // If user is Admin, they strictly see reference governance data (no access to live project details)
+  // If user is Presale Lead, use their real lead if available, otherwise fallback to reference case
+  const selectedProject = isSystemAdmin
+    ? referenceProject
+    : (projects.find(p => p.id === selectedProjectId) || projects[0] || referenceProject);
 
   // Load proposal & portal data when lead changes
   useEffect(() => {
+    if (isSystemAdmin) {
+      setProposal({
+        id: 'ref-prop-001',
+        leadId: 'ref-governance-lead',
+        organizationId: 'org-demo',
+        title: 'Hồ sơ Đề xuất Giải pháp Kỹ thuật & Dự toán Mạng Doanh nghiệp',
+        status: 'DRAFT',
+        totalCost: 75000,
+        currency: 'USD',
+        version: '1.0',
+        createdBy: 'Presale Lead',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        sheets: []
+      });
+      setPortalSessions([
+        {
+          id: 'ref-portal-001',
+          proposalId: 'ref-prop-001',
+          clientEmail: 'cto@enterprise-partner.com',
+          clientName: 'Trần Văn Giám Đốc Kỹ Thuật',
+          expiresAt: new Date(Date.now() + 7 * 86400000).toISOString(),
+          revokedAt: null,
+          lastAccessedAt: new Date(Date.now() - 3600000).toISOString(),
+          createdAt: new Date(Date.now() - 86400000).toISOString(),
+          commentCount: 2
+        }
+      ]);
+      return;
+    }
     if (!selectedProjectId) {
       setProposal(null);
       setPortalSessions([]);
@@ -181,7 +230,7 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
     }
     void loadLeadProposal();
     return () => { isCancelled = true; };
-  }, [selectedProjectId]);
+  }, [selectedProjectId, isSystemAdmin]);
 
   // Lead's assigned roles list
   const assignedRolesList: UserRole[] = React.useMemo(() => {
@@ -206,6 +255,11 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
   };
 
   const handleSaveTeam = async () => {
+    if (isSystemAdmin) {
+      toast.info('Tài khoản System Admin xem ở chế độ mô phỏng quy chuẩn (PBAC).', 'Simulation Mode');
+      setIsTeamModalOpen(false);
+      return;
+    }
     if (!selectedProject) return;
     if (selectedDealRoles.length === 0) {
       toast.error('Vui lòng chọn ít nhất 1 vai trò phụ trách lead.', 'Yêu cầu');
@@ -233,6 +287,12 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
 
   // Actions for Presale Lead Approval Gate
   const handleApproveProposal = async () => {
+    if (isSystemAdmin) {
+      setProposal(prev => prev ? { ...prev, status: 'APPROVED' } : null);
+      toast.success('Hồ sơ đề xuất mô phỏng đã được chuyển sang APPROVED!', 'Simulation Mode');
+      setLeadPipelineStage(5);
+      return;
+    }
     if (!proposal) return;
     try {
       setIsSubmitting(true);
@@ -248,6 +308,11 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
   };
 
   const handleRequestRevision = async () => {
+    if (isSystemAdmin) {
+      setProposal(prev => prev ? { ...prev, status: 'DRAFT' } : null);
+      toast.info('Đã trả hồ sơ về trạng thái DRAFT kèm yêu cầu hiệu chỉnh (Simulation).', 'Simulation Mode');
+      return;
+    }
     if (!proposal) return;
     try {
       setIsSubmitting(true);
@@ -263,6 +328,13 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
 
   const handleAuthorizePortalShare = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSystemAdmin) {
+      const mockUrl = `${window.location.origin}/#client-portal?demo=true`;
+      setCreatedPortalLink(mockUrl);
+      setProposal(prev => prev ? { ...prev, status: 'SENT_TO_CLIENT' } : null);
+      toast.success('Đã mô phỏng cấp phép mở Client Portal!', 'Simulation Mode');
+      return;
+    }
     if (!proposal) return;
     if (!clientEmail.trim()) {
       toast.error('Vui lòng nhập email khách hàng để phát hành Portal.', 'Yêu cầu');
@@ -302,6 +374,10 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
   };
 
   const handleClosingDecision = async (decision: 'WON' | 'LOST') => {
+    if (isSystemAdmin) {
+      toast.info(`Mô phỏng ghi nhận kết quả deal: ${decision}!`, 'Simulation Mode');
+      return;
+    }
     if (!selectedProject) return;
     try {
       setIsSubmitting(true);
@@ -337,82 +413,13 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
         activeProject={selectedProject}
       />
 
-      {/* LEFT SIDEBAR */}
-      <aside className="w-64 bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 hidden md:flex">
-        <div>
-          <div className="p-5 border-b border-slate-100">
-            <div className="flex items-center gap-2.5 mb-4">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white shadow-sm font-bold font-mono text-base">
-                P
-              </div>
-              <span className="text-xl font-bold tracking-tight text-slate-900">
-                Presaleee
-              </span>
-            </div>
-            <WorkspacePill />
-          </div>
-
-          <nav className="p-3 space-y-1">
-            <button
-              onClick={onNavigateOverview}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all cursor-pointer"
-            >
-              <LayoutGrid className="w-4 h-4 text-slate-400" />
-              <span>Overview</span>
-            </button>
-
-            <button 
-              onClick={() => navigateTo('rfps')}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all cursor-pointer"
-            >
-              <FileText className="w-4 h-4 text-slate-400" />
-              <span>RFPs &amp; Specs</span>
-            </button>
-
-            <button 
-              onClick={() => onNavigateAIWorkspace?.()}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all cursor-pointer"
-            >
-              <Sparkles className="w-4 h-4 text-slate-400" />
-              <span>AI Workspace</span>
-            </button>
-
-            <button
-              onClick={() => navigateTo('leads')}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all cursor-pointer"
-            >
-              <Zap className="w-4 h-4 text-slate-400" />
-              <span>Leads</span>
-            </button>
-
-            <button
-              onClick={() => navigateTo('portal')}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all cursor-pointer"
-            >
-              <Globe className="w-4 h-4 text-slate-400" />
-              <span>Client portal</span>
-            </button>
-          </nav>
-        </div>
-
-        {/* Settings / Guide & User Card at bottom of sidebar */}
-        <div className="p-3 border-t border-slate-100 space-y-1.5">
-          <button
-            className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold bg-slate-900 text-white shadow-xs"
-            title="Cài đặt & Hướng dẫn phân quyền quy trình Role Pipelines"
-          >
-            <div className="flex items-center gap-2.5">
-              <SlidersHorizontal className="w-3.5 h-3.5 text-brand-400" />
-              <span>Cài đặt &amp; Hướng dẫn</span>
-            </div>
-            <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-brand-500 text-white">
-              6 Roles
-            </span>
-          </button>
-
-          <UserCard onLogout={onLogout} subtitle="role" />
-        </div>
-      </aside>
+      {/* UNIFIED APP SIDEBAR */}
+      <AppSidebar
+        activeItem="Role Pipelines"
+        onLogout={onLogout}
+        onNavigateOverview={onNavigateOverview}
+        onNavigateAIWorkspace={onNavigateAIWorkspace}
+      />
 
       {/* MAIN CONTENT AREA */}
       <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
@@ -429,23 +436,17 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
             <span className="text-slate-300">/</span>
             <span className="text-slate-500">Cài đặt &amp; Hướng dẫn</span>
             <span className="text-slate-300">/</span>
-            <span className="font-semibold text-brand-700">Role Pipelines</span>
+            <span className="font-semibold text-brand-700">Role Governance</span>
             <span className="text-slate-300">/</span>
             <span className={`px-2 py-0.5 rounded-md font-bold text-[10px] border ${ROLE_DETAILS[selectedRole]?.badgeClass || ''}`}>
-              {selectedRole}
+              {ROLE_ENGLISH_NAMES[selectedRole] || selectedRole}
             </span>
           </div>
 
-          <div className="flex items-center gap-3">
-            {selectedProject && (
-              <button 
-                onClick={() => setPortalModalOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-white shadow-xs cursor-pointer"
-              >
-                <Eye className="w-3.5 h-3.5 text-brand-400" />
-                <span>Preview Client Portal</span>
-              </button>
-            )}
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-mono font-bold text-slate-500 hidden sm:inline">
+              Quy chuẩn 6 Vai trò hệ thống
+            </span>
           </div>
         </header>
 
@@ -467,31 +468,11 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
                   Tài liệu quy chuẩn phân quyền, thẩm quyền xét duyệt và luồng công việc tương tác giữa 6 vai trò trong hệ thống Presaleee.
                 </p>
               </div>
-
-              {/* Lead Selector for the Pipeline */}
-              <div className="flex items-center gap-2 bg-slate-50 border border-slate-200/90 p-2 rounded-2xl shrink-0">
-                <FolderOpen className="w-4 h-4 text-brand-600 ml-1.5" />
-                <span className="text-xs font-mono font-bold text-slate-600 hidden sm:inline">Lead đang chọn:</span>
-                <select
-                  value={selectedProjectId}
-                  onChange={(e) => {
-                    setSelectedProjectId(e.target.value);
-                    localStorage.setItem('presaleee_active_lead_id', e.target.value);
-                  }}
-                  className="bg-white px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 focus:outline-none focus:border-brand-500 max-w-xs truncate"
-                >
-                  <option value="">{loadingProjects ? 'Đang tải danh sách...' : '-- Chọn Lead / Dự án --'}</option>
-                  {projects.map(p => (
-                    <option key={p.id} value={p.id}>[{p.status}] {p.title}</option>
-                  ))}
-                </select>
-              </div>
             </div>
 
-            {/* 6 Role Switcher Pills */}
+            {/* 6 Role Switcher Pills (English Role Names) */}
             <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-2">
               {(Object.keys(ROLE_DETAILS) as UserRole[]).map((r) => {
-                const info = ROLE_DETAILS[r];
                 const isCurrentActive = selectedRole === r;
                 const isUserNativeRole = user?.role === r;
 
@@ -499,28 +480,46 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
                   <button
                     key={r}
                     onClick={() => setSelectedRole(r)}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all whitespace-nowrap cursor-pointer ${
+                    className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all whitespace-nowrap cursor-pointer ${
                       isCurrentActive
                         ? 'bg-slate-900 text-white shadow-sm ring-2 ring-slate-900'
                         : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
                     }`}
                   >
                     <div className={`w-2 h-2 rounded-full ${isCurrentActive ? 'bg-brand-400' : 'bg-slate-300'}`}></div>
-                    <span>{info.nameVi.split('(')[0]}</span>
+                    <span>{ROLE_ENGLISH_NAMES[r] || r}</span>
                     {r === 'PRESALE_LEAD' && (
-                      <span className="text-[9px] font-mono px-1 rounded bg-brand-500 text-white font-bold">
-                        Hoàn thành
+                      <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-brand-500 text-white font-bold">
+                        Core Flow
                       </span>
                     )}
                     {isUserNativeRole && (
-                      <span className="text-[9px] font-mono px-1 rounded bg-emerald-100 text-brand-800 font-bold">
-                        Bạn
+                      <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-100 text-brand-800 font-bold">
+                        You
                       </span>
                     )}
                   </button>
                 );
               })}
             </div>
+
+            {/* System Admin Isolation & PBAC Boundary Banner */}
+            {isSystemAdmin && (
+              <div className="p-3.5 rounded-2xl bg-purple-50/90 border border-purple-200 flex items-center justify-between gap-4 text-xs">
+                <div className="flex items-center gap-2.5">
+                  <ShieldCheck className="w-4 h-4 text-purple-700 shrink-0" />
+                  <div>
+                    <span className="font-bold text-purple-950 font-mono">CHÍNH SÁCH BẢO VỆ PBAC: </span>
+                    <span className="text-purple-900">
+                      Tài khoản <strong>System Admin</strong> giám sát quy chuẩn luồng 6 vai trò ở góc độ quản trị nền tảng. Dữ liệu thực thi các dự án được bảo vệ và cô lập tuyệt đối theo thẩm quyền của từng <strong>Presale Lead</strong>. Admin không can thiệp vào các gói thầu.
+                    </span>
+                  </div>
+                </div>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-purple-200 text-purple-900 shrink-0 hidden md:inline">
+                  PBAC PROTECTED
+                </span>
+              </div>
+            )}
 
           </div>
         </div>
@@ -563,14 +562,14 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
                 </div>
 
                 <p className="text-xs text-slate-600 leading-relaxed max-w-4xl">
-                  Trưởng nhóm Presale chịu trách nhiệm kiểm soát chất lượng chuyên môn, phân bổ đội ngũ tham gia deal, thẩm định định mức đơn giá (Rate Cards), ký duyệt chính thức hồ sơ đề xuất (Approval Gate) và cấp phép mở Client Portal lần đầu cho khách hàng.
+                  Trưởng nhóm Presale chịu trách nhiệm kiểm soát chất lượng chuyên môn, phân bổ đội ngũ tham gia deal, thẩm định giải pháp &amp; phân bổ nhân sự, ký duyệt chính thức hồ sơ đề xuất (Approval Gate) và cấp phép mở Client Portal lần đầu cho khách hàng.
                 </p>
 
                 {/* 6-Stage Interactive Stepper */}
                 <div className="pt-2 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-xs">
                   {[
                     { step: 1, title: '1. Intake & Team', desc: 'Phân bổ đội ngũ deal' },
-                    { step: 2, title: '2. Rate Cards', desc: 'Định mức đơn giá nhân sự' },
+                    { step: 2, title: '2. Staffing & Scope', desc: 'Phân bổ nhân sự & nỗ lực' },
                     { step: 3, title: '3. Multi-Angle Review', desc: 'Soát xét 4 góc nhìn' },
                     { step: 4, title: '4. Approval Gate', desc: 'Ký duyệt APPROVED' },
                     { step: 5, title: '5. Portal Gatekeeper', desc: 'Cấp phép mở Client Portal' },
@@ -713,14 +712,14 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
                           onClick={() => setLeadPipelineStage(2)}
                           className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold shadow-xs cursor-pointer"
                         >
-                          <span>Tiếp tục: Kiểm tra Định mức Đơn giá →</span>
+                          <span>Tiếp tục: Phân bổ Nhân sự &amp; Nỗ lực →</span>
                           <ArrowRight className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>
                   )}
 
-                  {/* STAGE 2: RATE CARDS & STAFFING GOVERNANCE */}
+                  {/* STAGE 2: STAFFING & EFFORT GOVERNANCE */}
                   {leadPipelineStage === 2 && (
                     <div className="bg-white rounded-3xl border border-slate-200 shadow-card p-6 space-y-6">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-3">
@@ -730,22 +729,22 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
                               STAGE 2
                             </span>
                             <h3 className="text-base font-bold text-slate-900">
-                              Định Mức Đơn Giá Nhân Sự &amp; Cân Đối Ngân Sách (Rate Cards Governance)
+                              Phân Bổ Nhân Sự &amp; Ước Tính Nỗ Lực (Staffing &amp; Effort Allocation)
                             </h3>
                           </div>
                           <p className="text-xs text-slate-500 font-mono mt-0.5">
-                            Căn cứ tính toán: Tổng chi phí nhân sự = &Sigma; (Effort Man-month &times; Đơn giá Rate Card).
+                            Căn cứ tính toán: Phân bổ tỷ lệ % thời gian &amp; tổng nỗ lực theo tháng (Man-months) phù hợp tiến độ.
                           </p>
                         </div>
                         <span className="px-3 py-1 rounded-full text-xs font-mono font-bold bg-emerald-50 text-brand-700 border border-brand-200">
-                          Định mức chuẩn tổ chức
+                          Định mức nguồn lực
                         </span>
                       </div>
 
-                      {/* Rate Cards Reference Table */}
+                      {/* Staffing Allocation Table */}
                       <div className="space-y-3">
                         <h4 className="text-xs font-bold text-slate-700 font-mono uppercase">
-                          Bảng Đơn Giá Tiêu Chuẩn Hiện Hành (Rate Cards):
+                          Bảng Đội Ngũ Tham Gia &amp; Nỗ Lực Ước Tính (Team Allocation):
                         </h4>
                         <div className="overflow-x-auto">
                           <table className="w-full text-left text-xs font-mono">
@@ -753,25 +752,25 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
                               <tr className="border-b border-slate-200 text-slate-400">
                                 <th className="pb-2">Vị Trí Chuyên Môn</th>
                                 <th className="pb-2">Cấp Bậc (Level)</th>
-                                <th className="pb-2 text-right">Đơn Giá Theo Giờ</th>
-                                <th className="pb-2 text-right">Đơn Giá Theo Tháng</th>
+                                <th className="pb-2 text-right">Tỷ Lệ Phân Bổ</th>
+                                <th className="pb-2 text-right">Ước Tính Nỗ Lực</th>
                                 <th className="pb-2 text-right">Trạng Thái</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
-                              {(rateCards.length > 0 ? rateCards : [
-                                { roleName: 'Solution Architect', level: 'LEAD', hourlyRateUsd: 45, monthlyRateUsd: 7500, isActive: true },
-                                { roleName: 'Presale Lead / Engagement Director', level: 'DIRECTOR', hourlyRateUsd: 50, monthlyRateUsd: 8000, isActive: true },
-                                { roleName: 'Senior Backend Engineer', level: 'SENIOR', hourlyRateUsd: 32, monthlyRateUsd: 5000, isActive: true },
-                                { roleName: 'Senior Frontend Engineer', level: 'SENIOR', hourlyRateUsd: 30, monthlyRateUsd: 4800, isActive: true },
-                                { roleName: 'DevOps & Security Specialist', level: 'SENIOR', hourlyRateUsd: 38, monthlyRateUsd: 6000, isActive: true },
-                                { roleName: 'QA Automation Lead', level: 'MID', hourlyRateUsd: 22, monthlyRateUsd: 3500, isActive: true },
-                              ]).map((rc: any, idx: number) => (
+                              {[
+                                { roleName: 'Principal Solution Architect', level: 'LEAD', allocation: '50%', manMonths: '2.5 MM' },
+                                { roleName: 'Presale Lead / Director', level: 'DIRECTOR', allocation: '30%', manMonths: '1.5 MM' },
+                                { roleName: 'Senior Backend / AI Engineer', level: 'SENIOR', allocation: '100%', manMonths: '5.0 MM' },
+                                { roleName: 'Senior Frontend Engineer', level: 'SENIOR', allocation: '100%', manMonths: '5.0 MM' },
+                                { roleName: 'DevOps & Security Specialist', level: 'SENIOR', allocation: '50%', manMonths: '2.5 MM' },
+                                { roleName: 'QA Automation Engineer', level: 'MID', allocation: '75%', manMonths: '3.8 MM' },
+                              ].map((member, idx: number) => (
                                 <tr key={idx} className="hover:bg-slate-50">
-                                  <td className="py-2.5 font-bold text-slate-800">{rc.roleName}</td>
-                                  <td className="py-2.5 text-slate-500">{rc.level}</td>
-                                  <td className="py-2.5 text-right font-bold text-brand-700">${rc.hourlyRateUsd} USD/h</td>
-                                  <td className="py-2.5 text-right font-bold text-slate-900">${rc.monthlyRateUsd?.toLocaleString() || '—'} USD/mo</td>
+                                  <td className="py-2.5 font-bold text-slate-800">{member.roleName}</td>
+                                  <td className="py-2.5 text-slate-500">{member.level}</td>
+                                  <td className="py-2.5 text-right font-bold text-brand-700">{member.allocation}</td>
+                                  <td className="py-2.5 text-right font-bold text-slate-900">{member.manMonths}</td>
                                   <td className="py-2.5 text-right">
                                     <span className="px-2 py-0.5 rounded text-[10px] bg-emerald-50 text-brand-700 font-bold">
                                       ACTIVE
@@ -789,12 +788,12 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
                         <div className="flex items-center justify-between font-bold text-amber-900">
                           <span className="flex items-center gap-1.5">
                             <ShieldCheck className="w-4 h-4 text-amber-700" />
-                            Đánh giá Cân đối Ngân sách (Budget Feasibility):
+                            Đánh giá Khả thi Nhân lực (Staffing Feasibility):
                           </span>
-                          <span className="font-mono text-sm text-brand-700">Tỷ suất an toàn: 15% Margin</span>
+                          <span className="font-mono text-sm text-brand-700">Tổng nỗ lực: 20.3 Man-Months</span>
                         </div>
                         <p className="text-slate-700 leading-relaxed font-sans">
-                          Tổng chi phí nhân sự ước tính từ cấu trúc Rate Cards đạt khoảng <strong>$68,000 USD</strong> trên tổng ngân sách khách hàng <strong>${(selectedProject.extractedMetadata?.budgetUsd || 80000).toLocaleString()} USD</strong>. Đảm bảo biên độ lợi nhuận an toàn cho công ty mà vẫn tối ưu giá thầu cho khách hàng.
+                          Tổng nỗ lực khoảng <strong>20.3 Man-Months</strong> phân bổ qua 6 chuyên sự kỹ thuật đáp ứng trọn vẹn tiến độ <strong>{selectedProject.extractedMetadata?.timelineWeeks || 20} tuần</strong> và tiêu chuẩn kiến trúc đề xuất cho khách hàng.
                         </p>
                       </div>
 

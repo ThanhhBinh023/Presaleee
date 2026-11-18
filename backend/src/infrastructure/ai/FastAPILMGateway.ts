@@ -63,7 +63,7 @@ export class FastAPILMGateway implements ILLMGateway {
       try {
         const client = this.getGeminiClient();
         const systemInstruction = SYSTEM_PROMPTS[options.taskMode] || 'You are a helpful IT Presale Assistant.';
-        const candidateModels = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'];
+        const candidateModels = ['gemini-3-flash-preview', 'gemini-3.5-flash-lite', 'gemini-flash-latest', 'gemini-2.5-pro'];
 
         for (const model of candidateModels) {
           try {
@@ -123,59 +123,133 @@ export class FastAPILMGateway implements ILLMGateway {
   }
 
   private heuristicLeadIntake(prompt: string): string {
-    const lines = prompt.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-    const firstLine = lines[0] || '';
-    
-    // Extract dynamic project title from prompt
-    let projectName = 'Dự án Giải pháp Chuyển đổi Số';
-    const projMatch = prompt.match(/(?:Dự án|Dự án:|Đề án|Hệ thống|Yêu cầu):\s*([^\n\r.]+)/i);
-    if (projMatch && projMatch[1]?.trim().length > 3) {
-      projectName = projMatch[1].trim();
-    } else if (firstLine.length > 5 && firstLine.length < 80) {
-      projectName = firstLine.replace(/^[#\-*\d.]+\s*/, '');
+    // Extract actual user source text from prompt tags if available
+    const sourceMatch = prompt.match(/<source_text>([\s\S]*?)<\/source_text>/i);
+    const sourceText = (sourceMatch ? sourceMatch[1] : prompt).trim();
+    const lower = sourceText.toLowerCase();
+
+    // Extract dynamic project title from user's actual text
+    let projectName = '';
+    const buildMatch = sourceText.match(/(?:xây dựng|phát triển|triển khai|thiết kế|nâng cấp)\s+(?:một\s+)?(hệ thống\s+[^.,;\n]+|nền tảng\s+[^.,;\n]+|ứng dụng\s+[^.,;\n]+|giải pháp\s+[^.,;\n]+|phần mềm\s+[^.,;\n]+)/i);
+    if (buildMatch && buildMatch[1]?.trim().length > 5) {
+      const raw = buildMatch[1].trim();
+      projectName = raw.charAt(0).toUpperCase() + raw.slice(1);
     }
 
-    // Detect domain / industry dynamically
-    const lower = prompt.toLowerCase();
-    let clientIndustry = 'Công nghệ thông tin / Enterprise Tech';
-    if (lower.includes('gis') || lower.includes('đô thị') || lower.includes('vệ tinh') || lower.includes('bản đồ') || lower.includes('smart city')) {
-      clientIndustry = 'Đô thị thông minh & GIS / Viễn thám';
-    } else if (lower.includes('thanh toán') || lower.includes('banking') || lower.includes('ngân hàng') || lower.includes('fintech')) {
+    if (!projectName) {
+      const projMatch = sourceText.match(/(?:Dự án|Hệ thống|Nền tảng|Phần mềm|Đề án)[:\s]+([^.,;\n]+)/i);
+      if (projMatch && projMatch[1]?.trim().length > 3) {
+        projectName = projMatch[1].trim();
+      }
+    }
+
+    if (!projectName) {
+      if (lower.includes('bán hàng') || lower.includes('pos') || lower.includes('bán lẻ') || lower.includes('đơn hàng')) {
+        projectName = 'Hệ thống Quản lý Bán hàng Trực tuyến';
+      } else if (lower.includes('thanh toán') || lower.includes('ngân hàng') || lower.includes('fintech')) {
+        projectName = 'Hệ thống Cổng Thanh toán & Ngân hàng số';
+      } else if (lower.includes('y tế') || lower.includes('bệnh viện') || lower.includes('health')) {
+        projectName = 'Hệ thống Quản lý Y tế & Bệnh viện số';
+      } else if (lower.includes('gis') || lower.includes('vệ tinh') || lower.includes('bản đồ')) {
+        projectName = 'Hệ thống Bản đồ Địa lý GIS & Viễn thám';
+      } else {
+        const firstLine = sourceText.split('\n')[0].trim();
+        projectName = (firstLine.length > 5 && firstLine.length < 70) ? firstLine : 'Dự án Hiện đại hóa Giải pháp Số';
+      }
+    }
+
+    // Detect domain / industry dynamically from sourceText
+    let clientIndustry = 'Công nghệ Thông tin & Chuyển đổi Số';
+    if (lower.includes('bán lẻ') || lower.includes('bán hàng') || lower.includes('sản phẩm') || lower.includes('đơn hàng') || lower.includes('tồn kho') || lower.includes('doanh thu') || lower.includes('pos') || lower.includes('retail') || lower.includes('e-commerce') || lower.includes('thương mại điện tử')) {
+      clientIndustry = 'Bán lẻ & Thương mại Điện tử (E-Commerce)';
+    } else if (lower.includes('thanh toán') || lower.includes('banking') || lower.includes('ngân hàng') || lower.includes('fintech') || lower.includes('tài chính')) {
       clientIndustry = 'FinTech & Ngân hàng số';
-    } else if (lower.includes('y tế') || lower.includes('bệnh viện') || lower.includes('health')) {
-      clientIndustry = 'Y tế & Chăm sóc sức khỏe';
-    } else if (lower.includes('pos') || lower.includes('bán lẻ') || lower.includes('retail') || lower.includes('siêu thị')) {
-      clientIndustry = 'Bán lẻ & Chuỗi phân phối';
+    } else if (lower.includes('y tế') || lower.includes('bệnh viện') || lower.includes('health') || lower.includes('phòng khám')) {
+      clientIndustry = 'Y tế & Chăm sóc Sức khỏe (HealthTech)';
+    } else if (lower.includes('giáo dục') || lower.includes('đào tạo') || lower.includes('trường học') || lower.includes('edtech')) {
+      clientIndustry = 'Giáo dục & Đào tạo Trực tuyến (EdTech)';
+    } else if (lower.includes('logistics') || lower.includes('kho vận') || lower.includes('vận tải') || lower.includes('giao hàng')) {
+      clientIndustry = 'Logistics & Chuỗi Cung ứng';
+    } else if (lower.includes('gis') || lower.includes('viễn thám') || lower.includes('vệ tinh') || lower.includes('địa vật')) {
+      clientIndustry = 'Đô thị thông minh & GIS / Viễn thám';
     }
 
     // Detect SLA & peak workload
     let targetSla = '< 200ms API Response';
-    const slaMatch = prompt.match(/(?:độ trễ|latency|sla|phản hồi)\s*(?:dưới|<|<=)?\s*([0-9]+\s*(?:ms|giây|s))/i);
+    const slaMatch = sourceText.match(/(?:độ trễ|latency|sla|phản hồi)\s*(?:dưới|<|<=)?\s*([0-9]+\s*(?:ms|giây|s))/i);
     if (slaMatch && slaMatch[1]) {
       targetSla = `< ${slaMatch[1].trim()}`;
     }
 
-    let peakWorkload = '1,000+ Concurrent Requests';
-    const workloadMatch = prompt.match(/([0-9,.]+\+?\s*(?:tps|giao dịch\/giây|người dùng|cán bộ|truy cập))/i);
+    let peakWorkload = '1,000+ Concurrent Users / High Scalability';
+    const workloadMatch = sourceText.match(/([0-9,.]+\+?\s*(?:tps|giao dịch\/giây|người dùng|cán bộ|truy cập))/i);
     if (workloadMatch && workloadMatch[1]) {
       peakWorkload = workloadMatch[1].trim();
     }
 
-    // Dynamic modules based on keywords
+    // Dynamic modules strictly based on user's actual keywords
     const coreModules: string[] = [];
-    if (lower.includes('gis') || lower.includes('vệ tinh') || lower.includes('bản đồ')) {
-      coreModules.push('AI Computer Vision Phân tích Ảnh vệ tinh & Viễn thám', 'Cơ sở Dữ liệu Bản đồ Địa lý GIS (PostGIS/GeoServer)', 'Cổng thông tin Tra cứu & Báo cáo Quy hoạch');
-    } else if (lower.includes('thanh toán') || lower.includes('ngân hàng')) {
-      coreModules.push('Hệ thống Quản lý Giao dịch & Sổ cái Lõi', 'Event Streaming Bus phân tán độ trễ thấp', 'Cổng thanh toán & Tích hợp Đối tác');
+    if (clientIndustry.includes('Bán lẻ') || lower.includes('bán hàng') || lower.includes('pos') || lower.includes('đơn hàng') || lower.includes('tồn kho')) {
+      coreModules.push('Phân hệ Quản lý Danh mục Sản phẩm & Cập nhật Tồn kho');
+      coreModules.push('Phân hệ Quản lý Đơn hàng & Theo dõi Tình trạng Giao dịch');
+      coreModules.push('Phân hệ Quản lý Thông tin Khách hàng & Hồ sơ Người dùng');
+      coreModules.push('Phân hệ Báo cáo Doanh thu & Thống kê Tình hình Kinh doanh');
+    } else if (clientIndustry.includes('FinTech') || lower.includes('thanh toán') || lower.includes('ngân hàng')) {
+      coreModules.push('Hệ thống Quản lý Giao dịch & Sổ cái Lõi');
+      coreModules.push('Event Streaming Bus Phân tán Độ trễ Thấp');
+      coreModules.push('Cổng Tích hợp Thanh toán & Đối soát Đối tác');
+    } else if (clientIndustry.includes('GIS') || lower.includes('gis') || lower.includes('bản đồ')) {
+      coreModules.push('Cơ sở Dữ liệu Bản đồ Địa lý GIS (PostGIS/GeoServer)');
+      coreModules.push('Phân tích Ảnh viễn thám & Dữ liệu Không gian');
+      coreModules.push('Cổng thông tin Tra cứu Quy hoạch & Báo cáo');
     } else {
-      coreModules.push('Phân hệ Quản trị & Xác thực Người dùng tập trung', 'Hệ thống Xử lý Dữ liệu Lõi theo thời gian thực', 'Phân hệ Báo cáo & Trực quan hóa Dashboard');
+      coreModules.push('Phân hệ Quản lý Nghiệp vụ & Dữ liệu Trung tâm');
+      coreModules.push('Hệ thống Xử lý Dữ liệu Lõi Thời gian thực');
+      coreModules.push('Phân hệ Báo cáo & Trực quan hóa Dashboard');
     }
 
+    if (lower.includes('đăng nhập') || lower.includes('phân quyền') || lower.includes('bảo mật')) {
+      coreModules.push('Hệ thống Đăng nhập, Phân quyền Người dùng (RBAC) & Bảo mật Dữ liệu');
+    }
+
+    if (lower.includes('mở rộng') || lower.includes('ổn định')) {
+      coreModules.push('Kiến trúc Hạ tầng Sẵn sàng Mở rộng Quy mô (Scalability & Load Balancing)');
+    }
+
+    // Target platforms
+    const targetPlatforms: string[] = [];
+    if (lower.includes('web') || lower.includes('trực tuyến') || lower.includes('online')) {
+      targetPlatforms.push('Cloud Web Application', 'Responsive Mobile Web');
+    }
+    if (lower.includes('app') || lower.includes('di động') || lower.includes('mobile')) {
+      targetPlatforms.push('Mobile App (iOS / Android)');
+    }
+    if (targetPlatforms.length === 0) {
+      targetPlatforms.push('Cloud Web Application', 'Hạ tầng Microservices / Container');
+    }
+
+    // Compliance
     const compliance: string[] = [];
     if (lower.includes('soc-2') || lower.includes('soc2')) compliance.push('SOC-2 Type II');
     if (lower.includes('pci')) compliance.push('PCI-DSS');
     if (lower.includes('iso')) compliance.push('ISO 27001');
-    if (compliance.length === 0) compliance.push('Tiêu chuẩn An toàn thông tin Cấp độ 3 / ISO 27001');
+    if (compliance.length === 0) compliance.push('Tiêu chuẩn An toàn Thông tin & Bảo mật Dữ liệu (ISO 27001 / OWASP Top 10)');
+
+    // Missing information
+    const missingInfo: string[] = [];
+    if (clientIndustry.includes('Bán lẻ')) {
+      missingInfo.push(
+        'Dự kiến lượng người dùng truy cập đồng thời (CCU) và tốc độ tăng trưởng đơn hàng trong tương lai?',
+        'Khách hàng có kế hoạch tích hợp với các cổng thanh toán (VNPay, Momo, VietQR) và đơn vị vận chuyển cụ thể nào?',
+        'Yêu cầu môi trường triển khai (Cloud AWS/GCP hay hạ tầng máy chủ nội bộ On-Premise)?'
+      );
+    } else {
+      missingInfo.push(
+        'Hạ tầng máy chủ (Cloud hay On-Premise) khách hàng dự kiến sử dụng?',
+        'Số lượng dữ liệu lịch sử cần di chuyển hoặc tích hợp ban đầu?',
+        'Quy trình phê duyệt và các mốc nghiệm thu kỹ thuật chi tiết của dự án?'
+      );
+    }
 
     return JSON.stringify({
       project_name: projectName,
@@ -183,34 +257,58 @@ export class FastAPILMGateway implements ILLMGateway {
       business_goal: `Xây dựng và triển khai giải pháp ${projectName} đáp ứng tiêu chuẩn hiệu năng và nghiệp vụ của khách hàng.`,
       timeline_weeks: 20,
       budget_usd: 150000,
-      target_platforms: ['Cloud Web Application', 'Hạ tầng Microservices / Container'],
+      target_platforms: targetPlatforms,
       core_functional_modules: coreModules,
-      integrations_required: ['Hệ thống Cơ sở Dữ liệu Kế thừa', 'Cổng xác thực định danh SSO'],
+      integrations_required: ['Cổng xác thực định danh SSO / OAuth2', 'Hệ thống Lưu trữ Dữ liệu Lõi'],
       compliance_and_security: compliance,
       priority_level: 'High',
-      missing_information: [
-        'Hạ tầng máy chủ (Cloud hay On-Premise) khách hàng dự kiến sử dụng?',
-        'Số lượng dữ liệu lịch sử cần di chuyển hoặc huấn luyện ban đầu?',
-        'Quy trình phê duyệt và các mốc nghiệm thu kỹ thuật chi tiết của dự án?'
-      ],
+      missing_information: missingInfo,
       target_sla: targetSla,
       peak_workload: peakWorkload
     }, null, 2);
   }
 
   private heuristicBantQualification(prompt: string): string {
-    const lower = prompt.toLowerCase();
+    const sourceMatch = prompt.match(/<source_text>([\s\S]*?)<\/source_text>/i);
+    const sourceText = (sourceMatch ? sourceMatch[1] : prompt).trim();
+    const lower = sourceText.toLowerCase();
     
     // Extract dynamic title
-    let title = 'Dự án Chuyển đổi số';
-    const projMatch = prompt.match(/(?:Dự án|Lead|Project):\s*"?([^"\n\r.]+)"?/i);
+    let title = '';
+    const projMatch = sourceText.match(/(?:Dự án|Lead|Project|Hệ thống):\s*"?([^"\n\r.]+)"?/i);
     if (projMatch && projMatch[1]) {
       title = projMatch[1].trim();
     }
+    if (!title) {
+      if (lower.includes('bán hàng') || lower.includes('bán lẻ') || lower.includes('pos')) {
+        title = 'Hệ thống Quản lý Bán hàng Trực tuyến';
+      } else {
+        title = 'Dự án Chuyển đổi Số Doanh nghiệp';
+      }
+    }
 
-    const isGIS = lower.includes('gis') || lower.includes('vệ tinh') || lower.includes('đô thị') || lower.includes('địa vật');
+    const isRetail = lower.includes('bán hàng') || lower.includes('bán lẻ') || lower.includes('pos') || lower.includes('retail') || lower.includes('e-commerce');
+    const isGIS = !isRetail && (lower.includes('gis') || lower.includes('vệ tinh') || lower.includes('bản đồ'));
     
-    const breakdown = isGIS
+    const breakdown = isRetail
+      ? [
+          {
+            type: 'positive',
+            title: 'Nhu cầu Nghiệp vụ Bán lẻ Rõ ràng',
+            detail: `Khách hàng có bài toán cụ thể về quản lý danh mục sản phẩm, đơn hàng, cập nhật tồn kho và phân quyền an toàn dữ liệu.`
+          },
+          {
+            type: 'positive',
+            title: 'Khả năng Mở rộng & Kiến trúc Web',
+            detail: `Kiến trúc Microservices và Web/Mobile sẵn sàng đáp ứng yêu cầu hoạt động ổn định và mở rộng số lượng người dùng trong tương lai.`
+          },
+          {
+            type: 'warning',
+            title: 'Làm rõ Tích hợp & Cổng thanh toán',
+            detail: `Cần xác định kế hoạch tích hợp cổng thanh toán trực tuyến (VNPay/Momo) và đơn vị vận chuyển trong phiên Discovery tiếp theo.`
+          }
+        ]
+      : isGIS
       ? [
           {
             type: 'positive',

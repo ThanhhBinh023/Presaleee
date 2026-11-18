@@ -6,6 +6,7 @@ import {
   ListDashboardActivityUseCase, 
   ListDashboardLeadsUseCase 
 } from '../../application/use-cases/DashboardUseCases.js';
+import { AdminReportExportService } from '../../infrastructure/services/AdminReportExportService.js';
 
 function organizationId(req: Request): string {
   if (!req.auth?.organizationId) throw new UnauthorizedError('Authenticated organization is required.');
@@ -30,7 +31,8 @@ export class DashboardController {
     private readonly overviewUseCase: GetDashboardOverviewUseCase,
     private readonly leadsUseCase: ListDashboardLeadsUseCase,
     private readonly activityUseCase: ListDashboardActivityUseCase,
-    private readonly adminAnalyticsUseCase?: GetDashboardAdminAnalyticsUseCase
+    private readonly adminAnalyticsUseCase?: GetDashboardAdminAnalyticsUseCase,
+    private readonly reportExportService?: AdminReportExportService
   ) {}
 
   overview = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
@@ -69,6 +71,48 @@ export class DashboardController {
       const period = queryScalar(req.query.period) as string | undefined;
       const data = await this.adminAnalyticsUseCase.execute(organizationId(req), period);
       res.status(200).json({ success: true, data });
+    } catch (error) { next(error); }
+  };
+
+  exportExcel = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (req.auth?.role !== 'ADMIN') {
+        throw new ForbiddenError('Chỉ tài khoản Quản trị hệ thống (System Admin) mới có quyền xuất báo cáo điều hành nền tảng.');
+      }
+      if (!this.adminAnalyticsUseCase) {
+        throw new Error('Admin analytics use case is not configured.');
+      }
+      const period = queryScalar(req.query.period) as string | undefined;
+      const data = await this.adminAnalyticsUseCase.execute(organizationId(req), period);
+      const orgName = (req as any).auth?.organizationName || 'Presaleee Workspace';
+      const exporter = this.reportExportService || new AdminReportExportService();
+      const buffer = await exporter.exportExcel(data, orgName);
+
+      const filename = `Presaleee_Executive_Report_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.status(200).send(buffer);
+    } catch (error) { next(error); }
+  };
+
+  exportPdf = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (req.auth?.role !== 'ADMIN') {
+        throw new ForbiddenError('Chỉ tài khoản Quản trị hệ thống (System Admin) mới có quyền xuất báo cáo điều hành nền tảng.');
+      }
+      if (!this.adminAnalyticsUseCase) {
+        throw new Error('Admin analytics use case is not configured.');
+      }
+      const period = queryScalar(req.query.period) as string | undefined;
+      const data = await this.adminAnalyticsUseCase.execute(organizationId(req), period);
+      const orgName = (req as any).auth?.organizationName || 'Presaleee Workspace';
+      const exporter = this.reportExportService || new AdminReportExportService();
+      const buffer = await exporter.exportPdf(data, orgName);
+
+      const filename = `Presaleee_Executive_Report_${new Date().toISOString().slice(0, 10)}.pdf`;
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.status(200).send(buffer);
     } catch (error) { next(error); }
   };
 }

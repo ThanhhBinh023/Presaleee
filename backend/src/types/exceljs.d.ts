@@ -32,6 +32,7 @@ declare module 'exceljs' {
       number: number;
       height: number;
       font?: Record<string, any>;
+      values?: any;
       getCell(indexOrKey: number | string): Cell;
       eachCell(callback: (cell: Cell, colNumber: number) => void): void;
       eachCell(opt: { includeEmpty?: boolean }, callback: (cell: Cell, colNumber: number) => void): void;
@@ -48,6 +49,8 @@ declare module 'exceljs' {
       lastRow?: Row;
       addRow(values: any[]): Row;
       mergeCells(range: string): void;
+      getCell(address: string): Cell;
+      getRow(rowNumber: number): Row;
     }
 
     class Workbook {
@@ -58,7 +61,7 @@ declare module 'exceljs' {
       xlsx: {
         writeBuffer(): Promise<ArrayBuffer>;
       };
-      addWorksheet(name: string): Worksheet;
+      addWorksheet(name: string, options?: any): Worksheet;
     }
   }
 

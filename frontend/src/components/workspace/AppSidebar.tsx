@@ -14,7 +14,7 @@ import {
   Users,
   History,
   Building2,
-  DollarSign
+  FileSpreadsheet
 } from 'lucide-react';
 
 export type AppSidebarItem =
@@ -23,10 +23,10 @@ export type AppSidebarItem =
   | 'Members (RBAC)'
   | 'Audit Trail'
   | 'Clients'
-  | 'Rate Cards'
   | 'RFPs & Specs'
   | 'AI Workspace'
   | 'Leads'
+  | 'Proposals'
   | 'Client portal'
   | 'Role Pipelines';
 
@@ -101,6 +101,9 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
       case 'Leads':
         onNavigateLeads ? onNavigateLeads() : navigateTo('leads');
         break;
+      case 'Proposals':
+        navigateTo('proposals');
+        break;
       case 'Client portal':
         onNavigatePortal ? onNavigatePortal() : navigateTo('portal');
         break;
@@ -119,7 +122,6 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
     { name: 'Members (RBAC)', icon: Users },
     { name: 'Audit Trail', icon: History },
     { name: 'Clients', icon: Building2 },
-    { name: 'Rate Cards', icon: DollarSign },
   ];
 
   const presaleNavItems: NavItem[] = [
@@ -127,6 +129,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
     { name: 'RFPs & Specs', icon: FileText },
     { name: 'AI Workspace', icon: Sparkles, badge: 'Active' },
     { name: 'Leads', icon: Zap },
+    { name: 'Proposals', icon: FileSpreadsheet },
     { name: 'Client portal', icon: Globe },
   ];
 

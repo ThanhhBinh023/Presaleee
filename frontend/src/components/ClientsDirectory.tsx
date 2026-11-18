@@ -161,14 +161,6 @@ export const ClientsDirectory: React.FC<ClientsDirectoryProps> = ({ onBackToOver
     setDetailError(null);
   };
 
-  const openCreate = () => {
-    setMode('create');
-    setEditing(null);
-    setForm(EMPTY_FORM);
-    setActionError(null);
-    setNotice(null);
-  };
-
   const openEdit = (client: ClientRecord) => {
     setMode('edit');
     setEditing(client);
@@ -261,28 +253,12 @@ export const ClientsDirectory: React.FC<ClientsDirectoryProps> = ({ onBackToOver
         <div className="mx-auto max-w-6xl w-full">
           <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <button onClick={onBackToOverview} className="text-xs font-mono font-bold text-brand-700 hover:underline">
-                &larr; OVERVIEW
-              </button>
-            <h1 className="mt-1 text-2xl font-bold tracking-tight">Clients</h1>
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900">Clients</h1>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Danh bạ khách hàng doanh nghiệp và đối tác tổ chức
+              </p>
+            </div>
           </div>
-          <div className="flex gap-2">
-            {canManage && (
-              <button
-                onClick={mode === 'none' ? openCreate : closeForm}
-                className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-bold text-white hover:bg-brand-700"
-              >
-                {mode === 'none' ? 'Add client' : 'Close form'}
-              </button>
-            )}
-            <button
-              onClick={() => navigateTo('audit')}
-              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50"
-            >
-              Audit trail
-            </button>
-          </div>
-        </div>
 
         {!user?.organizationId && (
           <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
@@ -295,7 +271,7 @@ export const ClientsDirectory: React.FC<ClientsDirectoryProps> = ({ onBackToOver
           <p className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{actionError}</p>
         )}
         {notice && (
-          <p className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{notice}</p>
+          <p className="mb-4 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-sm text-purple-900">{notice}</p>
         )}
 
         {mode !== 'none' && (
@@ -362,13 +338,13 @@ export const ClientsDirectory: React.FC<ClientsDirectoryProps> = ({ onBackToOver
               <button
                 onClick={submitForm}
                 disabled={isSubmitting || form.companyName.trim().length === 0}
-                className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-bold text-white disabled:bg-slate-300"
+                className="rounded-lg bg-purple-700 px-4 py-2 text-sm font-bold text-white hover:bg-purple-800 disabled:bg-slate-300 transition-all cursor-pointer"
               >
                 {mode === 'create' ? 'Create client' : mode === 'contact' ? 'Save contact' : 'Save changes'}
               </button>
               <button
                 onClick={closeForm}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50"
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 transition-all cursor-pointer"
               >
                 Cancel
               </button>
@@ -388,7 +364,7 @@ export const ClientsDirectory: React.FC<ClientsDirectoryProps> = ({ onBackToOver
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               placeholder="company name"
-              className="w-44 rounded-lg border border-slate-300 px-2 py-1.5 text-sm font-sans font-normal"
+              className="w-44 rounded-lg border border-slate-300 px-2 py-1.5 text-sm font-sans font-normal focus:outline-none focus:border-purple-500"
             />
           </label>
           <label className="flex flex-col gap-1 text-[10px] font-mono font-bold text-slate-500">
@@ -396,7 +372,7 @@ export const ClientsDirectory: React.FC<ClientsDirectoryProps> = ({ onBackToOver
             <select
               value={industry}
               onChange={(e) => setIndustry(e.target.value)}
-              className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm font-sans font-normal"
+              className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm font-sans font-normal focus:outline-none focus:border-purple-500"
             >
               <option value="">All</option>
               {CLIENT_INDUSTRIES.map((value) => (
@@ -406,7 +382,7 @@ export const ClientsDirectory: React.FC<ClientsDirectoryProps> = ({ onBackToOver
           </label>
           <button
             onClick={reload}
-            className="ml-auto rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-bold text-slate-600 hover:bg-slate-50"
+            className="ml-auto rounded-lg bg-purple-700 hover:bg-purple-800 px-4 py-2 text-sm font-bold text-white shadow-2xs transition-all cursor-pointer"
           >
             Reload
           </button>

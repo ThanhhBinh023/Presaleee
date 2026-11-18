@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useMemberDirectory } from '../hooks/useMemberDirectory';
 import { userService } from '../services/userService';
-import { navigateTo } from '../navigation';
 import { formatDateTime } from '../utils/format';
 import type { MemberListQuery } from '../services/userService';
 import type { MemberDirectoryEntry } from '../types/user';
@@ -106,26 +105,15 @@ export const MembersDirectory: React.FC<MembersDirectoryProps> = ({ onBackToOver
         <div className="mx-auto max-w-6xl w-full">
           <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <button onClick={onBackToOverview} className="text-xs font-mono font-bold text-brand-700 hover:underline">
-                &larr; OVERVIEW
-              </button>
-            <h1 className="mt-1 text-2xl font-bold tracking-tight">Members &amp; Organizations</h1>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Danh bạ người dùng tổ chức. System Admin được tạo cố định qua seed script; người dùng mới tự đăng ký tài khoản.
-            </p>
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900">Members &amp; Organizations</h1>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Danh bạ người dùng tổ chức. System Admin được tạo cố định qua seed script; người dùng mới tự đăng ký tài khoản.
+              </p>
+            </div>
           </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => navigateTo('profile')}
-              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50"
-            >
-              My profile
-            </button>
-          </div>
-        </div>
 
         {actionError && <p className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{actionError}</p>}
-        {notice && <p className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{notice}</p>}
+        {notice && <p className="mb-4 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-sm text-purple-900">{notice}</p>}
 
         <div className="mb-4 flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-4">
           <label className="flex flex-col gap-1 text-[10px] font-mono font-bold text-slate-500">
@@ -134,7 +122,7 @@ export const MembersDirectory: React.FC<MembersDirectoryProps> = ({ onBackToOver
               value={searchInput}
               onChange={(event) => setSearchInput(event.target.value)}
               placeholder="name or email"
-              className="w-44 rounded-lg border border-slate-300 px-2 py-1.5 text-sm font-sans font-normal"
+              className="w-44 rounded-lg border border-slate-300 px-2 py-1.5 text-sm font-sans font-normal focus:outline-none focus:border-purple-500"
             />
           </label>
           <label className="flex flex-col gap-1 text-[10px] font-mono font-bold text-slate-500">
@@ -142,7 +130,7 @@ export const MembersDirectory: React.FC<MembersDirectoryProps> = ({ onBackToOver
             <select
               value={role}
               onChange={(event) => setRole(event.target.value as UserRole | '')}
-              className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm font-sans font-normal"
+              className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm font-sans font-normal focus:outline-none focus:border-purple-500"
             >
               <option value="">All</option>
               {ROLES.map((item) => (
@@ -155,7 +143,7 @@ export const MembersDirectory: React.FC<MembersDirectoryProps> = ({ onBackToOver
             <select
               value={status}
               onChange={(event) => setStatus(event.target.value as UserStatus | '')}
-              className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm font-sans font-normal"
+              className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm font-sans font-normal focus:outline-none focus:border-purple-500"
             >
               <option value="">All</option>
               {STATUSES.map((item) => (
@@ -169,7 +157,7 @@ export const MembersDirectory: React.FC<MembersDirectoryProps> = ({ onBackToOver
               All organizations
             </label>
           )}
-          <button onClick={reload} className="ml-auto rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-bold text-slate-600 hover:bg-slate-50">
+          <button onClick={reload} className="ml-auto rounded-lg bg-purple-700 hover:bg-purple-800 px-4 py-2 text-sm font-bold text-white shadow-2xs transition-all cursor-pointer">
             Reload
           </button>
         </div>
@@ -222,12 +210,12 @@ export const MembersDirectory: React.FC<MembersDirectoryProps> = ({ onBackToOver
                       </td>
                       <td className="px-4 py-3">
                         <span
-                          className={`rounded px-1.5 py-0.5 text-[10px] font-mono font-bold ${
+                          className={`rounded px-2 py-0.5 text-[10px] font-mono font-bold border ${
                             member.status === 'ACTIVE'
-                              ? 'bg-emerald-50 text-emerald-700'
+                              ? 'bg-purple-50 text-purple-700 border-purple-200'
                               : member.status === 'INVITED'
-                                ? 'bg-amber-50 text-amber-700'
-                                : 'bg-slate-100 text-slate-500'
+                                ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                : 'bg-slate-100 text-slate-500 border-slate-200'
                           }`}
                         >
                           {member.status}
@@ -322,14 +310,14 @@ export const MembersDirectory: React.FC<MembersDirectoryProps> = ({ onBackToOver
             <button
               onClick={() => setPage((value) => Math.max(1, value - 1))}
               disabled={page <= 1 || isLoading}
-              className="rounded border border-slate-300 px-3 py-1 font-bold disabled:opacity-40"
+              className="rounded border border-slate-300 px-3 py-1 font-bold disabled:opacity-40 hover:bg-purple-50 hover:text-purple-700 hover:border-purple-300 transition-all cursor-pointer"
             >
               Previous
             </button>
             <button
               onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
               disabled={page >= totalPages || isLoading}
-              className="rounded border border-slate-300 px-3 py-1 font-bold disabled:opacity-40"
+              className="rounded border border-slate-300 px-3 py-1 font-bold disabled:opacity-40 hover:bg-purple-50 hover:text-purple-700 hover:border-purple-300 transition-all cursor-pointer"
             >
               Next
             </button>

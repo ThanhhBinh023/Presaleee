@@ -164,7 +164,9 @@ export class PostgresDashboardRepository implements IDashboardRepository {
       sourceBreakdownRes,
       meetingsCountRes,
       meetingsTrendRes,
-      telemetryRes
+      telemetryRes,
+      portalSummaryRes,
+      portalSessionsRes
     ] = await Promise.all([
       this.pool.query<{ count: string }>(
         `SELECT COUNT(*)::text AS count FROM leads WHERE organization_id = $1 ${timeFilter};`,
@@ -251,6 +253,48 @@ export class PostgresDashboardRepository implements IDashboardRepository {
            (SELECT COUNT(*)::text FROM knowledge_docs WHERE organization_id = $1) AS total_docs,
            (SELECT COUNT(*)::text FROM audit_logs WHERE organization_id = $1 ${auditTimeFilter}) AS audit_events;`,
         [scope.organizationId]
+      ),
+      this.pool.query<{
+        total_sessions: string;
+        active_sessions: string;
+        expired_or_revoked: string;
+        accessed_sessions: string;
+      }>(
+        `SELECT
+           COUNT(*)::text AS total_sessions,
+           COUNT(*) FILTER (WHERE revoked_at IS NULL AND expires_at > NOW())::text AS active_sessions,
+           COUNT(*) FILTER (WHERE revoked_at IS NOT NULL OR expires_at <= NOW())::text AS expired_or_revoked,
+           COUNT(*) FILTER (WHERE last_accessed_at IS NOT NULL)::text AS accessed_sessions
+         FROM portal_sessions WHERE organization_id = $1;`,
+        [scope.organizationId]
+      ),
+      this.pool.query<{
+        id: string;
+        proposal_id: string;
+        proposal_title: string;
+        lead_title: string | null;
+        client_email: string;
+        client_name: string | null;
+        expires_at: Date | string;
+        revoked_at: Date | string | null;
+        last_accessed_at: Date | string | null;
+        created_at: Date | string;
+        created_by_name: string | null;
+        comment_count: string | number;
+      }>(
+        `SELECT 
+           s.id, s.proposal_id, p.title AS proposal_title, l.title AS lead_title,
+           s.client_email, s.client_name, s.expires_at, s.revoked_at, s.last_accessed_at, s.created_at,
+           u.full_name AS created_by_name,
+           (SELECT COUNT(*) FROM proposal_portal_comments c WHERE c.portal_session_id = s.id)::int AS comment_count
+         FROM portal_sessions s
+         JOIN proposals p ON p.id = s.proposal_id
+         LEFT JOIN leads l ON l.id = p.lead_id
+         LEFT JOIN users u ON u.id = s.created_by
+         WHERE s.organization_id = $1
+         ORDER BY s.created_at DESC
+         LIMIT 50;`,
+        [scope.organizationId]
       )
     ]);
 
@@ -285,6 +329,29 @@ export class PostgresDashboardRepository implements IDashboardRepository {
 
     const meetRow = meetingsCountRes.rows[0];
     const telemetryRow = telemetryRes.rows[0];
+    const portalSummaryRow = portalSummaryRes.rows[0];
+
+    const now = Date.now();
+    const portalSessions = portalSessionsRes.rows.map(r => {
+      const isRevoked = Boolean(r.revoked_at);
+      const isExpired = new Date(r.expires_at).getTime() <= now;
+      const status: 'ACTIVE' | 'EXPIRED' | 'REVOKED' = isRevoked ? 'REVOKED' : isExpired ? 'EXPIRED' : 'ACTIVE';
+      return {
+        id: r.id,
+        proposalId: r.proposal_id,
+        proposalTitle: r.proposal_title,
+        leadTitle: r.lead_title,
+        clientEmail: r.client_email,
+        clientName: r.client_name,
+        expiresAt: new Date(r.expires_at).toISOString(),
+        revokedAt: r.revoked_at ? new Date(r.revoked_at).toISOString() : null,
+        lastAccessedAt: r.last_accessed_at ? new Date(r.last_accessed_at).toISOString() : null,
+        createdAt: new Date(r.created_at).toISOString(),
+        createdByName: r.created_by_name,
+        commentCount: toNumber(String(r.comment_count)),
+        status
+      };
+    });
 
     return {
       timeHorizon,
@@ -322,6 +389,13 @@ export class PostgresDashboardRepository implements IDashboardRepository {
         totalProposals: toNumber(telemetryRow?.total_proposals),
         totalKnowledgeDocs: toNumber(telemetryRow?.total_docs),
         auditEventsCount: toNumber(telemetryRow?.audit_events)
+      },
+      portalSessionAnalytics: {
+        totalSessions: toNumber(portalSummaryRow?.total_sessions),
+        activeSessions: toNumber(portalSummaryRow?.active_sessions),
+        expiredOrRevokedSessions: toNumber(portalSummaryRow?.expired_or_revoked),
+        accessedSessions: toNumber(portalSummaryRow?.accessed_sessions),
+        sessions: portalSessions
       }
     };
   }

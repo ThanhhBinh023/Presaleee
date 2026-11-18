@@ -10,15 +10,15 @@ import { parseLeadSource } from '../dtos/LeadDTO.js';
 const MAX_RFP_CHARACTERS = 50_000;
 
 const INTAKE_JSON_SCHEMA = `{
-  "project_name": "Tên dự án ngắn gọn, đúng nghiệp vụ yêu cầu",
-  "client_industry": "Ngành nghề cụ thể (Đô thị thông minh & GIS, FinTech, Y tế, Bán lẻ,...)",
+  "project_name": "Tên dự án ngắn gọn, đúng nghiệp vụ trích xuất từ văn bản",
+  "client_industry": "Ngành nghề cụ thể (Bán lẻ & E-Commerce, FinTech & Ngân hàng, Y tế, Giáo dục, Logistics, Chuyển đổi số,...)",
   "business_goal": "Mục tiêu kinh doanh cốt lõi",
   "timeline_weeks": 20,
   "budget_usd": 120000,
-  "target_platforms": ["Web GIS", "Cloud API"],
-  "core_functional_modules": ["Module 1", "Module 2", "Module 3"],
-  "integrations_required": ["Hệ thống 1", "Hệ thống 2"],
-  "compliance_and_security": ["Tiêu chuẩn 1", "Tiêu chuẩn 2"],
+  "target_platforms": ["Web Application", "Mobile App", "Cloud API"],
+  "core_functional_modules": ["Tên phân hệ chức năng 1", "Tên phân hệ chức năng 2", "Tên phân hệ chức năng 3"],
+  "integrations_required": ["Hệ thống tích hợp 1", "Hệ thống tích hợp 2"],
+  "compliance_and_security": ["Tiêu chuẩn bảo mật 1", "Tiêu chuẩn bảo mật 2"],
   "priority_level": "High",
   "target_sla": "<thời gian đáp ứng / SLA>",
   "peak_workload": "<tải đỉnh / khối lượng xử lý>",

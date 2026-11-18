@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useAuditLog } from '../hooks/useAuditLog';
-import { navigateTo } from '../navigation';
 import { formatDateTime } from '../utils/format';
 import { AUDIT_RESULT_STATUSES } from '../types/audit';
 import type { AuditResultStatus } from '../types/audit';
@@ -100,10 +99,7 @@ export const AuditLog: React.FC<AuditLogProps> = ({ onBackToOverview }) => {
         />
         <div className="flex-1 flex flex-col min-w-0 overflow-y-auto px-4 py-8 md:px-10">
           <div className="mx-auto max-w-3xl rounded-xl border border-slate-200 bg-white p-6">
-            <button onClick={onBackToOverview} className="text-xs font-mono font-bold text-brand-700 hover:underline">
-              &larr; OVERVIEW
-            </button>
-            <h1 className="mt-2 text-xl font-bold">Audit trail</h1>
+            <h1 className="text-xl font-bold">Audit trail</h1>
             <p className="mt-3 text-sm text-slate-600">
               Only admins and presale leads can read the audit trail. Your current role is
               {user?.role ? ` ${user.role}` : ' unknown'}, so this page calls no endpoint.
@@ -131,35 +127,20 @@ export const AuditLog: React.FC<AuditLogProps> = ({ onBackToOverview }) => {
         <div className="mx-auto max-w-6xl w-full">
           <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <button onClick={onBackToOverview} className="text-xs font-mono font-bold text-brand-700 hover:underline">
-                &larr; OVERVIEW
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900">Audit trail</h1>
+              <p className="mt-1 text-xs text-slate-500">
+                Read-only ledger. Newest first. Proposal sheet writes, meetings and knowledge ingest are not recorded. FAILED is empty unless a fixture row exists — writers never emit it.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={reload}
+                className="rounded-lg bg-purple-700 px-4 py-2 text-sm font-bold text-white hover:bg-purple-800 shadow-2xs transition-all cursor-pointer"
+              >
+                Reload
               </button>
-            <h1 className="mt-1 text-2xl font-bold tracking-tight">Audit trail</h1>
-            <p className="mt-1 text-xs text-slate-500">
-              Read-only ledger. Newest first. Proposal sheet writes, meetings and knowledge ingest are not recorded. FAILED is empty unless a fixture row exists — writers never emit it.
-            </p>
+            </div>
           </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => navigateTo('clients')}
-              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50"
-            >
-              Clients
-            </button>
-            <button
-              onClick={() => navigateTo('overview')}
-              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50"
-            >
-              Dashboard
-            </button>
-            <button
-              onClick={reload}
-              className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-bold text-white hover:bg-brand-700"
-            >
-              Reload
-            </button>
-          </div>
-        </div>
 
         <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
           <div className="grid gap-3 md:grid-cols-4">
@@ -259,7 +240,7 @@ export const AuditLog: React.FC<AuditLogProps> = ({ onBackToOverview }) => {
                 setApplied(EMPTY_FILTERS);
                 setPage(1);
               }}
-              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-bold text-slate-600 hover:bg-slate-50"
+              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-bold text-slate-600 hover:bg-purple-50 hover:text-purple-700 hover:border-purple-300 transition-all"
             >
               Clear filters
             </button>
@@ -325,8 +306,8 @@ export const AuditLog: React.FC<AuditLogProps> = ({ onBackToOverview }) => {
                     </td>
                     <td className="px-4 py-3">
                       <span
-                        className={`rounded px-1.5 py-0.5 text-[10px] font-mono font-bold ${
-                          entry.resultStatus === 'SUCCESS' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+                        className={`rounded px-2 py-0.5 text-[10px] font-mono font-bold border ${
+                          entry.resultStatus === 'SUCCESS' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-rose-50 text-rose-700 border-rose-200'
                         }`}
                       >
                         {entry.resultStatus}
@@ -334,7 +315,7 @@ export const AuditLog: React.FC<AuditLogProps> = ({ onBackToOverview }) => {
                     </td>
                     <td className="px-4 py-3">
                       <details>
-                        <summary className="cursor-pointer text-[10px] font-mono font-bold text-slate-500 hover:text-slate-800">
+                        <summary className="cursor-pointer text-[10px] font-mono font-bold text-slate-500 hover:text-purple-700">
                           payload
                         </summary>
                         <pre className="mt-2 max-w-sm overflow-x-auto rounded bg-slate-50 p-2 font-mono text-[10px] text-slate-600">
@@ -357,14 +338,14 @@ export const AuditLog: React.FC<AuditLogProps> = ({ onBackToOverview }) => {
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1 || isLoading}
-              className="rounded border border-slate-300 px-3 py-1 font-bold disabled:opacity-40"
+              className="rounded border border-slate-300 px-3 py-1 font-bold disabled:opacity-40 hover:bg-purple-50 hover:text-purple-700 hover:border-purple-300 transition-all cursor-pointer"
             >
               Previous
             </button>
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages || isLoading}
-              className="rounded border border-slate-300 px-3 py-1 font-bold disabled:opacity-40"
+              className="rounded border border-slate-300 px-3 py-1 font-bold disabled:opacity-40 hover:bg-purple-50 hover:text-purple-700 hover:border-purple-300 transition-all cursor-pointer"
             >
               Next
             </button>

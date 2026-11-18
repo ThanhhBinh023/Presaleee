@@ -44,10 +44,10 @@ export const ROLE_DETAILS: Record<UserRole, {
     badgeClass: 'bg-amber-100 text-amber-800 border-amber-200',
     colorClass: 'text-amber-800',
     iconBg: 'bg-amber-500',
-    description: 'Chịu trách nhiệm quản lý quy trình đề xuất, phân bổ chi phí/rate cards và phê duyệt gửi khách hàng.',
+    description: 'Chịu trách nhiệm quản lý quy trình đề xuất, phân bổ đội ngũ chuyên môn và phê duyệt gửi khách hàng.',
     keyPermissions: [
       'Phê duyệt proposal (DRAFT -> APPROVED -> SENT)',
-      'Cấu hình đơn giá nhân sự (Rate Cards) Sheet 5',
+      'Phân bổ đội ngũ nhân sự chuyên môn Sheet 5',
       'Phê duyệt chia sẻ Client Portal lần đầu',
       'Điều phối đội ngũ Presale cho từng Lead'
     ]

@@ -30,7 +30,8 @@ import {
   History,
   Building2,
   Lock,
-  BarChart3
+  BarChart3,
+  FileSpreadsheet
 } from 'lucide-react';
 
 function formatCurrencies(values: CurrencyAmount[]): string {
@@ -47,7 +48,6 @@ interface OverviewProps {
   onNavigateClients?: () => void;
   onNavigateAudit?: () => void;
   onNavigateLeads?: () => void;
-  onNavigateRateCards?: () => void;
   onNavigateMeetings?: () => void;
   onNavigateProposals?: () => void;
   onNavigatePortal?: () => void;
@@ -64,7 +64,6 @@ export const Overview: React.FC<OverviewProps> = ({
   onNavigateClients,
   onNavigateAudit,
   onNavigateLeads,
-  onNavigateRateCards,
   onNavigateMeetings,
   onNavigateProposals,
   onNavigatePortal,
@@ -91,7 +90,7 @@ export const Overview: React.FC<OverviewProps> = ({
   const roleGreetings: Record<UserRole, { title: string; subtitle: string; actionText: string; onAction?: () => void }> = {
     PRESALE_LEAD: {
       title: `Trưởng nhóm Presale, ${user?.fullName || 'Presale Lead'}!`,
-      subtitle: 'Quản trị danh mục thầu, thẩm định định mức Rate Cards và phê duyệt đề xuất 10 Sheets.',
+      subtitle: 'Quản trị danh mục thầu, thẩm định giải pháp kỹ thuật và phê duyệt đề xuất 10 Sheets.',
       actionText: 'Mở Pipeline Phê Duyệt Presale Lead',
       onAction: onNavigatePipelines
     },
@@ -159,7 +158,6 @@ export const Overview: React.FC<OverviewProps> = ({
                 { name: 'Members (RBAC)', icon: Users },
                 { name: 'Audit Trail', icon: History },
                 { name: 'Clients', icon: Building2 },
-                { name: 'Rate Cards', icon: DollarSign },
               ].map((item) => {
                 const Icon = item.icon;
                 const isActive = activeNav === item.name;
@@ -177,8 +175,6 @@ export const Overview: React.FC<OverviewProps> = ({
                         onNavigateAudit();
                       } else if (item.name === 'Clients' && onNavigateClients) {
                         onNavigateClients();
-                      } else if (item.name === 'Rate Cards' && onNavigateRateCards) {
-                        onNavigateRateCards();
                       }
                     }}
                     className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
@@ -200,6 +196,7 @@ export const Overview: React.FC<OverviewProps> = ({
                 { name: 'RFPs & Specs', icon: FileText },
                 { name: 'AI Workspace', icon: Sparkles, badge: 'Active' },
                 { name: 'Leads', icon: Zap },
+                { name: 'Proposals', icon: FileSpreadsheet },
                 { name: 'Client portal', icon: Globe },
               ].map((item) => {
                 const Icon = item.icon;
@@ -224,12 +221,14 @@ export const Overview: React.FC<OverviewProps> = ({
                         onNavigateMembers();
                       } else if (item.name === 'Leads' && onNavigateLeads) {
                         onNavigateLeads();
-                      } else if (item.name === 'Rate Cards' && onNavigateRateCards) {
-                        onNavigateRateCards();
                       } else if (item.name === 'Meetings' && onNavigateMeetings) {
                         onNavigateMeetings();
-                      } else if (item.name === 'Proposals' && onNavigateProposals) {
-                        onNavigateProposals();
+                      } else if (item.name === 'Proposals') {
+                        if (onNavigateProposals) {
+                          onNavigateProposals();
+                        } else {
+                          navigateTo('proposals');
+                        }
                       } else if (item.name === 'Client portal' && onNavigatePortal) {
                         onNavigatePortal();
                       }
@@ -413,13 +412,6 @@ export const Overview: React.FC<OverviewProps> = ({
                       <Building2 className="w-4 h-4" />
                       <span>Clients</span>
                     </button>
-                    <button
-                      onClick={() => onNavigateRateCards?.()}
-                      className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-white/10 hover:bg-white/20 text-white border border-white/20 transition-all cursor-pointer"
-                    >
-                      <DollarSign className="w-4 h-4" />
-                      <span>Rate Cards</span>
-                    </button>
                   </div>
                 </div>
 
@@ -552,7 +544,7 @@ export const Overview: React.FC<OverviewProps> = ({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   {/* Card 0: Platform Analytics */}
                   <div 
                     onClick={() => onNavigateAnalytics?.()}
@@ -642,28 +634,6 @@ export const Overview: React.FC<OverviewProps> = ({
                     </div>
                     <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-purple-700">
                       <span>Xem Khách hàng</span>
-                      <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-                    </div>
-                  </div>
-
-                  {/* Card 4: Rate Cards */}
-                  <div 
-                    onClick={() => onNavigateRateCards?.()}
-                    className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs hover:border-purple-300 hover:shadow-md transition-all cursor-pointer group flex flex-col justify-between"
-                  >
-                    <div className="space-y-2.5">
-                      <div className="w-9 h-9 rounded-xl bg-purple-50 border border-purple-200 text-purple-700 flex items-center justify-center group-hover:scale-105 transition-transform">
-                        <DollarSign className="w-5 h-5" />
-                      </div>
-                      <h3 className="text-sm font-bold text-slate-900 group-hover:text-purple-700 transition-colors">
-                        Định Mức Đơn Giá (Rate Cards)
-                      </h3>
-                      <p className="text-xs text-slate-500 leading-relaxed font-sans">
-                        Cấu hình định mức chi phí nhân sự tiêu chuẩn toàn doanh nghiệp cho các vị trí SA, Lead, Consultant, QA, Dev.
-                      </p>
-                    </div>
-                    <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between text-xs font-semibold text-purple-700">
-                      <span>Cấu hình Rate Cards</span>
                       <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
                     </div>
                   </div>

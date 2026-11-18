@@ -25,5 +25,35 @@ export const dashboardService = {
     const query = limit !== undefined ? `?limit=${encodeURIComponent(String(limit))}` : '';
     const result = await apiRequestWithMeta<DashboardActivity[]>(`${PREFIX}/activity${query}`);
     return { activity: result.data ?? [], meta: result.meta };
+  },
+
+  exportExcel: async (period?: string): Promise<Blob> => {
+    const token = localStorage.getItem('presaleee_access_token') || localStorage.getItem('presaleee_auth_token');
+    const query = period ? `?period=${encodeURIComponent(period)}` : '';
+    const res = await fetch(`${PREFIX}/admin/export-excel${query}`, {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      }
+    });
+    if (!res.ok) throw new Error('Không thể xuất báo cáo Excel từ hệ thống.');
+    return res.blob();
+  },
+
+  exportPdf: async (period?: string): Promise<Blob> => {
+    const token = localStorage.getItem('presaleee_access_token') || localStorage.getItem('presaleee_auth_token');
+    const query = period ? `?period=${encodeURIComponent(period)}` : '';
+    const res = await fetch(`${PREFIX}/admin/export-pdf${query}`, {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {})
+      }
+    });
+    if (!res.ok) throw new Error('Không thể xuất báo cáo PDF từ hệ thống.');
+    return res.blob();
+  },
+
+  revokePortalSession: (sessionId: string) => {
+    return apiRequest<void>(`/api/v1/portal/sessions/${encodeURIComponent(sessionId)}`, {
+      method: 'DELETE'
+    });
   }
 };

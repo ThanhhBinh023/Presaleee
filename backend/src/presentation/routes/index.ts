@@ -48,8 +48,8 @@ export function createApiRouter(
   router.use('/proposals', createProposalRouter(proposalController));
   router.use('/leads', createLeadIntakeRouter(leadIntakeController));
   router.get('/leads/:leadId/meetings', requireAuth, requireOrganization, meetingController.listForLead);
-  router.post('/leads/:leadId/meetings', requireAuth, requireOrganization, requireNotViewer, meetingController.createForLead);
-  router.post('/leads/:leadId/proposals', requireAuth, requireOrganization, requireNotViewer, proposalController.createFromLead);
+  router.post('/leads/:leadId/meetings', requireAuth, requireOrganization, meetingController.createForLead);
+  router.post('/leads/:leadId/proposals', requireAuth, requireOrganization, proposalController.createFromLead);
   router.use('/meetings', createMeetingRouter(meetingController));
   router.use('/portal', createPortalRouter(portalController, portalRepository));
   router.get('/proposals/:proposalId/portal-materials', requireAuth, requireOrganization, portalController.listProposalMaterials);

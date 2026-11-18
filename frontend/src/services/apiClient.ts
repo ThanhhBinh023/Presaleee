@@ -142,6 +142,45 @@ function filenameFromDisposition(header: string | null, fallback: string): strin
   return ascii?.[1] ?? fallback;
 }
 
+/** Fetch binary blob directly (for in-browser PDF preview / iframe) */
+export async function apiFetchBlob(
+  path: string,
+  timeoutMs = 30_000,
+  extra: { bearerToken?: string } = {}
+): Promise<Blob> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      method: 'GET',
+      credentials: extra.bearerToken ? 'omit' : 'include',
+      headers: extra.bearerToken ? { Authorization: `Bearer ${extra.bearerToken}` } : undefined,
+      signal: controller.signal
+    });
+  } catch {
+    clearTimeout(timer);
+    if (controller.signal.aborted) {
+      throw new ApiError(0, `Download timed out after ${timeoutMs / 1000}s.`);
+    }
+    throw new ApiError(0, `Cannot reach the API at ${API_BASE_URL}.`);
+  }
+  clearTimeout(timer);
+
+  if (!response.ok) {
+    const text = await response.text();
+    let message = `Failed with status ${response.status}`;
+    try {
+      const payload = JSON.parse(text) as { error?: string };
+      if (payload.error) message = payload.error;
+    } catch {
+      if (text.trim()) message = text.slice(0, 200);
+    }
+    throw new ApiError(response.status, message);
+  }
+  return response.blob();
+}
+
 /** Binary downloads (Excel / PDF) are not JSON envelopes. */
 export async function apiDownload(
   path: string,

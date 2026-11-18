@@ -19,9 +19,8 @@ import {
   Globe, 
   Zap, 
   RefreshCw,
-  GitBranch,
   FolderOpen,
-  SlidersHorizontal,
+  Settings,
   Server,
   Database,
   Cpu,
@@ -67,14 +66,13 @@ export const Overview: React.FC<OverviewProps> = ({
   onNavigateMeetings,
   onNavigateProposals,
   onNavigatePortal,
-  onNavigatePipelines,
   onNavigateAnalytics
 }) => {
   const { user } = useAuth();
   const [activeNav, setActiveNav] = useState('Overview');
   const [searchTerm, setSearchTerm] = useState('');
   const leadLimit = 20;
-  const { overview, activity, isLoading, error, reload } = useDashboardOverview(leadLimit);
+  const { overview, isLoading, error, reload } = useDashboardOverview(leadLimit);
   const kpis = overview?.kpis;
   const pipeline = overview?.pipeline ?? [];
   const visibleLeads = (overview?.activeLeads ?? []).filter((lead) => {
@@ -89,40 +87,40 @@ export const Overview: React.FC<OverviewProps> = ({
   // Role-specific greeting and subtitle
   const roleGreetings: Record<UserRole, { title: string; subtitle: string; actionText: string; onAction?: () => void }> = {
     PRESALE_LEAD: {
-      title: `Trưởng nhóm Presale, ${user?.fullName || 'Presale Lead'}!`,
+      title: `${user?.fullName || 'bạn'}!`,
       subtitle: 'Quản trị danh mục thầu, thẩm định giải pháp kỹ thuật và phê duyệt đề xuất 10 Sheets.',
-      actionText: 'Mở Pipeline Phê Duyệt Presale Lead',
-      onAction: onNavigatePipelines
+      actionText: 'Vào AI Presale Workspace',
+      onAction: onNavigateAIWorkspace
     },
     SALES_REP: {
-      title: `Đại diện Kinh doanh, ${user?.fullName || 'Sales Rep'}!`,
+      title: `${user?.fullName || 'bạn'}!`,
       subtitle: 'Theo dõi đường ống Leads, dữ liệu khách hàng và chia sẻ Client Portal.',
       actionText: 'Tiếp nhận RFP Mới',
       onAction: onNavigateRfps
     },
     PRESALE_CONSULTANT: {
-      title: `Chuyên viên Tư vấn Presale, ${user?.fullName || 'Consultant'}!`,
+      title: `${user?.fullName || 'bạn'}!`,
       subtitle: 'Vận hành AI Intake, phân tích Discovery Meetings và hoàn thiện 10 Sheets Matrix.',
       actionText: 'Vào AI Presale Workspace',
       onAction: onNavigateAIWorkspace
     },
     SOLUTION_ARCHITECT: {
-      title: `Kiến trúc sư Giải pháp, ${user?.fullName || 'Solution Architect'}!`,
+      title: `${user?.fullName || 'bạn'}!`,
       subtitle: 'Thiết kế kiến trúc hệ thống, rà soát ma trận rủi ro RAID và chuẩn bị UI Design Brief.',
       actionText: 'Vào AI Workspace (Kiến trúc)',
       onAction: onNavigateAIWorkspace
     },
     ADMIN: {
-      title: `Quản trị viên Hệ thống, ${user?.fullName || 'Admin'}!`,
+      title: `${user?.fullName || 'bạn'}!`,
       subtitle: 'Quản lý toàn bộ tổ chức, phân quyền thành viên và giám sát nhật ký Audit Log bất biến.',
       actionText: 'Quản lý Thành viên (RBAC)',
       onAction: onNavigateMembers
     },
     VIEWER: {
-      title: `Người quan sát, ${user?.fullName || 'Viewer'}!`,
-      subtitle: 'Bạn đang ở chế độ xem chỉ đọc. Tra cứu tri thức, theo dõi tiến độ và tải hồ sơ báo cáo.',
-      actionText: 'Tra cứu Knowledge Vault',
-      onAction: onNavigateVault
+      title: `${user?.fullName || 'bạn'}!`,
+      subtitle: 'Tra cứu tri thức, tiếp nhận yêu cầu RFP, theo dõi tiến độ và xem hồ sơ dự án.',
+      actionText: 'Tiếp nhận RFP Mới',
+      onAction: onNavigateRfps
     }
   };
 
@@ -257,26 +255,17 @@ export const Overview: React.FC<OverviewProps> = ({
           </nav>
         </div>
 
-        {/* Settings / Guide & User Card at bottom of sidebar */}
+        {/* System Settings & User Card at bottom of sidebar */}
         <div className="p-3 border-t border-slate-100 space-y-1.5">
           <button
-            onClick={() => {
-              if (onNavigatePipelines) {
-                onNavigatePipelines();
-              } else {
-                navigateTo('pipelines');
-              }
-            }}
+            onClick={() => navigateTo('profile')}
             className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100/80 transition-all cursor-pointer"
-            title="Cài đặt & Hướng dẫn phân quyền 6 vai trò (Role Pipelines)"
+            title="Cài đặt hệ thống & Tài khoản"
           >
             <div className="flex items-center gap-2.5">
-              <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500" />
-              <span>Cài đặt &amp; Hướng dẫn</span>
+              <Settings className="w-3.5 h-3.5 text-slate-500" />
+              <span>Cài đặt hệ thống</span>
             </div>
-            <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-brand-700 border border-brand-200">
-              6 Roles
-            </span>
           </button>
 
           <UserCard onLogout={onLogout} subtitle="role" />
@@ -305,7 +294,7 @@ export const Overview: React.FC<OverviewProps> = ({
 
           {/* Quick Actions */}
           <div className="flex items-center gap-2">
-            {userRole === 'ADMIN' ? (
+            {userRole === 'ADMIN' && (
               <>
                 <button
                   onClick={() => onNavigateAnalytics?.()}
@@ -322,14 +311,6 @@ export const Overview: React.FC<OverviewProps> = ({
                   <span>Members (RBAC)</span>
                 </button>
               </>
-            ) : (
-              <button
-                onClick={() => onNavigatePipelines?.()}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-brand-200 bg-brand-50 hover:bg-brand-100 text-brand-800 text-xs font-semibold shadow-2xs transition-all cursor-pointer"
-              >
-                <GitBranch className="w-3.5 h-3.5 text-brand-600" />
-                <span>Role Pipelines</span>
-              </button>
             )}
             <button
               onClick={onLogout}
@@ -700,7 +681,7 @@ export const Overview: React.FC<OverviewProps> = ({
               <div>
                 <div className="flex items-center gap-3 mb-2 flex-wrap">
                   <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-                    Chào mừng {currentGreeting.title}
+                    Chào mừng, {currentGreeting.title}
                   </h1>
                   <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono font-bold border ${roleInfo.badgeClass}`}>
                     <span className="w-1.5 h-1.5 rounded-full bg-brand-500 animate-pulse"></span>
@@ -779,12 +760,6 @@ export const Overview: React.FC<OverviewProps> = ({
                   4 Giai Đoạn Chuẩn
                 </span>
               </div>
-              <button
-                onClick={() => onNavigatePipelines?.()}
-                className="text-xs font-semibold text-brand-600 hover:text-brand-700 transition-colors flex items-center gap-1 cursor-pointer"
-              >
-                <span>Pipeline Phê Duyệt Presale Lead &rarr;</span>
-              </button>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -812,11 +787,11 @@ export const Overview: React.FC<OverviewProps> = ({
                 onClick={() => onNavigateAIWorkspace?.()}
                 className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-xs hover:border-emerald-300 transition-all cursor-pointer"
               >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[10px] font-mono font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                    STAGE 2 · THẨM ĐỊNH &amp; THIẾT KẾ
+                <div className="flex items-center justify-between mb-2 gap-1">
+                  <span className="text-[10px] font-mono font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 whitespace-nowrap">
+                    STAGE 2 · THẨM ĐỊNH
                   </span>
-                  <span className="text-xs font-mono font-bold text-amber-700">QUALIFIED</span>
+                  <span className="text-xs font-mono font-bold text-amber-700 whitespace-nowrap shrink-0">QUALIFIED</span>
                 </div>
                 <div className="text-2xl font-bold font-mono text-amber-600">
                   {pipeline.filter(s => ['QUALIFYING', 'QUALIFIED', 'PROPOSAL_DRAFTING'].includes(s.status)).reduce((acc, curr) => acc + curr.count, 0)} Lead
@@ -828,7 +803,7 @@ export const Overview: React.FC<OverviewProps> = ({
 
               {/* Stage 3: Phê duyệt & Portal */}
               <div 
-                onClick={() => onNavigatePipelines?.()}
+                onClick={() => onNavigateAIWorkspace?.()}
                 className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-xs hover:border-emerald-300 transition-all cursor-pointer"
               >
                 <div className="flex items-center justify-between mb-2">
@@ -866,181 +841,98 @@ export const Overview: React.FC<OverviewProps> = ({
             </div>
           </div>
 
-          {/* Split Content: Left (Real Active Leads Table) & Right (Role Context & Activity) */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            
-            {/* LEFT COLUMN (8 cols): Real Active Leads Table */}
-            <div className="lg:col-span-8 space-y-6">
+          {/* Real Active Deals Table (Full Width) */}
+          <div className="space-y-6">
+            <div className="bg-white rounded-3xl border border-slate-200/90 shadow-card overflow-hidden">
               
-              <div className="bg-white rounded-3xl border border-slate-200/90 shadow-card overflow-hidden">
-                
-                {/* Table Header Action */}
-                <div className="p-5 sm:p-6 border-b border-slate-100 flex items-center justify-between flex-wrap gap-3">
-                  <div className="flex items-center gap-2.5">
-                    <h3 className="text-base font-bold text-slate-900">
-                      Danh Sách Dự Án Đang Xử Lý (Active Deals)
-                    </h3>
-                    <span className="px-2 py-0.5 rounded-md text-xs font-mono font-bold bg-slate-100 text-slate-700">
-                      {visibleLeads.length} dự án
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => onNavigateRfps?.()}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-brand-500 hover:bg-brand-600 text-white shadow-sm transition-all cursor-pointer"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Khởi tạo Dự Án Mới</span>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse text-xs">
-                    <thead>
-                      <tr className="border-b border-slate-100 bg-slate-50/70 text-[11px] font-mono font-bold text-slate-400 uppercase tracking-wider">
-                        <th className="py-3 px-5">TÊN DỰ ÁN &amp; KHÁCH HÀNG</th>
-                        <th className="py-3 px-4">TRẠNG THÁI</th>
-                        <th className="py-3 px-4">ĐIỂM BANT</th>
-                        <th className="py-3 px-5 text-right">CẬP NHẬT</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {isLoading ? (
-                        <tr><td className="py-8 px-5 text-center text-slate-400 font-mono" colSpan={4}>Đang tải danh sách dự án…</td></tr>
-                      ) : visibleLeads.length === 0 ? (
-                        <tr>
-                          <td className="py-12 px-5 text-center" colSpan={4}>
-                            <div className="max-w-md mx-auto space-y-3">
-                              <div className="w-12 h-12 rounded-2xl bg-emerald-50 border border-brand-200 text-brand-600 flex items-center justify-center mx-auto">
-                                <FolderOpen className="w-6 h-6" />
-                              </div>
-                              <h4 className="text-sm font-bold text-slate-900">Không Gian Làm Việc Chưa Có Dự Án</h4>
-                              <p className="text-xs text-slate-500 leading-relaxed font-sans">
-                                Bạn đang ở trạng thái tài khoản mới hoặc chưa được phân bổ vào dự án nào. Hãy khởi tạo dự án đầu tiên để tự động trở thành Trưởng dự án (Leader) hoặc chờ đồng nghiệp mời vào dự án.
-                              </p>
-                              <button
-                                onClick={() => onNavigateRfps?.()}
-                                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-brand-500 hover:bg-brand-600 text-white shadow-sm transition-all cursor-pointer"
-                              >
-                                <Plus className="w-4 h-4" />
-                                <span>Khởi Tạo Dự Án Đầu Tiên (New RFP)</span>
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ) : (
-                        visibleLeads.map((lead) => (
-                          <tr
-                            key={lead.id}
-                            className="hover:bg-slate-50/80 transition-colors cursor-pointer"
-                            onClick={() => navigateTo('leads', { id: lead.id })}
-                          >
-                            <td className="py-4 px-5">
-                              <div className="font-bold text-slate-900 text-xs sm:text-sm">{lead.title}</div>
-                              <div className="text-[11px] font-mono text-slate-500 mt-0.5">{lead.clientName || 'Chưa gắn khách hàng'} · {lead.source}</div>
-                            </td>
-                            <td className="py-4 px-4 whitespace-nowrap">
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-mono font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-                                <span className="w-1.5 h-1.5 rounded-full bg-brand-500"></span>
-                                {lead.status}
-                              </span>
-                            </td>
-                            <td className="py-4 px-4 whitespace-nowrap font-mono">
-                              {lead.bantScore ? (
-                                <span className="px-2 py-0.5 rounded bg-emerald-50 text-brand-700 font-bold border border-brand-200">
-                                  {lead.bantScore}/100
-                                </span>
-                              ) : '—'}
-                            </td>
-                            <td className="py-4 px-5 text-right whitespace-nowrap font-mono text-slate-500">{formatDateTime(lead.updatedAt)}</td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-            </div>
-
-            {/* RIGHT COLUMN (4 cols): Role Context & Activity */}
-            <div className="lg:col-span-4 space-y-6">
-              
-              {/* Role Context Action Card */}
-              <div className="rounded-3xl border border-emerald-300 bg-gradient-to-br from-brand-900 via-brand-800 to-slate-900 text-white p-5 sm:p-6 shadow-card space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-emerald-300" />
-                    <span className="text-xs font-bold font-mono text-emerald-300 uppercase">
-                      {roleInfo.nameVi} Focus
-                    </span>
-                  </div>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-400/20 text-emerald-300 border border-emerald-400/30">
-                    PBAC ROLE
+              {/* Table Header Action */}
+              <div className="p-5 sm:p-6 border-b border-slate-100 flex items-center justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-2.5">
+                  <h3 className="text-base font-bold text-slate-900">
+                    Danh Sách Dự Án Đang Xử Lý (Active Deals)
+                  </h3>
+                  <span className="px-2 py-0.5 rounded-md text-xs font-mono font-bold bg-slate-100 text-slate-700">
+                    {visibleLeads.length} dự án
                   </span>
                 </div>
-                <h4 className="text-sm font-bold text-white">Trọng Tâm Tác Vụ Của Bạn</h4>
-                <p className="text-xs text-slate-300 leading-relaxed font-sans">
-                  {roleInfo.description}
-                </p>
-                <div className="pt-2">
+
+                <div className="flex items-center gap-2">
                   <button
-                    onClick={() => {
-                      if (currentGreeting.onAction) currentGreeting.onAction();
-                      else onNavigatePipelines?.();
-                    }}
-                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-emerald-400 hover:bg-emerald-300 text-slate-950 transition-all shadow-md cursor-pointer"
+                    onClick={() => onNavigateRfps?.()}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-brand-500 hover:bg-brand-600 text-white shadow-sm transition-all cursor-pointer"
                   >
-                    <span>{currentGreeting.actionText}</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Khởi tạo Dự Án Mới</span>
                   </button>
                 </div>
               </div>
 
-              {/* Entity activity */}
-              <div className="bg-white rounded-3xl border border-slate-200/90 shadow-card p-5 sm:p-6">
-                <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-                  <h3 className="text-sm font-bold text-slate-900 font-mono">
-                    Nhật ký cập nhật thầu
-                  </h3>
-                  <button
-                    onClick={() => onNavigateAudit?.()}
-                    className="text-xs font-semibold text-brand-600 hover:text-brand-700 flex items-center gap-1 cursor-pointer"
-                  >
-                    <span>Audit trail</span>
-                    <ArrowRight className="w-3 h-3" />
-                  </button>
-                </div>
-                <p className="mt-2 text-[11px] text-slate-500">
-                  Trạng thái thay đổi gần nhất của các Deal &amp; Proposal.
-                </p>
-                <div className="mt-4 space-y-3">
-                  {activity.length === 0 ? (
-                    <p className="text-xs text-slate-400 font-mono">Chưa có thay đổi gần đây.</p>
-                  ) : (
-                    activity.map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => navigateTo(item.type.startsWith('LEAD') ? 'leads' : 'proposals', { id: item.entityId })}
-                        className="w-full p-3 rounded-xl bg-slate-50/70 border border-slate-200/70 hover:bg-slate-50 text-left transition-all"
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-[10px] font-mono font-bold text-brand-700">{item.type}</span>
-                          <span className="text-[10px] font-mono text-slate-400">{formatDateTime(item.occurredAt)}</span>
-                        </div>
-                        <div className="text-xs font-bold text-slate-900">{item.title}</div>
-                        <div className="text-[10px] font-mono text-slate-500">{item.status}</div>
-                      </button>
-                    ))
-                  )}
-                </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-100 bg-slate-50/70 text-[11px] font-mono font-bold text-slate-400 uppercase tracking-wider">
+                      <th className="py-3 px-5">TÊN DỰ ÁN &amp; KHÁCH HÀNG</th>
+                      <th className="py-3 px-4">TRẠNG THÁI</th>
+                      <th className="py-3 px-4">ĐIỂM BANT</th>
+                      <th className="py-3 px-5 text-right">CẬP NHẬT</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {isLoading ? (
+                      <tr><td className="py-8 px-5 text-center text-slate-400 font-mono" colSpan={4}>Đang tải danh sách dự án…</td></tr>
+                    ) : visibleLeads.length === 0 ? (
+                      <tr>
+                        <td className="py-12 px-5 text-center" colSpan={4}>
+                          <div className="max-w-md mx-auto space-y-3">
+                            <div className="w-12 h-12 rounded-2xl bg-emerald-50 border border-brand-200 text-brand-600 flex items-center justify-center mx-auto">
+                              <FolderOpen className="w-6 h-6" />
+                            </div>
+                            <h4 className="text-sm font-bold text-slate-900">Không Gian Làm Việc Chưa Có Dự Án</h4>
+                            <p className="text-xs text-slate-500 leading-relaxed font-sans">
+                              Bạn đang ở trạng thái tài khoản mới hoặc chưa được phân bổ vào dự án nào. Hãy khởi tạo dự án đầu tiên để tự động trở thành Trưởng dự án (Leader) hoặc chờ đồng nghiệp mời vào dự án.
+                            </p>
+                            <button
+                              onClick={() => onNavigateRfps?.()}
+                              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-brand-500 hover:bg-brand-600 text-white shadow-sm transition-all cursor-pointer"
+                            >
+                              <Plus className="w-4 h-4" />
+                              <span>Khởi Tạo Dự Án Đầu Tiên (New RFP)</span>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      visibleLeads.map((lead) => (
+                        <tr
+                          key={lead.id}
+                          className="hover:bg-slate-50/80 transition-colors cursor-pointer"
+                          onClick={() => navigateTo('leads', { id: lead.id })}
+                        >
+                          <td className="py-4 px-5">
+                            <div className="font-bold text-slate-900 text-xs sm:text-sm">{lead.title}</div>
+                            <div className="text-[11px] font-mono text-slate-500 mt-0.5">{lead.clientName || 'Chưa gắn khách hàng'} · {lead.source}</div>
+                          </td>
+                          <td className="py-4 px-4 whitespace-nowrap">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-mono font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                              <span className="w-1.5 h-1.5 rounded-full bg-brand-500"></span>
+                              {lead.status}
+                            </span>
+                          </td>
+                          <td className="py-4 px-4 whitespace-nowrap font-mono">
+                            {lead.bantScore ? (
+                              <span className="px-2 py-0.5 rounded bg-emerald-50 text-brand-700 font-bold border border-brand-200">
+                                {lead.bantScore}/100
+                              </span>
+                            ) : '—'}
+                          </td>
+                          <td className="py-4 px-5 text-right whitespace-nowrap font-mono text-slate-500">{formatDateTime(lead.updatedAt)}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
-
             </div>
-
           </div>
           </>
           )}

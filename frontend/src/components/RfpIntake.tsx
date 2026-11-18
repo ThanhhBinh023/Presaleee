@@ -8,7 +8,6 @@ import {
   Zap
 } from 'lucide-react';
 import { AppSidebar } from './workspace/AppSidebar';
-import { useAuth } from '../hooks/useAuth';
 import { useClientDirectory } from '../hooks/useClientDirectory';
 import { useMemberDirectory } from '../hooks/useMemberDirectory';
 import { leadService } from '../services/leadService';
@@ -57,8 +56,6 @@ export const RfpIntake: React.FC<RfpIntakeProps> = ({
   onNavigateAIWorkspace,
   onLogout
 }) => {
-  const { user } = useAuth();
-  const isViewer = user?.role === 'VIEWER';
   const clients = useClientDirectory({ page: 1, limit: 100 });
   const members = useMemberDirectory({ page: 1, limit: 50 });
 
@@ -223,14 +220,13 @@ export const RfpIntake: React.FC<RfpIntakeProps> = ({
                 <div className="flex gap-2">
                   <button
                     onClick={() => void handleRunIntake()}
-                    disabled={analyzing || !inquiryText.trim() || isViewer}
-                    title={isViewer ? 'VIEWER là chế độ chỉ đọc — POST /leads/intake/analyze trả về 403.' : undefined}
-                    className="flex-1 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold font-mono flex items-center justify-center gap-2 disabled:opacity-50"
+                    disabled={analyzing || !inquiryText.trim()}
+                    className="flex-1 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold font-mono flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer shadow-xs"
                   >
                     <Zap className="w-3.5 h-3.5 text-brand-400" />
                     <span>{analyzing ? 'Analyzing RFP…' : 'Run AI intake parser'}</span>
                   </button>
-                  <button onClick={handleManualDraft} disabled={isViewer} className="px-3 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 disabled:opacity-50">
+                  <button onClick={handleManualDraft} className="px-3 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 cursor-pointer">
                     Skip AI
                   </button>
                 </div>
@@ -366,12 +362,8 @@ export const RfpIntake: React.FC<RfpIntakeProps> = ({
                           </button>
                         </div>
                       </div>
-                    ) : isViewer ? (
-                      <p className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-center text-xs font-semibold text-slate-500">
-                        Tài khoản VIEWER không được tạo lead (POST /leads trả về 403).
-                      </p>
                     ) : (
-                      <button onClick={() => void handleSave()} disabled={saving || !inquiryText.trim() || !title.trim()} className="w-full py-2.5 rounded-xl bg-brand-500 text-white text-xs font-semibold disabled:opacity-50">
+                      <button onClick={() => void handleSave()} disabled={saving || !inquiryText.trim() || !title.trim()} className="w-full py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold disabled:opacity-50 cursor-pointer shadow-sm transition-all">
                         {saving ? 'Saving…' : 'Save lead'}
                       </button>
                     )}

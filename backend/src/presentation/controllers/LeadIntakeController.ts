@@ -182,6 +182,19 @@ export class LeadIntakeController {
           );
           savedLead = insertRes.rows[0];
           await this.recordLeadAudit(req, 'LEAD_CREATED', savedLead?.id ?? null, { title: titleToUse, source, via: 'intake_analyze_persist' });
+
+          // Tự động phân quyền: Người khởi tạo dự án trở thành PRESALE_LEAD của dự án đó (Theo kế hoạch PBAC)
+          if (userId && savedLead?.id) {
+            try {
+              await this.dbPool.query(`
+                INSERT INTO project_memberships (project_id, user_id, project_role)
+                VALUES ($1, $2, 'PRESALE_LEAD')
+                ON CONFLICT (project_id, user_id) DO UPDATE SET project_role = 'PRESALE_LEAD';
+              `, [savedLead.id, userId]);
+            } catch (memErr) {
+              console.error('[LeadIntakeController.analyze] Failed to register project leader:', memErr);
+            }
+          }
         }
       }
 
@@ -236,9 +249,42 @@ export class LeadIntakeController {
         ...scope,
         ...leadListFilters(req.query as Record<string, unknown>)
       });
+
+      // Attach dynamic project role for each lead (PBAC)
+      let membershipMap: Record<string, string> = {};
+      if (this.dbPool && scope.userId) {
+        try {
+          const memRes = await this.dbPool.query(`
+            SELECT project_id, project_role FROM project_memberships WHERE user_id = $1;
+          `, [scope.userId]);
+          for (const row of memRes.rows) {
+            membershipMap[row.project_id] = row.project_role;
+          }
+        } catch (e) {
+          console.error('[LeadIntakeController.listLeads] Error reading memberships:', e);
+        }
+      }
+
+      const leadsWithRole = result.leads.map(lead => {
+        let myRoleInProject = membershipMap[lead.id];
+        if (!myRoleInProject) {
+          if (lead.createdBy === scope.userId || lead.assignedTo === scope.userId || !lead.createdBy) {
+            myRoleInProject = 'PRESALE_LEAD';
+          } else if (scope.claims?.role === 'ADMIN') {
+            myRoleInProject = 'VIEWER';
+          } else {
+            myRoleInProject = 'PRESALE_LEAD';
+          }
+        }
+        return {
+          ...lead,
+          myRoleInProject
+        };
+      });
+
       res.status(200).json({
         success: true,
-        data: result.leads,
+        data: leadsWithRole,
         meta: { total: result.total, page: result.page, limit: result.limit, totalPages: result.totalPages }
       });
     } catch (error) {
@@ -275,8 +321,16 @@ export class LeadIntakeController {
           myRoleInProject = myMembership.projectRole;
         } else if (myMembership) {
           myRoleInProject = myMembership.projectRole;
-        } else if (lead.createdBy === scope.userId || lead.assignedTo === scope.userId) {
+        } else if (!lead.createdBy || lead.createdBy === scope.userId || lead.assignedTo === scope.userId) {
           myRoleInProject = 'PRESALE_LEAD';
+          // Ensure auto-insert into project_memberships so subsequent actions find it
+          if (scope.userId) {
+            this.dbPool.query(`
+              INSERT INTO project_memberships (project_id, user_id, project_role)
+              VALUES ($1, $2, 'PRESALE_LEAD')
+              ON CONFLICT (project_id, user_id) DO UPDATE SET project_role = 'PRESALE_LEAD';
+            `, [leadId, scope.userId]).catch(() => {});
+          }
         } else {
           myRoleInProject = 'VIEWER';
         }
@@ -413,7 +467,20 @@ export class LeadIntakeController {
       const callerRoleCheck = await this.dbPool.query(`
         SELECT project_role FROM project_memberships WHERE project_id = $1 AND user_id = $2;
       `, [leadId, userId]);
-      const callerProjectRole = callerRoleCheck.rows[0]?.project_role;
+      let callerProjectRole = callerRoleCheck.rows[0]?.project_role;
+
+      if (!callerProjectRole) {
+        const leadCheck = await this.dbPool.query(`SELECT created_by, assigned_to FROM leads WHERE id = $1`, [leadId]);
+        const leadRow = leadCheck.rows[0];
+        if (leadRow && (!leadRow.created_by || leadRow.created_by === userId || leadRow.assigned_to === userId)) {
+          callerProjectRole = 'PRESALE_LEAD';
+          await this.dbPool.query(`
+            INSERT INTO project_memberships (project_id, user_id, project_role)
+            VALUES ($1, $2, 'PRESALE_LEAD')
+            ON CONFLICT (project_id, user_id) DO UPDATE SET project_role = 'PRESALE_LEAD';
+          `, [leadId, userId]).catch(() => {});
+        }
+      }
 
       if (callerProjectRole !== 'PRESALE_LEAD') {
         throw new ForbiddenError('Chỉ Trưởng dự án (PRESALE_LEAD) của dự án này mới có quyền bổ nhiệm thành viên vào deal. Quản trị viên hệ thống không can thiệp vào nhân sự nội bộ của dự án.');
@@ -472,7 +539,15 @@ export class LeadIntakeController {
       const callerRoleCheck = await this.dbPool.query(`
         SELECT project_role FROM project_memberships WHERE project_id = $1 AND user_id = $2;
       `, [leadId, userId]);
-      const callerProjectRole = callerRoleCheck.rows[0]?.project_role;
+      let callerProjectRole = callerRoleCheck.rows[0]?.project_role;
+
+      if (!callerProjectRole) {
+        const leadCheck = await this.dbPool.query(`SELECT created_by, assigned_to FROM leads WHERE id = $1`, [leadId]);
+        const leadRow = leadCheck.rows[0];
+        if (leadRow && (!leadRow.created_by || leadRow.created_by === userId || leadRow.assigned_to === userId)) {
+          callerProjectRole = 'PRESALE_LEAD';
+        }
+      }
 
       if (callerProjectRole !== 'PRESALE_LEAD') {
         throw new ForbiddenError('Chỉ Trưởng dự án (PRESALE_LEAD) của dự án này mới có quyền thay đổi vai trò thành viên trong deal.');
@@ -509,7 +584,15 @@ export class LeadIntakeController {
       const callerRoleCheck = await this.dbPool.query(`
         SELECT project_role FROM project_memberships WHERE project_id = $1 AND user_id = $2;
       `, [leadId, userId]);
-      const callerProjectRole = callerRoleCheck.rows[0]?.project_role;
+      let callerProjectRole = callerRoleCheck.rows[0]?.project_role;
+
+      if (!callerProjectRole) {
+        const leadCheck = await this.dbPool.query(`SELECT created_by, assigned_to FROM leads WHERE id = $1`, [leadId]);
+        const leadRow = leadCheck.rows[0];
+        if (leadRow && (!leadRow.created_by || leadRow.created_by === userId || leadRow.assigned_to === userId)) {
+          callerProjectRole = 'PRESALE_LEAD';
+        }
+      }
 
       if (callerProjectRole !== 'PRESALE_LEAD') {
         throw new ForbiddenError('Chỉ Trưởng dự án (PRESALE_LEAD) của dự án này mới có quyền rút thành viên khỏi deal.');
@@ -538,7 +621,14 @@ export class LeadIntakeController {
         const callerRoleCheck = await this.dbPool.query(`
           SELECT project_role FROM project_memberships WHERE project_id = $1 AND user_id = $2;
         `, [leadId, scope.userId]);
-        const callerProjectRole = callerRoleCheck.rows[0]?.project_role;
+        let callerProjectRole = callerRoleCheck.rows[0]?.project_role;
+        if (!callerProjectRole) {
+          const leadCheck = await this.dbPool.query(`SELECT created_by, assigned_to FROM leads WHERE id = $1`, [leadId]);
+          const leadRow = leadCheck.rows[0];
+          if (leadRow && (!leadRow.created_by || leadRow.created_by === scope.userId || leadRow.assigned_to === scope.userId)) {
+            callerProjectRole = 'PRESALE_LEAD';
+          }
+        }
         if (callerProjectRole !== 'PRESALE_LEAD') {
           throw new ForbiddenError('Chỉ Trưởng dự án (PRESALE_LEAD) của dự án này mới có quyền xóa dự án. Quản trị viên hệ thống không can thiệp vào vòng đời dữ liệu dự án.');
         }

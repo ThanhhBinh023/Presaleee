@@ -7,6 +7,7 @@ import { rateCardService } from '../services/rateCardService';
 import { ApiError } from '../services/apiClient';
 import { navigateTo, readHashQuery } from '../navigation';
 import { formatDateTime, formatMoney } from '../utils/format';
+import { AppSidebar } from './workspace/AppSidebar';
 import {
   PRIVILEGED_PROPOSAL_STATUSES,
   PROPOSAL_STATUSES,
@@ -21,6 +22,7 @@ const PAGE_SIZE = 20;
 
 interface ProposalsStudioProps {
   onBackToOverview: () => void;
+  onLogout?: () => void;
 }
 
 /** The Team sheet carries the staffing intent; money only ever comes back from the rate-card engine. */
@@ -48,7 +50,7 @@ function statusClass(status: ProposalStatus): string {
   return 'bg-slate-100 text-slate-600';
 }
 
-export const ProposalsStudio: React.FC<ProposalsStudioProps> = ({ onBackToOverview }) => {
+export const ProposalsStudio: React.FC<ProposalsStudioProps> = ({ onBackToOverview, onLogout }) => {
   const { user } = useAuth();
   const canPrivilege = user?.role === 'ADMIN' || user?.role === 'PRESALE_LEAD';
 
@@ -316,30 +318,23 @@ export const ProposalsStudio: React.FC<ProposalsStudioProps> = ({ onBackToOvervi
   const currentSheet = detail?.sheets.find((sheet) => sheet.sheetName === sheetName);
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] px-4 py-8 font-sans text-slate-900 md:px-10">
-      <div className="mx-auto max-w-7xl">
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <button onClick={onBackToOverview} className="text-xs font-mono font-bold text-brand-700 hover:underline">
-              &larr; OVERVIEW
-            </button>
-            <h1 className="mt-1 text-2xl font-bold tracking-tight">Proposal studio</h1>
-            <p className="mt-1 text-sm text-slate-500">
-              Ten standard sheets. Sheet edits and AI generation are DRAFT-only. Submit-review writes an audit row.
-            </p>
+    <div className="min-h-screen bg-[#f8fafc] flex text-slate-900 font-sans">
+      <AppSidebar
+        activeItem="Proposals"
+        onLogout={onLogout}
+        onNavigateOverview={onBackToOverview}
+      />
+
+      <main className="flex-1 overflow-y-auto p-6 md:p-8">
+        <div className="mx-auto max-w-7xl">
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900">Proposal studio</h1>
+              <p className="mt-1 text-sm text-slate-500">
+                Ten standard sheets. Sheet edits and AI generation are DRAFT-only. Submit-review writes an audit row.
+              </p>
+            </div>
           </div>
-          <div className="flex gap-2">
-            <button onClick={() => navigateTo('meetings')} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-600">
-              Meetings
-            </button>
-            <button onClick={() => navigateTo('rate-cards')} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-600">
-              Rate cards
-            </button>
-            <button onClick={() => navigateTo('portal')} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-600">
-              Client portal
-            </button>
-          </div>
-        </div>
 
         {!user?.organizationId && (
           <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
@@ -555,6 +550,7 @@ export const ProposalsStudio: React.FC<ProposalsStudioProps> = ({ onBackToOvervi
           </div>
         </div>
       </div>
+      </main>
     </div>
   );
 };

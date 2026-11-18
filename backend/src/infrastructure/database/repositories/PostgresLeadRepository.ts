@@ -86,10 +86,7 @@ export class PostgresLeadRepository implements ILeadRepository {
        ORDER BY updated_at DESC, created_at DESC LIMIT $${pageValues.length - 1} OFFSET $${pageValues.length};`,
       pageValues
     );
-    const leads = result.rows.map(row => {
-      const { rawRfpContent: _rawRfpContent, ...item } = mapLead(row);
-      return item;
-    });
+    const leads = result.rows.map(row => mapLead(row));
     return { leads, total };
   }
 

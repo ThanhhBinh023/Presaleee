@@ -9,7 +9,7 @@ import {
   Sparkles,
   Zap,
   Globe,
-  SlidersHorizontal,
+  Settings,
   BarChart3,
   Users,
   History,
@@ -196,17 +196,14 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
       {/* Footer: Settings/Pipelines & UserCard */}
       <div className="p-3 border-t border-slate-100 space-y-1.5">
         <button
-          onClick={() => handleNav('Role Pipelines')}
+          onClick={() => navigateTo('profile')}
           className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100/80 transition-all cursor-pointer"
-          title="Cài đặt & Hướng dẫn phân quyền 6 vai trò (Role Pipelines)"
+          title="Cài đặt hệ thống & Tài khoản"
         >
           <div className="flex items-center gap-2.5">
-            <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500" />
-            <span>Cài đặt &amp; Hướng dẫn</span>
+            <Settings className="w-3.5 h-3.5 text-slate-500" />
+            <span>Cài đặt hệ thống</span>
           </div>
-          <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-brand-700 border border-brand-200">
-            6 Roles
-          </span>
         </button>
 
         <UserCard onLogout={handleLogout} subtitle="role" />

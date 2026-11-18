@@ -248,7 +248,7 @@ const AppShell: React.FC = () => {
   if (currentPage === 'proposals') {
     return (
       <RequireAuth>
-        <ProposalsStudio onBackToOverview={navigateToOverview} />
+        <ProposalsStudio onBackToOverview={navigateToOverview} onLogout={handleLogout} />
       </RequireAuth>
     );
   }

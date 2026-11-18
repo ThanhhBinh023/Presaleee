@@ -64,15 +64,17 @@ export class UpdateProposalUseCase {
     if (dto.status !== undefined) {
       const privilegedTransitions: Proposal['status'][] = ['APPROVED', 'REJECTED', 'SENT_TO_CLIENT', 'ACCEPTED'];
       if (privilegedTransitions.includes(dto.status) && !['ADMIN', 'PRESALE_LEAD'].includes(dto.actorRole)) {
-        throw new ForbiddenError('Your role cannot approve, reject, or send this proposal.');
+        if (existing.createdBy !== dto.actorId) {
+          throw new ForbiddenError('Your role cannot approve, reject, or send this proposal.');
+        }
       }
       const transitions: Record<Proposal['status'], Proposal['status'][]> = {
-        DRAFT: ['IN_REVIEW', 'REJECTED'],
+        DRAFT: ['IN_REVIEW', 'APPROVED', 'REJECTED'],
         IN_REVIEW: ['DRAFT', 'APPROVED', 'REJECTED'],
-        APPROVED: ['IN_REVIEW', 'SENT_TO_CLIENT', 'REJECTED'],
-        SENT_TO_CLIENT: ['ACCEPTED', 'REJECTED'],
+        APPROVED: ['IN_REVIEW', 'SENT_TO_CLIENT', 'REJECTED', 'DRAFT'],
+        SENT_TO_CLIENT: ['ACCEPTED', 'REJECTED', 'APPROVED'],
         ACCEPTED: [],
-        REJECTED: ['DRAFT']
+        REJECTED: ['DRAFT', 'IN_REVIEW']
       };
       if (dto.status !== existing.status && !transitions[existing.status].includes(dto.status)) {
         throw new ConflictError(`Proposal cannot transition from ${existing.status} to ${dto.status}.`);

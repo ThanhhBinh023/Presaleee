@@ -4,8 +4,7 @@ import {
   ChevronRight, 
   X, 
   Check,
-  ShieldCheck,
-  SlidersHorizontal
+  ShieldCheck
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { navigateTo } from '../../navigation';
@@ -136,11 +135,13 @@ export const UserCard: React.FC<UserCardProps> = ({ onLogout, logoutTitle = 'Sig
             <div className="text-xs font-bold text-slate-800 truncate flex items-center gap-1.5">
               <span>{user?.fullName || 'Not signed in'}</span>
             </div>
-            <div className="flex items-center gap-1 mt-0.5">
-              <span className={`inline-block px-1.5 py-0.2 text-[9px] font-mono font-bold uppercase rounded border ${roleInfo.badgeClass}`}>
-                {roleName.replace(/_/g, ' ')}
-              </span>
-            </div>
+            {roleName === 'ADMIN' && (
+              <div className="flex items-center gap-1 mt-0.5">
+                <span className={`inline-block px-1.5 py-0.2 text-[9px] font-mono font-bold uppercase rounded border ${roleInfo.badgeClass}`}>
+                  ADMIN
+                </span>
+              </div>
+            )}
           </div>
         </button>
 
@@ -212,27 +213,6 @@ export const UserCard: React.FC<UserCardProps> = ({ onLogout, logoutTitle = 'Sig
                 Hệ thống áp dụng cơ chế phân quyền bảo mật nghiêm ngặt. <strong>Tài khoản Quản trị hệ thống (System Admin)</strong> hoạt động hoàn toàn tách biệt, chuyên trách hạ tầng máy chủ, cấu hình workspace và bảo mật đa người dùng (Multi-tenant), không can thiệp vào các vai trò hay việc tạo dự án. Mọi quyền hạn trong từng dự án cụ thể (PBAC) do <strong>Trưởng dự án (PRESALE_LEAD)</strong> của dự án đó toàn quyền phân bổ. Admin không thể truy cập vào Lead Workspace nếu không được Leader dự án mời tham gia.
               </p>
             </div>
-
-            {/* Link to Settings / Role Pipelines Documentation */}
-            <button
-              type="button"
-              onClick={() => {
-                setShowModal(false);
-                navigateTo('pipelines');
-              }}
-              className="w-full p-3.5 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold flex items-center justify-between transition-all group shadow-xs cursor-pointer"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center text-brand-400 shrink-0">
-                  <SlidersHorizontal className="w-4 h-4" />
-                </div>
-                <div className="text-left">
-                  <div className="font-bold text-sm">Cài đặt &amp; Hướng dẫn: Quy trình 6 Vai trò (Role Pipelines)</div>
-                  <div className="text-[11px] text-slate-400 font-normal">Xem thẩm quyền phê duyệt, ma trận trách nhiệm RACI và checklist từng role</div>
-                </div>
-              </div>
-              <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
-            </button>
 
             {/* Footer Actions */}
             <div className="flex items-center justify-between pt-3 border-t border-slate-100 text-xs">

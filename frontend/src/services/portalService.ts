@@ -1,4 +1,4 @@
-import { apiDownload, apiRequest, apiRequestWithMeta } from './apiClient';
+import { apiDownload, apiFetchBlob, apiRequest, apiRequestWithMeta } from './apiClient';
 import type { ListMeta } from '../types/auth';
 import type {
   PortalComment,
@@ -100,5 +100,8 @@ export const portalClientService = {
     ),
 
   exportPdf: (proposalId: string, token: string) =>
-    apiDownload(`${CLIENT}/${encodeURIComponent(proposalId)}/export-pdf`, 'proposal.pdf', 30_000, { bearerToken: token })
+    apiDownload(`${CLIENT}/${encodeURIComponent(proposalId)}/export-pdf`, 'proposal.pdf', 30_000, { bearerToken: token }),
+
+  getPdfBlob: (proposalId: string, token: string) =>
+    apiFetchBlob(`${CLIENT}/${encodeURIComponent(proposalId)}/export-pdf`, 30_000, { bearerToken: token })
 };

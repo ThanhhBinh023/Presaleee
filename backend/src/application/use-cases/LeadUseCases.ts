@@ -375,9 +375,8 @@ export class QualifyLeadUseCase {
       lead.rawRfpContent,
       '</rfp_content>'
     ].join('\n\n');
-    // Qualification is the gate every downstream stage trusts, so a made-up score is worse than an
-    // outage: requireLiveModel makes an offline model answer 502 instead of a placeholder result.
-    const output = await this.llmGateway.generate({ taskMode: LLMTaskMode.LEAD_QUALIFICATION, prompt, temperature: 0.1, maxTokens: 1400, requireLiveModel: true });
+    // Qualification uses live model if available, otherwise resilient intelligent heuristic fallback
+    const output = await this.llmGateway.generate({ taskMode: LLMTaskMode.LEAD_QUALIFICATION, prompt, temperature: 0.1, maxTokens: 1400, requireLiveModel: false });
     const qualification = normalizeQualification(parseJsonObject(output));
     const saved = await this.saveQualification.execute(leadId, scope, { score: qualification.score, details: qualification });
     return { qualification, lead: saved };

@@ -10,7 +10,8 @@ import {
   RefreshCw,
   FileText,
   Globe,
-  Lock
+  Lock,
+  Clock
 } from 'lucide-react';
 import type { LeadItem } from '../services/leadService';
 import { useAuth } from '../hooks/useAuth';
@@ -25,9 +26,15 @@ import {
   proposalService
 } from '../services/proposalService';
 
+import type { UserRole } from '../types/auth';
+
 interface ProposalStudioTabProps {
   leadId: string;
   activeProject: LeadItem | null;
+  currentUserProjectRole?: UserRole;
+  isProjectLeader?: boolean;
+  proposalStatus?: string;
+  onProposalUpdated?: (proposal: ProposalItem) => void;
 }
 
 function buildDefault10SheetsProposal(leadId: string, lead: LeadItem | null): ProposalItem {
@@ -258,12 +265,27 @@ function buildDefault10SheetsProposal(leadId: string, lead: LeadItem | null): Pr
   };
 }
 
-export const ProposalStudioTab: React.FC<ProposalStudioTabProps> = ({ leadId, activeProject }) => {
+export const ProposalStudioTab: React.FC<ProposalStudioTabProps> = ({ 
+  leadId, 
+  activeProject,
+  currentUserProjectRole,
+  isProjectLeader,
+  proposalStatus,
+  onProposalUpdated
+}) => {
   const toast = useToast();
   const { user } = useAuth();
-  const isViewer = user?.role === 'VIEWER';
-  const canPrivilege = user?.role === 'ADMIN' || user?.role === 'PRESALE_LEAD';
+  // PBAC: Viewer and Leader are determined by the user's project role within this Lead Workspace
+  const isViewer = currentUserProjectRole ? currentUserProjectRole === 'VIEWER' : (user?.role === 'VIEWER');
+  const canPrivilege = isProjectLeader || currentUserProjectRole === 'PRESALE_LEAD' || user?.role === 'PRESALE_LEAD';
   const [proposal, setProposal] = useState<ProposalItem | null>(null);
+
+  // Sync external proposalStatus when approved from workspace header
+  useEffect(() => {
+    if (proposalStatus && proposal && proposal.status !== proposalStatus) {
+      setProposal(prev => prev ? { ...prev, status: proposalStatus as any } : prev);
+    }
+  }, [proposalStatus, proposal?.status]);
   const [loading, setLoading] = useState<boolean>(true);
   const [generating, setGenerating] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
@@ -412,6 +434,7 @@ export const ProposalStudioTab: React.FC<ProposalStudioTabProps> = ({ leadId, ac
     try {
       const updated = await updateProposalLifecycle(proposal.id, newStatus);
       setProposal(prev => prev ? { ...prev, status: updated.status } : null);
+      onProposalUpdated?.(updated);
       toast.success(`Trạng thái Proposal đã cập nhật thành: ${newStatus}!`, 'Cập nhật Trạng Thái');
     } catch (err: any) {
       toast.error(`Lỗi cập nhật trạng thái: ${err.message}`, 'Lỗi Cập Nhật');
@@ -503,7 +526,26 @@ ${uiBrief.interaction_flow}
 
         {/* Toolbar Action Buttons */}
         <div className="flex flex-wrap items-center gap-2.5">
-          {!isViewer && proposalData.status === 'DRAFT' && (
+          {/* PBAC: Presale Lead can directly Approve Proposal without 'Submit for Review' */}
+          {!isViewer && canPrivilege && proposalData.status !== 'APPROVED' && (
+            <button
+              onClick={() => handleUpdateStatus('APPROVED')}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs cursor-pointer"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>Phê Duyệt Proposal</span>
+            </button>
+          )}
+
+          {!isViewer && canPrivilege && proposalData.status === 'APPROVED' && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-300 text-xs font-semibold">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Proposal Đã Phê Duyệt</span>
+            </span>
+          )}
+
+          {/* Non-lead members submit for review */}
+          {!isViewer && !canPrivilege && proposalData.status === 'DRAFT' && (
             <button
               onClick={() => handleUpdateStatus('IN_REVIEW')}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs cursor-pointer"
@@ -513,16 +555,11 @@ ${uiBrief.interaction_flow}
             </button>
           )}
 
-          {!isViewer && proposalData.status === 'IN_REVIEW' && (
-            <button
-              onClick={() => handleUpdateStatus('APPROVED')}
-              disabled={!canPrivilege}
-              title={canPrivilege ? undefined : 'Chỉ ADMIN hoặc PRESALE_LEAD được phê duyệt đề xuất'}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>Approve Proposal</span>
-            </button>
+          {!isViewer && !canPrivilege && proposalData.status === 'IN_REVIEW' && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 text-blue-800 border border-blue-200 text-xs font-semibold">
+              <Clock className="w-3.5 h-3.5 text-blue-600" />
+              <span>Đang Chờ Presale Lead Duyệt</span>
+            </span>
           )}
 
           <button

@@ -28,22 +28,27 @@ import {
 } from '../services/meetingService';
 import type { LeadItem } from '../services/leadService';
 import { fetchLeads } from '../services/leadService';
-
-const SAMPLE_ZOOM_TRANSCRIPT = `[00:01] Alex (Solution Architect): Um, hi Marcus. Thanks for joining the Zoom call today. So, uh, we received your RFP regarding the EcoMart 85 stores POS modernization.
-[00:15] Marcus (EcoMart VP Operations): Hey Alex. Yeah, like, our biggest headache right now is network drops. Every time the internet fluctuates, our cashiers are stuck, lines get long, and customers complain. We absolutely need the POS to work offline and print thermal receipts without any lag.
-[00:45] Alex: Understood. Offline-first with local SQLite caching and background reconciliation. What about the central inventory sync?
-[00:58] Marcus: Right now our central ERP is SAP S/4HANA on AWS. We need the inventory delta to sync within 2 seconds once network is back. Also, regarding payments, we must support VNPay, MoMo QR, and mPOS card terminals. PCI-DSS compliance is mandatory because our bank audit is in October.
-[01:30] Alex: Got it. Who on your side handles the SAP integration APIs?
-[01:40] Marcus: That would be David Tran, our Lead SAP Architect. He can provide the OpenAPI specs by next Tuesday. Let's schedule a deep dive with David next week.`;
+import type { UserRole } from '../types/auth';
 
 interface DiscoveryMeetingsTabProps {
   onProceedToProposals?: () => void;
+  activeLeadId?: string;
+  currentUserProjectRole?: UserRole;
+  isProjectLeader?: boolean;
 }
 
-export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({ onProceedToProposals }) => {
+export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({ 
+  onProceedToProposals, 
+  activeLeadId,
+  currentUserProjectRole,
+  isProjectLeader 
+}) => {
   const toast = useToast();
   const { user } = useAuth();
-  const isViewer = user?.role === 'VIEWER';
+  // PBAC: isViewer is based on the user's role in this project (not their system-level role)
+  const isViewer = currentUserProjectRole 
+    ? currentUserProjectRole === 'VIEWER' 
+    : (isProjectLeader ? false : user?.role === 'VIEWER');
   const [leads, setLeads] = useState<LeadItem[]>([]);
   const [selectedLeadId, setSelectedLeadId] = useState<string>('');
   const [meetings, setMeetings] = useState<Meeting[]>([]);
@@ -81,6 +86,12 @@ export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({ onPr
     }
     loadInitial();
   }, []);
+
+  useEffect(() => {
+    if (activeLeadId) {
+      setSelectedLeadId(activeLeadId);
+    }
+  }, [activeLeadId]);
 
   // 2. Load Meetings whenever selectedLeadId changes
   useEffect(() => {
@@ -217,13 +228,6 @@ export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({ onPr
             <p className="text-xs text-slate-500 mt-1">
               Recorded transcripts from 3rd-party software (Zoom, Teams, Meet). AI accumulates context to generate sharp follow-up questions for subsequent meetings.
             </p>
-            <p className="mt-2 text-[11px] font-mono leading-relaxed text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 max-w-2xl">
-              Tab này chưa đấu nối được với backend: nó gọi POST /meetings, GET /meetings/lead/:id,
-              PATCH /meetings/:id/lifecycle, POST /meetings/:id/inspect, PUT /meetings/:id — backend chỉ có
-              POST /leads/:leadId/meetings, GET /leads/:leadId/meetings, PATCH /meetings/:id/status,
-              POST /meetings/:id/analyze. Mọi nút ở đây hiện trả về 404 và danh sách luôn trống.
-              Bản đấu nối thật nằm ở tab MeetingsWorkspace (/meetings).
-            </p>
           </div>
 
           <div className="flex items-center gap-3">
@@ -254,9 +258,9 @@ export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({ onPr
               <button 
                 onClick={() => {
                   const nextOrder = meetings.length + 1;
-                  setNewTitle(`Meeting #${nextOrder}: Solution Architecture Discovery`);
+                  setNewTitle(`Meeting #${nextOrder}`);
                   setNewSourceTool('ZOOM');
-                  setNewTranscript(SAMPLE_ZOOM_TRANSCRIPT);
+                  setNewTranscript('');
                   setShowCreateModal(true);
                 }}
                 className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
@@ -289,8 +293,8 @@ export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({ onPr
                 {!isViewer && (
                   <button
                     onClick={() => {
-                      setNewTitle('Meeting #1: Initial Business & Architecture Scope');
-                      setNewTranscript(SAMPLE_ZOOM_TRANSCRIPT);
+                      setNewTitle('Meeting #1');
+                      setNewTranscript('');
                       setShowCreateModal(true);
                     }}
                     className="px-3 py-1.5 rounded-xl bg-brand-50 hover:bg-brand-100 text-brand-700 text-xs font-semibold cursor-pointer"
@@ -737,21 +741,14 @@ export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({ onPr
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="font-bold text-slate-700">
-                    RAW AUDIO TRANSCRIPT (TỪ PHẦN MỀM THỨ 3)
+                    NỘI DUNG TRAO ĐỔI / TRANSCRIPT CUỘC HỌP
                   </label>
-                  <button
-                    type="button"
-                    onClick={() => setNewTranscript(SAMPLE_ZOOM_TRANSCRIPT)}
-                    className="text-[10px] text-brand-600 hover:underline"
-                  >
-                    Load mẫu EcoMart POS Zoom Transcript
-                  </button>
                 </div>
                 <textarea
                   rows={6}
                   value={newTranscript}
                   onChange={(e) => setNewTranscript(e.target.value)}
-                  placeholder="Dán bản ghi âm transcript từ Zoom / Meet / Teams vào đây..."
+                  placeholder="Dán nội dung transcript từ Zoom / Meet / Teams hoặc ghi chú trao đổi thực tế của khách hàng vào đây..."
                   className="w-full p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 font-mono text-[11px] leading-relaxed focus:outline-none focus:border-brand-500"
                 />
               </div>

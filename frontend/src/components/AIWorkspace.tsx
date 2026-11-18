@@ -2,14 +2,13 @@ import React, { useState, useEffect } from 'react';
 import type { LeadItem } from '../services/leadService';
 import type { LeadQualification, LeadStatus } from '../types/lead';
 import { LEAD_TRANSITIONS, isLeadQualification } from '../types/lead';
-import { fetchLeads, qualifyLead, updateLead, updateLeadStatus, deleteLead } from '../services/leadService';
+import { fetchLeads, getLeadById, qualifyLead, updateLead, updateLeadStatus, deleteLead } from '../services/leadService';
 import { useAuth } from '../hooks/useAuth';
 import { useOrganizations } from '../hooks/useOrganizations';
 import { AppSidebar } from './workspace/AppSidebar';
 import { 
   FileText, 
   Sparkles, 
-  Send, 
   CheckCircle2, 
   ShieldCheck, 
   Zap, 
@@ -32,7 +31,13 @@ import {
   FileCheck,
   Users,
   Lock,
-  SlidersHorizontal
+  FolderKanban,
+  LayoutGrid,
+  ChevronDown,
+  Check,
+  Search,
+  Plus,
+  Building2
 } from 'lucide-react';
 import { navigateTo } from '../navigation';
 import { ClientPortalModal } from './ClientPortalModal';
@@ -45,7 +50,6 @@ import type { PortalSessionDetail, PortalMaterialDetail } from '../types/portal'
 import { fetchProposalByLead, updateProposalLifecycle } from '../services/proposalService';
 import type { ProposalItem } from '../services/proposalService';
 import { formatDateTime } from '../utils/format';
-import { ROLE_DETAILS } from './workspace/UserCard';
 import type { UserRole } from '../types/auth';
 
 interface AIWorkspaceProps {
@@ -69,10 +73,15 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
   const { user } = useAuth();
   const { primary: organization } = useOrganizations();
 
-  // Multi-project support
+  // Multi-project support & Block Manager
   const [projects, setProjects] = useState<LeadItem[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [loadingProjects, setLoadingProjects] = useState<boolean>(true);
+  const [isProjectSelectorModalOpen, setIsProjectSelectorModalOpen] = useState(false);
+  const [projectSearchTerm, setProjectSearchTerm] = useState('');
+  const [isEditingRaw, setIsEditingRaw] = useState(false);
+  const [editedRawContent, setEditedRawContent] = useState('');
+  const [isSavingRaw, setIsSavingRaw] = useState(false);
 
   // PBAC Modal state
   const [isProjectMembersModalOpen, setIsProjectMembersModalOpen] = useState(false);
@@ -88,10 +97,6 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isQualifying, setIsQualifying] = useState(false);
-
-  // Deal Team Allocation state (Requirement: not every lead needs all 6 roles)
-  const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
-  const [selectedDealRoles, setSelectedDealRoles] = useState<UserRole[]>([]);
 
   // Edit Form State
   const [editTitle, setEditTitle] = useState('');
@@ -132,6 +137,18 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
 
   const selectedProject = projects.find(p => p.id === selectedProjectId) || null;
 
+  const filteredProjects = React.useMemo(() => {
+    const term = projectSearchTerm.trim().toLowerCase();
+    if (!term) return projects;
+    return projects.filter(p => {
+      const meta = (p.extractedMetadata as any) || {};
+      const industry = meta.clientIndustry || '';
+      return p.title.toLowerCase().includes(term) ||
+             p.status.toLowerCase().includes(term) ||
+             industry.toLowerCase().includes(term);
+    });
+  }, [projects, projectSearchTerm]);
+
   // PBAC (Project-Based Access Control) calculation
   const isOrgAdmin = user?.role === 'ADMIN';
 
@@ -160,8 +177,6 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
   const isProjectLeader = !isOrgAdmin && effectiveProjectRole === 'PRESALE_LEAD';
   const isProjectViewer = isOrgAdmin || effectiveProjectRole === 'VIEWER';
   const isViewer = isProjectViewer;
-  const userRole = effectiveProjectRole;
-  const roleInfo = ROLE_DETAILS[userRole] || ROLE_DETAILS.VIEWER;
 
   /**
    * The stored BANT result. `/qualify` and `/qualifications` both persist the canonical
@@ -169,53 +184,6 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
    */
   const storedDetails = selectedProject?.bantDetails;
   const storedQualification: LeadQualification | null = isLeadQualification(storedDetails) ? storedDetails : null;
-
-  const assignedRolesList: UserRole[] = React.useMemo(() => {
-    if (!selectedProject) return [];
-    const meta = selectedProject.extractedMetadata as any;
-    const roles = meta?.assigned_roles || meta?.assignedRoles;
-    if (Array.isArray(roles) && roles.length > 0) {
-      return roles as UserRole[];
-    }
-    return ['SALES_REP', 'PRESALE_CONSULTANT', 'SOLUTION_ARCHITECT'];
-  }, [selectedProject]);
-
-  const openTeamModal = () => {
-    setSelectedDealRoles([...assignedRolesList]);
-    setIsTeamModalOpen(true);
-  };
-
-  const toggleDealRole = (role: UserRole) => {
-    setSelectedDealRoles(prev => 
-      prev.includes(role) ? prev.filter(r => r !== role) : [...prev, role]
-    );
-  };
-
-  const handleSaveTeam = async () => {
-    if (!selectedProject) return;
-    if (selectedDealRoles.length === 0) {
-      toast.error('Vui lòng chọn ít nhất 1 vai trò phụ trách lead.', 'Yêu cầu');
-      return;
-    }
-    try {
-      setIsSubmitting(true);
-      const updatedMetadata = {
-        ...(selectedProject.extractedMetadata || {}),
-        assigned_roles: selectedDealRoles,
-        assignedRoles: selectedDealRoles
-      };
-      const updated = await updateLead(selectedProject.id, {
-        extractedMetadata: updatedMetadata
-      });
-      setProjects(prev => prev.map(p => p.id === updated.id ? updated : p));
-      toast.success(`Đã cập nhật đội ngũ (${selectedDealRoles.length} vai trò) cho lead "${updated.title}"!`, 'Đội ngũ phụ trách');
-      setIsTeamModalOpen(false);
-    } catch (err: any) {
-      toast.error(err.message || 'Lỗi cập nhật đội ngũ', 'Thất bại');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   // Real Client Intelligence State (Không dùng dữ liệu giả định)
   const [realProposal, setRealProposal] = useState<ProposalItem | null>(null);
@@ -268,6 +236,24 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
     return () => {
       isCancelled = true;
     };
+  }, [selectedProjectId]);
+
+  // Load full lead details (including PBAC memberships & dynamic project role)
+  useEffect(() => {
+    if (!selectedProjectId) return;
+    let isCancelled = false;
+    async function loadLeadFullDetail() {
+      try {
+        const fullDetail = await getLeadById(selectedProjectId);
+        if (fullDetail && !isCancelled) {
+          setProjects(prev => prev.map(p => p.id === fullDetail.id ? { ...p, ...fullDetail } : p));
+        }
+      } catch (err) {
+        console.error('Failed to load full lead details:', err);
+      }
+    }
+    void loadLeadFullDetail();
+    return () => { isCancelled = true; };
   }, [selectedProjectId]);
 
   // Handle Select Change
@@ -339,22 +325,56 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
     }
   };
 
-  // Handle Delete Lead (PBAC: Only Project Leader or Org Admin)
-  const handleDeleteLead = async () => {
+  const handleSaveRawContent = async () => {
     if (!selectedProject) return;
-    if (!isProjectLeader) {
-      toast.error('Chỉ Presale Lead phụ trách dự án này hoặc Quản trị viên mới có quyền xóa dự án.', 'Từ chối quyền hạn');
-      return;
+    try {
+      setIsSavingRaw(true);
+      const updated = await updateLead(selectedProject.id, {
+        rawRfpContent: editedRawContent
+      });
+      setProjects(prev => prev.map(p => p.id === updated.id ? { ...p, rawRfpContent: updated.rawRfpContent } : p));
+      setIsEditingRaw(false);
+      toast.success('Đã lưu nội dung RFP thô! Bạn có thể bấm "Thẩm Định BANT AI" để cập nhật điểm mới.', 'Cập nhật RFP');
+    } catch (err: any) {
+      toast.error(err.message || 'Lỗi khi lưu nội dung thô', 'Lỗi');
+    } finally {
+      setIsSavingRaw(false);
     }
-    const confirmDelete = window.confirm(`Bạn có chắc chắn muốn xóa Intake "${selectedProject.title}" và toàn bộ dữ liệu họp / đề xuất liên quan không?`);
+  };
+
+  const handleDeleteLeadById = async (targetLeadId: string, leadTitle: string) => {
+    const confirmDelete = window.confirm(`Bạn có chắc chắn muốn xóa dự án "${leadTitle}" và toàn bộ dữ liệu họp / đề xuất liên quan không?`);
     if (!confirmDelete) return;
 
     try {
-      await deleteLead(selectedProject.id);
-      toast.success(`Đã xóa thành công Intake "${selectedProject.title}"`, 'Đã xóa');
+      await deleteLead(targetLeadId);
+      toast.success(`Đã xóa thành công dự án "${leadTitle}"`, 'Đã xóa');
+      if (selectedProjectId === targetLeadId) {
+        setSelectedProjectId('');
+        localStorage.removeItem('presaleee_active_lead_id');
+      }
       await loadProjects();
     } catch (err: any) {
-      toast.error(err.message || 'Lỗi khi xóa Intake', 'Thất bại');
+      toast.error(err.message || 'Lỗi khi xóa dự án', 'Thất bại');
+    }
+  };
+
+  // Handle Delete Lead (PBAC: Only Project Leader or Org Admin)
+  const handleDeleteLead = async () => {
+    if (!selectedProject) return;
+    await handleDeleteLeadById(selectedProject.id, selectedProject.title);
+  };
+
+  // Handle Approve Proposal (PBAC: Presale Lead)
+  const handleApproveProposal = async () => {
+    try {
+      if (realProposal?.id) {
+        const updated = await updateProposalLifecycle(realProposal.id, 'APPROVED');
+        setRealProposal(prev => prev ? { ...prev, status: updated.status } : prev);
+      }
+      toast.success('Đã phê duyệt hồ sơ Proposal (APPROVED)! Đề xuất sẵn sàng cấp phép lên Client Portal.', 'Phê Duyệt Proposal');
+    } catch (err: any) {
+      toast.error(`Lỗi phê duyệt: ${err.message}`, 'Lỗi');
     }
   };
 
@@ -409,33 +429,29 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
               Workspace
             </button>
             <span className="text-slate-300">/</span>
-            <span className="text-slate-500">{user?.role?.replace(/_/g, ' ') || 'PRESALE WORKSPACE'}</span>
+            <span className="font-bold text-slate-700">
+              {selectedProject ? effectiveProjectRole.replace(/_/g, ' ') : (user?.role?.replace(/_/g, ' ') || 'PRESALE WORKSPACE')}
+            </span>
             <span className="text-slate-300">/</span>
-            <span className="font-semibold text-brand-700">
+            <span className="font-semibold text-brand-700 truncate max-w-xs sm:max-w-md">
               {selectedProject ? selectedProject.title : 'Chọn dự án làm việc'}
             </span>
           </div>
 
           {/* Quick Action - Only when project selected */}
           <div className="flex items-center gap-2">
-            {onNavigatePipelines && (
-              <button 
-                onClick={onNavigatePipelines}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-brand-700 border border-brand-200 shadow-xs cursor-pointer transition-colors"
-                title="Xem hướng dẫn quy trình và thẩm quyền phê duyệt của 6 role"
-              >
-                <SlidersHorizontal className="w-3.5 h-3.5 text-brand-600" />
-                <span>Hướng dẫn Role</span>
-              </button>
-            )}
             {selectedProject && (
               <button 
                 onClick={() => setIsProjectMembersModalOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 shadow-xs cursor-pointer transition-colors"
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold shadow-xs cursor-pointer transition-colors ${
+                  isProjectLeader 
+                    ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300' 
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
+                }`}
                 title="Quản lý thành viên và phân quyền trong dự án này (PBAC)"
               >
-                <Users className="w-3.5 h-3.5 text-slate-600" />
-                <span>Thành viên deal ({selectedProject.projectMembers?.length || 1})</span>
+                <Users className={`w-3.5 h-3.5 ${isProjectLeader ? 'text-amber-700' : 'text-slate-600'}`} />
+                <span>{isProjectLeader ? 'Quản trị thành viên' : 'Thành viên deal'} ({selectedProject.projectMembers?.length || 1})</span>
               </button>
             )}
             {selectedProject && (
@@ -456,55 +472,6 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
           
           <div className="max-w-7xl mx-auto space-y-3">
             
-            {/* Dynamic Role Banner for All 6 Roles (PBAC-Aware & Admin Adaptive) */}
-            <div className={`px-4 py-2.5 rounded-2xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-              user?.role === 'ADMIN' ? 'bg-gradient-to-r from-purple-900 via-indigo-900 to-purple-950 border-purple-700 text-white shadow-sm' :
-              userRole === 'PRESALE_LEAD' ? 'bg-amber-50/70 border-amber-200 text-amber-900' :
-              userRole === 'PRESALE_CONSULTANT' ? 'bg-emerald-50/70 border-brand-200 text-brand-950' :
-              userRole === 'SOLUTION_ARCHITECT' ? 'bg-sky-50/70 border-sky-200 text-sky-950' :
-              userRole === 'SALES_REP' ? 'bg-indigo-50/70 border-indigo-200 text-indigo-950' :
-              'bg-slate-100 border-slate-300 text-slate-800'
-            }`}>
-              <div className="flex items-center gap-2.5 min-w-0">
-                <span className={`px-2 py-0.5 rounded-md font-mono font-bold text-[10px] uppercase border shrink-0 ${
-                  user?.role === 'ADMIN' ? 'bg-purple-800 text-purple-100 border-purple-500' : roleInfo.badgeClass
-                }`}>
-                  {user?.role === 'ADMIN' ? '👑 SYSTEM ADMIN' : selectedProject?.myRoleInProject ? `PBAC: ${userRole}` : userRole}
-                </span>
-                <span className="font-semibold text-xs truncate sm:whitespace-normal">
-                  {user?.role === 'ADMIN' && '👑 Quản trị viên hệ thống (Audit View): Giám sát hạ tầng & dữ liệu. Không can thiệp sửa đổi nội dung thương thảo hay phân bổ nhân sự bên trong deal.'}
-                  {user?.role !== 'ADMIN' && userRole === 'PRESALE_LEAD' && '⭐ Trưởng dự án Presale: toàn quyền phân rã deal, mời thành viên, submit xét duyệt, duyệt kiến trúc & xóa dự án.'}
-                  {user?.role !== 'ADMIN' && userRole === 'PRESALE_CONSULTANT' && '💡 Tư vấn viên Presale: khám phá nhu cầu, soạn thảo tài liệu proposal, chuẩn bị hồ sơ thầu trong deal này.'}
-                  {user?.role !== 'ADMIN' && userRole === 'SOLUTION_ARCHITECT' && '📐 Kiến trúc sư giải pháp: thiết kế giải pháp kỹ thuật, hạ tầng, SLA, phân tích tính khả thi trong deal này.'}
-                  {user?.role !== 'ADMIN' && userRole === 'SALES_REP' && '🚀 Đại diện kinh doanh: quản lý mối quan hệ khách hàng, chốt ngân sách BANT, thương thảo trong deal này.'}
-                  {user?.role !== 'ADMIN' && userRole === 'VIEWER' && '🔒 Người quan sát: xem dữ liệu tổng hợp, không được sửa đổi dữ liệu hay xóa dự án này.'}
-                </span>
-              </div>
-              <div className="text-[11px] font-mono shrink-0 flex items-center gap-1.5">
-                {user?.role === 'ADMIN' ? (
-                  <span className="text-purple-200 flex items-center gap-1">
-                    <ShieldCheck className="w-3.5 h-3.5 text-purple-300" />
-                    <span>Giám sát Hệ thống (Read-Only Deal)</span>
-                  </span>
-                ) : isProjectLeader ? (
-                  <>
-                    <Zap className="w-3.5 h-3.5 text-amber-600" />
-                    <span>Dự án: Trưởng Deal (Toàn quyền)</span>
-                  </>
-                ) : isViewer ? (
-                  <>
-                    <Lock className="w-3.5 h-3.5 text-slate-400" />
-                    <span>Dự án: Chỉ đọc (PBAC Viewer)</span>
-                  </>
-                ) : (
-                  <>
-                    <Zap className="w-3.5 h-3.5 text-brand-600" />
-                    <span>Dự án: Thành viên đóng góp ({userRole})</span>
-                  </>
-                )}
-              </div>
-            </div>
-
             {/* Top Row: Path & Status */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-xs font-mono">
@@ -518,35 +485,11 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                 )}
               </div>
 
-              {selectedProject && (
-                <div className="flex items-center gap-2">
-                  {isViewer ? (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 text-slate-500 border border-slate-200 text-xs font-mono font-semibold" title="Tài khoản VIEWER không có quyền nộp phê duyệt">
-                      <Lock className="w-3.5 h-3.5 text-slate-400" />
-                      <span>Submit for Review (Chỉ đọc)</span>
-                    </span>
-                  ) : (
-                    <button 
-                      onClick={async () => {
-                        if (!realProposal?.id) {
-                          toast.error('Lead này chưa có Proposal nên chưa thể nộp xét duyệt.', 'Trình duyệt');
-                          return;
-                        }
-                        try {
-                          const updated = await updateProposalLifecycle(realProposal.id, 'IN_REVIEW');
-                          setRealProposal(prev => prev ? { ...prev, status: updated.status } : prev);
-                          toast.success('Proposal đã chuyển sang IN_REVIEW và chờ xét duyệt nội bộ.', 'Trình duyệt');
-                        } catch (err: any) {
-                          toast.error(`Lỗi nộp xét duyệt: ${err.message}`, 'Trình duyệt');
-                        }
-                      }}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold shadow-sm transition-all cursor-pointer"
-                    >
-                      <Send className="w-3.5 h-3.5" />
-                      <span>Submit for Review</span>
-                    </button>
-                  )}
-                </div>
+              {selectedProject && isViewer && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 text-slate-500 border border-slate-200 text-xs font-mono font-semibold" title="Tài khoản VIEWER chỉ có quyền xem">
+                  <Lock className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Chỉ đọc (Read-only)</span>
+                </span>
               )}
             </div>
 
@@ -633,32 +576,65 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
               )}
             </div>
 
-            {/* Secondary Navigation Tabs matching PDF lifecycle */}
-            <div className="flex items-center gap-2 pt-2 border-t border-slate-100 overflow-x-auto text-xs font-medium">
-              {[
-                { name: 'Intake & Scope' },
-                { name: 'Discovery Meetings' },
-                { name: 'Technical Sessions' },
-                { name: 'Proposal Builder v2.4', icon: FileText },
-                { name: 'Client Intelligence' },
-              ].map((tab, idx) => {
-                const isTabActive = activeSubnav === tab.name;
-                const Icon = tab.icon;
-                return (
-                  <button
-                    key={idx}
-                    onClick={() => setActiveSubnav(tab.name as any)}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg whitespace-nowrap transition-all ${
-                      isTabActive
-                        ? 'bg-slate-900 text-white font-semibold shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                    }`}
-                  >
-                    {Icon && <Icon className="w-3.5 h-3.5 text-brand-400" />}
-                    <span>{tab.name}</span>
-                  </button>
-                );
-              })}
+            {/* Secondary Navigation Tabs matching PDF lifecycle with Direct Approval */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-slate-100">
+              <div className="flex items-center gap-2 overflow-x-auto text-xs font-medium">
+                {[
+                  { name: 'Intake & Scope' },
+                  { name: 'Discovery Meetings' },
+                  { name: 'Technical Sessions' },
+                  { name: 'Proposal Builder v2.4', icon: FileText },
+                  { name: 'Client Intelligence' },
+                ].map((tab, idx) => {
+                  const isTabActive = activeSubnav === tab.name;
+                  const Icon = tab.icon;
+                  return (
+                    <button
+                      key={idx}
+                      onClick={() => setActiveSubnav(tab.name as any)}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg whitespace-nowrap transition-all ${
+                        isTabActive
+                          ? 'bg-slate-900 text-white font-semibold shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                      }`}
+                    >
+                      {Icon && <Icon className="w-3.5 h-3.5 text-brand-400" />}
+                      <span>{tab.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Direct Proposal Approval for Presale Lead (Image 2) */}
+              {selectedProject && isProjectLeader && (
+                <div className="flex items-center gap-2 shrink-0">
+                  {realProposal?.status === 'APPROVED' ? (
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-300 text-xs font-semibold">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Proposal Đã Phê Duyệt</span>
+                      </span>
+                      <button
+                        onClick={() => setPortalModalOpen(true)}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
+                        title="Cấp phép Client Portal cho khách hàng"
+                      >
+                        <Eye className="w-3.5 h-3.5 text-brand-400" />
+                        <span>Client Portal</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={handleApproveProposal}
+                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
+                      title="Trưởng dự án phê duyệt đề xuất (APPROVED)"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Phê Duyệt Proposal</span>
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
 
           </div>
@@ -666,8 +642,8 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
         </div>
 
         {/* 3. DYNAMIC CONTENT AREA BASED ON LIFECYCLE TAB */}
-        <div className="p-6 sm:p-8 max-w-7xl mx-auto w-full">
-          
+        <div className="p-6 sm:p-8 max-w-7xl mx-auto w-full space-y-6">
+
           {/* TAB 1: INTAKE & SCOPE with FULL CRUD (Requirement 3 & 4) */}
           {activeSubnav === 'Intake & Scope' && (
             <div className="space-y-6">
@@ -675,52 +651,47 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
               {/* INTAKE SELECTOR (Modern Unified Control Bar) */}
               <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-3.5 sm:p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
                 
-                {/* Selector */}
+                {/* Project Block Selector Button */}
                 <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <div className="w-8 h-8 rounded-xl bg-emerald-50 border border-brand-200 flex items-center justify-center shrink-0">
-                    <Sparkles className="w-4 h-4 text-brand-600" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider">
-                        CHỌN INTAKE ĐANG THAO TÁC ({projects.length} DỰ ÁN)
-                      </span>
-                      {selectedProject && (
-                        <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-emerald-50 text-brand-700 font-semibold border border-brand-200/50">
-                          {selectedProject.status}
-                        </span>
-                      )}
+                  <button
+                    onClick={() => setIsProjectSelectorModalOpen(true)}
+                    className="flex items-center gap-3 p-2 rounded-xl border border-slate-200/90 bg-slate-50 hover:bg-white hover:border-brand-300 hover:shadow-xs transition-all cursor-pointer text-left group min-w-0 max-w-xl"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-emerald-100/70 border border-brand-200 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                      <FolderKanban className="w-4 h-4 text-brand-700" />
                     </div>
-                    {projects.length > 0 ? (
-                      <div className="flex items-center gap-2 max-w-xl">
-                        <select
-                          value={selectedProjectId}
-                          onChange={(e) => handleSelectProject(e.target.value)}
-                          className="w-full px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100/60 text-xs font-semibold text-slate-800 focus:outline-none focus:border-brand-500 focus:bg-white truncate transition-colors"
-                        >
-                          <option value="">-- Chọn dự án cần làm việc ({projects.length} dự án) --</option>
-                          {projects.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              [{p.status}] {p.title}
-                            </option>
-                          ))}
-                        </select>
-                        {isProjectLeader && (
-                          <button
-                            onClick={handleDeleteLead}
-                            title="Xóa Intake này (Chỉ dành cho Trưởng dự án)"
-                            className="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-all shrink-0"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                    <div className="min-w-0 flex-1 pr-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider">
+                          DỰ ÁN ĐANG CHỌN ({projects.length} DỰ ÁN)
+                        </span>
+                        {selectedProject && (
+                          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-emerald-50 text-brand-700 font-semibold border border-brand-200/60">
+                            {selectedProject.status}
+                          </span>
                         )}
                       </div>
-                    ) : (
-                      <span className="text-xs font-mono text-slate-400">
-                        Chưa có Intake nào. Vui lòng chạy AI Intake để nạp dự án.
-                      </span>
-                    )}
-                  </div>
+                      <div className="text-xs font-bold text-slate-800 truncate flex items-center gap-1.5 mt-0.5">
+                        <span className="truncate">
+                          {selectedProject ? selectedProject.title : '-- Bấm để chọn dự án làm việc --'}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-slate-700 group-hover:border-brand-400 group-hover:text-brand-700 transition-colors shrink-0 shadow-2xs">
+                      <LayoutGrid className="w-3.5 h-3.5 text-slate-500 group-hover:text-brand-600" />
+                      <span>Chọn dự án</span>
+                      <ChevronDown className="w-3 h-3 text-slate-400 group-hover:text-brand-600" />
+                    </div>
+                  </button>
+                  {isProjectLeader && selectedProject && (
+                    <button
+                      onClick={handleDeleteLead}
+                      title="Xóa Intake này (Chỉ dành cho Trưởng dự án)"
+                      className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-all shrink-0 cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
 
                 {/* Right Actions: Qualify BANT & Direct Link to AI Intake */}
@@ -845,17 +816,61 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                     {/* Left: Raw Intake */}
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-bold text-slate-900 font-mono">
-                          Raw Client Intake Extract
-                        </h3>
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-sm font-bold text-slate-900 font-mono">
+                            Raw Client Intake Extract
+                          </h3>
+                          {!isEditingRaw && !isViewer && (
+                            <button
+                              onClick={() => {
+                                setEditedRawContent(selectedProject.rawRfpContent || '');
+                                setIsEditingRaw(true);
+                              }}
+                              className="text-[11px] font-mono font-semibold text-brand-600 hover:text-brand-700 hover:underline flex items-center gap-1 cursor-pointer"
+                              title="Chỉnh sửa nội dung RFP thô để thẩm định lại BANT"
+                            >
+                              <Edit3 className="w-3 h-3" />
+                              <span>Sửa Raw RFP</span>
+                            </button>
+                          )}
+                        </div>
                         <span className="text-[10px] font-mono text-slate-400">
                           Nguồn: {selectedProject.source || 'INBOUND_EMAIL'}
                         </span>
                       </div>
 
-                      <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 font-mono text-xs text-slate-700 leading-relaxed max-h-48 overflow-y-auto whitespace-pre-wrap">
-                        {selectedProject.rawRfpContent || '(Không có nội dung mô tả thô)'}
-                      </div>
+                      {isEditingRaw ? (
+                        <div className="space-y-2">
+                          <textarea
+                            value={editedRawContent}
+                            onChange={(e) => setEditedRawContent(e.target.value)}
+                            rows={6}
+                            placeholder="Nhập hoặc dán nội dung RFP thô từ khách hàng..."
+                            className="w-full p-3 rounded-2xl bg-white border border-brand-300 focus:border-brand-500 font-mono text-xs text-slate-800 leading-relaxed outline-none shadow-xs"
+                          />
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => setIsEditingRaw(false)}
+                              disabled={isSavingRaw}
+                              className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 cursor-pointer"
+                            >
+                              Hủy
+                            </button>
+                            <button
+                              onClick={() => void handleSaveRawContent()}
+                              disabled={isSavingRaw}
+                              className="px-4 py-1.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-bold cursor-pointer shadow-xs transition-all flex items-center gap-1.5"
+                            >
+                              <Save className="w-3.5 h-3.5" />
+                              <span>{isSavingRaw ? 'Đang lưu...' : 'Lưu nội dung Raw'}</span>
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 font-mono text-xs text-slate-700 leading-relaxed max-h-48 overflow-y-auto whitespace-pre-wrap">
+                          {selectedProject.rawRfpContent || '(Không có nội dung mô tả thô)'}
+                        </div>
+                      )}
 
                       <div className="grid grid-cols-2 gap-3 text-xs font-mono">
                         <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
@@ -974,60 +989,6 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                     </div>
                   </div>
 
-                  {/* PRESALE DEAL TEAM ALLOCATION CARD (Requirement: "Coding chức năng theo cả 6 role... Lưu ý: không phải lead nào cũng cần có cả 6 role") */}
-                  <div className="bg-white rounded-3xl border border-slate-200 shadow-card p-6 space-y-5">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 gap-3">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <Users className="w-5 h-5 text-brand-600" />
-                          <h3 className="text-base font-bold text-slate-900">
-                            Đội ngũ Phụ trách Lead (Presale Deal Team)
-                          </h3>
-                          <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-semibold border border-slate-200">
-                            {assignedRolesList.length} / 6 Vai trò
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-500 font-mono mt-1">
-                          Lưu ý: Không phải lead nào cũng cần có cả 6 role. Tùy biến đội ngũ linh hoạt theo quy mô và tính chất dự án.
-                        </p>
-                      </div>
-                      {!isViewer && (
-                        <button
-                          onClick={openTeamModal}
-                          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-brand-200 bg-emerald-50 hover:bg-emerald-100 text-brand-800 text-xs font-mono font-semibold transition-all shrink-0 cursor-pointer shadow-2xs"
-                        >
-                          <Edit3 className="w-3.5 h-3.5 text-brand-600" />
-                          <span>Tùy biến Đội ngũ</span>
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Active Roles Display */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                      {assignedRolesList.map((r) => {
-                        const info = ROLE_DETAILS[r as UserRole] || ROLE_DETAILS.VIEWER;
-                        return (
-                          <div key={r} className="p-3.5 rounded-2xl border border-slate-200/80 bg-slate-50/70 flex items-start gap-3">
-                            <div className={`w-8 h-8 rounded-xl ${info.iconBg} text-white flex items-center justify-center font-bold font-mono text-xs shrink-0 shadow-xs mt-0.5`}>
-                              {r.slice(0, 2)}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-1.5 mb-1">
-                                <span className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded border ${info.badgeClass}`}>
-                                  {r}
-                                </span>
-                              </div>
-                              <div className="text-xs font-bold text-slate-800 line-clamp-1">{info.nameVi.split('(')[0]}</div>
-                              <p className="text-[11px] text-slate-500 line-clamp-2 mt-1 leading-snug">
-                                {info.description}
-                              </p>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
                 </div>
               )}
 
@@ -1049,7 +1010,12 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                 </p>
               </div>
             ) : (
-              <DiscoveryMeetingsTab onProceedToProposals={() => setActiveSubnav('Proposal Builder v2.4')} />
+              <DiscoveryMeetingsTab 
+                activeLeadId={selectedProjectId}
+                currentUserProjectRole={effectiveProjectRole}
+                isProjectLeader={isProjectLeader}
+                onProceedToProposals={() => setActiveSubnav('Proposal Builder v2.4')} 
+              />
             )
           )}
 
@@ -1190,6 +1156,10 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
               <ProposalStudioTab 
                 leadId={selectedProjectId} 
                 activeProject={selectedProject} 
+                currentUserProjectRole={effectiveProjectRole}
+                isProjectLeader={isProjectLeader}
+                proposalStatus={realProposal?.status}
+                onProposalUpdated={(p) => setRealProposal(p)}
               />
             )
           )}
@@ -1861,154 +1831,6 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
         </div>
       )}
 
-      {/* PRESALE DEAL TEAM CUSTOMIZATION MODAL */}
-      {isTeamModalOpen && selectedProject && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-2xl w-full p-6 space-y-5 max-h-[90vh] overflow-y-auto">
-            {/* Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-brand-50 border border-brand-200 text-brand-700 flex items-center justify-center font-bold">
-                  <Users className="w-5 h-5 text-brand-600" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">
-                    Tùy biến Đội ngũ Phụ trách Lead (Presale Deal Team)
-                  </h3>
-                  <p className="text-xs text-slate-500 font-mono">
-                    Lead: <strong className="text-slate-800">{selectedProject.title}</strong>
-                  </p>
-                </div>
-              </div>
-              <button 
-                onClick={() => setIsTeamModalOpen(false)}
-                className="text-slate-400 hover:text-slate-700 p-1.5 rounded-xl hover:bg-slate-100 transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Note on 6 roles */}
-            <div className="p-3.5 rounded-2xl bg-amber-50/80 border border-amber-200/80 text-xs text-amber-900 flex items-start gap-2.5">
-              <Sparkles className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
-              <div className="leading-relaxed">
-                <strong>Lưu ý quan trọng:</strong> Không phải lead nào cũng cần có cả 6 role. Hãy tùy chọn các vai trò tham gia phù hợp với quy mô cơ hội, tiến độ và ngân sách dự án.
-              </div>
-            </div>
-
-            {/* Quick Presets */}
-            <div className="space-y-2">
-              <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider block">
-                GỢI Ý PHÂN BỔ NHANH THEO QUY MÔ DEAL:
-              </span>
-              <div className="flex flex-wrap gap-2 text-xs">
-                <button
-                  type="button"
-                  onClick={() => setSelectedDealRoles(['SALES_REP', 'SOLUTION_ARCHITECT'])}
-                  className="px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 font-medium transition-colors cursor-pointer"
-                >
-                  ⚡ Deal Nhỏ (Fast-Track: 2 vai trò)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedDealRoles(['SALES_REP', 'PRESALE_CONSULTANT', 'SOLUTION_ARCHITECT'])}
-                  className="px-3 py-1.5 rounded-xl border border-brand-200 bg-brand-50 hover:bg-brand-100 text-brand-800 font-semibold transition-colors cursor-pointer"
-                >
-                  💼 Tiêu Chuẩn (Standard: 3 vai trò)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedDealRoles(['PRESALE_LEAD', 'PRESALE_CONSULTANT', 'SOLUTION_ARCHITECT', 'SALES_REP'])}
-                  className="px-3 py-1.5 rounded-xl border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-800 font-semibold transition-colors cursor-pointer"
-                >
-                  🏢 Doanh Nghiệp Lớn (Enterprise: 4 vai trò)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedDealRoles(['ADMIN', 'PRESALE_LEAD', 'PRESALE_CONSULTANT', 'SOLUTION_ARCHITECT', 'SALES_REP', 'VIEWER'])}
-                  className="px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold transition-colors cursor-pointer"
-                >
-                  🌐 Đầy Đủ (Tất cả 6 vai trò)
-                </button>
-              </div>
-            </div>
-
-            {/* 6 Role Selection Cards */}
-            <div className="space-y-2.5 pt-1">
-              <div className="flex items-center justify-between text-xs font-mono">
-                <span className="font-bold text-slate-600 uppercase text-[10px]">
-                  DANH SÁCH 6 VAI TRÒ HỆ THỐNG:
-                </span>
-                <span className="text-brand-700 font-bold">
-                  Đã chọn: {selectedDealRoles.length} / 6 vai trò
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {(Object.keys(ROLE_DETAILS) as UserRole[]).map((r) => {
-                  const info = ROLE_DETAILS[r];
-                  const isSelected = selectedDealRoles.includes(r);
-                  return (
-                    <div
-                      key={r}
-                      onClick={() => toggleDealRole(r)}
-                      className={`p-3 rounded-2xl border cursor-pointer transition-all flex items-start gap-3 select-none ${
-                        isSelected
-                          ? 'border-brand-500 bg-emerald-50/50 shadow-xs ring-1 ring-brand-500'
-                          : 'border-slate-200 bg-white hover:bg-slate-50'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => {}}
-                        className="mt-1 w-4 h-4 rounded text-brand-600 focus:ring-brand-500 border-slate-300"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <span className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded border ${info.badgeClass}`}>
-                            {r}
-                          </span>
-                        </div>
-                        <div className="text-xs font-bold text-slate-800">{info.nameVi.split('(')[0]}</div>
-                        <p className="text-[11px] text-slate-500 mt-1 leading-snug">
-                          {info.description}
-                        </p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Footer Actions */}
-            <div className="flex items-center justify-between pt-4 border-t border-slate-100 text-xs">
-              <span className="text-slate-400 font-mono text-[11px]">
-                Cập nhật vào metadata của Lead
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsTeamModalOpen(false)}
-                  className="px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 font-semibold cursor-pointer"
-                >
-                  Hủy
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveTeam}
-                  disabled={isSubmitting}
-                  className="px-5 py-2 rounded-xl bg-brand-500 hover:bg-brand-600 text-white font-bold shadow-sm transition-all disabled:opacity-50 cursor-pointer"
-                >
-                  {isSubmitting ? 'Đang lưu...' : 'Lưu Đội Ngũ Lead'}
-                </button>
-              </div>
-            </div>
-
-          </div>
-        </div>
-      )}
-
       {/* PBAC: Project Members Modal */}
       {selectedProject && (
         <ProjectMembersModal
@@ -2022,6 +1844,178 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
             loadProjects(selectedProject.id);
           }}
         />
+      )}
+
+      {/* GIAO DIỆN QUẢN LÝ DỰ ÁN KIỂU BLOCK (Project Block Manager Modal) */}
+      {isProjectSelectorModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-4xl w-full p-6 space-y-5 max-h-[90vh] flex flex-col">
+            
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-50 border border-brand-200 text-brand-600 flex items-center justify-center">
+                  <LayoutGrid className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <span>Quản lý &amp; Chọn Dự án Thao tác</span>
+                    <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                      {projects.length} dự án
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Chọn nhanh dự án dạng khối (block) để chuyển đổi không gian làm việc AI Workspace
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setIsProjectSelectorModalOpen(false);
+                    onNavigateRfps?.();
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold cursor-pointer shadow-xs transition-all"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Tiếp nhận RFP mới</span>
+                </button>
+                <button
+                  onClick={() => setIsProjectSelectorModalOpen(false)}
+                  className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Search filter */}
+            <div className="relative shrink-0">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Tìm kiếm dự án theo tên, lĩnh vực hoặc trạng thái..."
+                value={projectSearchTerm}
+                onChange={(e) => setProjectSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-brand-500 text-xs font-medium text-slate-800 outline-none transition-all"
+              />
+            </div>
+
+            {/* Grid of Project Blocks */}
+            <div className="flex-1 overflow-y-auto min-h-0 pr-1">
+              {filteredProjects.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                  {filteredProjects.map((p) => {
+                    const isSelected = p.id === selectedProjectId;
+                    const meta = (p.extractedMetadata as any) || {};
+                    const industry = meta.clientIndustry || 'Chung';
+                    const budget = meta.budgetUsd ? `$${Number(meta.budgetUsd).toLocaleString()} USD` : null;
+                    const hasBant = p.bantScore !== null && p.bantScore !== undefined;
+
+                    return (
+                      <div
+                        key={p.id}
+                        onClick={() => {
+                          handleSelectProject(p.id);
+                          setIsProjectSelectorModalOpen(false);
+                        }}
+                        className={`group relative p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between text-left ${
+                          isSelected
+                            ? 'bg-emerald-50/60 border-brand-500 shadow-md ring-2 ring-brand-500/20'
+                            : 'bg-white border-slate-200 hover:border-brand-300 hover:shadow-sm'
+                        }`}
+                      >
+                        {/* Top: Status & Active Indicator */}
+                        <div>
+                          <div className="flex items-center justify-between gap-2 mb-2">
+                            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200">
+                              {p.status}
+                            </span>
+                            <div className="flex items-center gap-1.5">
+                              {isSelected && (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold text-brand-700 bg-brand-100/70 px-2 py-0.5 rounded-full">
+                                  <Check className="w-3 h-3 text-brand-700" />
+                                  Đang chọn
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void handleDeleteLeadById(p.id, p.title);
+                                }}
+                                title="Xóa dự án này"
+                                className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Title */}
+                          <h4 className="text-sm font-bold text-slate-900 group-hover:text-brand-600 transition-colors line-clamp-2 leading-snug">
+                            {p.title}
+                          </h4>
+
+                          {/* Industry & Info */}
+                          <div className="mt-2 space-y-1 text-xs text-slate-500 font-mono">
+                            <div className="flex items-center gap-1.5 truncate">
+                              <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              <span className="truncate">{industry}</span>
+                            </div>
+                            {budget && (
+                              <div className="text-[11px] text-emerald-700 font-semibold">
+                                Ngân sách: {budget}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Bottom: BANT & Select action */}
+                        <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs">
+                          {hasBant ? (
+                            <span className="text-[11px] font-mono font-bold text-brand-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-brand-200">
+                              BANT: {p.bantScore}/100
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-mono text-slate-400">
+                              Chưa chấm BANT
+                            </span>
+                          )}
+
+                          <span className={`text-xs font-semibold flex items-center gap-1 ${
+                            isSelected ? 'text-brand-700 font-bold' : 'text-slate-500 group-hover:text-brand-600'
+                          }`}>
+                            {isSelected ? 'Đang mở' : 'Chọn lead'}
+                            <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="p-8 text-center bg-slate-50 rounded-2xl border border-slate-200">
+                  <p className="text-xs font-mono text-slate-500">
+                    Không tìm thấy dự án nào phù hợp với từ khóa "{projectSearchTerm}".
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="pt-3 border-t border-slate-100 flex justify-end shrink-0">
+              <button
+                onClick={() => setIsProjectSelectorModalOpen(false)}
+                className="px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-xs font-bold text-slate-600 cursor-pointer transition-colors"
+              >
+                Đóng
+              </button>
+            </div>
+
+          </div>
+        </div>
       )}
 
     </div>

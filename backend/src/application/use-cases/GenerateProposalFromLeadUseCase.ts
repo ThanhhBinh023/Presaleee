@@ -39,6 +39,17 @@ export class GenerateProposalFromLeadUseCase {
     const lead = leadRes.rows[0];
     const meta = lead.extracted_metadata || {};
 
+    // 1.1. Check existing proposal lock status BEFORE calling AI or RAG to avoid wasted AI calls
+    const existingProposal = await this.proposalRepo.findByLeadId(input.leadId, input.organizationId);
+    if (existingProposal) {
+      const lockedStatuses: Proposal['status'][] = ['APPROVED', 'SENT_TO_CLIENT', 'ACCEPTED', 'IN_REVIEW'];
+      if (lockedStatuses.includes(existingProposal.status)) {
+        throw new ConflictError(
+          `Proposal is ${existingProposal.status}; send it back to DRAFT before regenerating from the lead.`
+        );
+      }
+    }
+
     // 2. Fetch Discovery Meetings for this lead (scoped through the lead, matching PostgresMeetingRepository)
     const meetingsRes = await this.dbPool.query(
       `SELECT m.* FROM meetings m
@@ -397,18 +408,8 @@ Return ONLY the raw JSON object without markdown code fences:
       }
     ];
 
-    // 7. Check if proposal already exists for this lead
-    const existingProposal = await this.proposalRepo.findByLeadId(input.leadId, input.organizationId);
-
+    // 7. Save or update proposal in database
     if (existingProposal) {
-      // Regenerating resets the proposal to DRAFT, which the state machine only allows
-      // from DRAFT/IN_REVIEW/REJECTED; approved or client-facing versions must be rolled back first.
-      const lockedStatuses: Proposal['status'][] = ['APPROVED', 'SENT_TO_CLIENT', 'ACCEPTED'];
-      if (lockedStatuses.includes(existingProposal.status)) {
-        throw new ConflictError(
-          `Proposal is ${existingProposal.status}; send it back to DRAFT before regenerating from the lead.`
-        );
-      }
       // Update existing proposal header
       await this.proposalRepo.update(existingProposal.id, input.organizationId, {
         title,

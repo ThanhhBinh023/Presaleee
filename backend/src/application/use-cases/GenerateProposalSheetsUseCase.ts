@@ -3,6 +3,7 @@ import { IProposalRepository } from '../../domain/repositories/IProposalReposito
 import { ILeadRepository } from '../../domain/repositories/ILeadRepository.js';
 import { ConflictError, NotFoundError, ValidationError } from '../../domain/errors/AppError.js';
 import { STANDARD_PROPOSAL_SHEETS, ProposalSheet } from '../../domain/entities/Proposal.js';
+import { deriveMonthlyRate } from '../../domain/services/calculatePricing.js';
 import { SearchHybridRAGUseCase } from './SearchHybridRAGUseCase.js';
 import { IMeetingRepository } from '../../domain/repositories/IMeetingRepository.js';
 import { IRateCardRepository } from '../../domain/repositories/IRateCardRepository.js';
@@ -145,6 +146,87 @@ export class GenerateProposalSheetsUseCase {
         (typeof sheetData.totalWeeks !== 'number' || !Number.isInteger(sheetData.totalWeeks) || sheetData.totalWeeks < 1)) {
         throw new ConflictError('AI returned an invalid totalWeeks. The sheet was not saved.');
       }
+
+      // #11 Giá stale: Khi regen Team & Rate Cards, tính lại sheet Pricing từ roles × rate card
+      let savedPricingSheet: ProposalSheet | null = null;
+      if (name === 'Team & Rate Cards') {
+        const activeCards = await this.rateCardRepository.listActive(input.organizationId, proposal.currency || undefined);
+        const roles = Array.isArray(sheetData.roles) ? sheetData.roles as Record<string, any>[] : [];
+        let calculatedTeamCost = 0;
+        let calculatedEffort = 0;
+
+        for (const r of roles) {
+          const roleName = String(r.role || r.roleName || '').trim().toLowerCase();
+          const level = r.level ? String(r.level).trim().toUpperCase() : undefined;
+          const matchedCard = activeCards.find(c =>
+            c.roleName.trim().toLowerCase() === roleName && (!level || c.level === level)
+          ) || activeCards.find(c => c.roleName.trim().toLowerCase() === roleName);
+
+          let monthlyRate = 5000;
+          if (matchedCard) {
+            monthlyRate = (matchedCard.monthlyRateUsd !== null && Number.isFinite(matchedCard.monthlyRateUsd))
+              ? matchedCard.monthlyRateUsd
+              : (deriveMonthlyRate(matchedCard) ?? 5000);
+          }
+          const effort = Number.isFinite(Number(r.manMonths)) && Number(r.manMonths) > 0 ? Number(r.manMonths) : 1;
+          const cost = Math.round(effort * monthlyRate);
+          r.monthlyRate = monthlyRate;
+          r.totalCost = cost;
+          calculatedTeamCost += cost;
+          calculatedEffort += effort;
+        }
+
+        sheetData.totalTeamCost = calculatedTeamCost;
+        sheetData.totalEffortManMonths = Math.round(calculatedEffort * 10) / 10;
+
+        // Recalculate Sheet 6 (Pricing & Quotation)
+        const pricingDef = STANDARD_PROPOSAL_SHEETS.find(s => s.name === 'Pricing & Quotation')!;
+        const existingPricing = proposal.sheets.find(s => s.sheetName === 'Pricing & Quotation');
+        const prevPricingData = existingPricing?.sheetData || {};
+        const infraCost = Number(prevPricingData.infrastructureCost) || 0;
+        const contingencyCost = Number(prevPricingData.contingencyBuffer) || 0;
+        const subtotal = calculatedTeamCost + infraCost;
+        const taxPercentage = Number(prevPricingData.taxPercentage) || 10;
+        const taxAmount = Math.round(subtotal * taxPercentage / 100);
+        const grandTotal = Math.round((subtotal + taxAmount + contingencyCost) * 100) / 100;
+
+        const updatedPricingData: Record<string, any> = {
+          ...prevPricingData,
+          currency: proposal.currency || 'USD',
+          teamCost: calculatedTeamCost,
+          subtotal,
+          taxPercentage,
+          taxAmount,
+          grandTotal,
+          totalEffortManMonths: sheetData.totalEffortManMonths
+        };
+
+        if (Array.isArray(prevPricingData.paymentMilestones) && prevPricingData.paymentMilestones.length > 0) {
+          updatedPricingData.paymentMilestones = prevPricingData.paymentMilestones.map((pm: any) => ({
+            ...pm,
+            amount: Math.round(grandTotal * (Number(pm.percentage) || 25) / 100)
+          }));
+        } else if (Array.isArray(prevPricingData.items) && prevPricingData.items.length > 0) {
+          updatedPricingData.items = prevPricingData.items.map((it: any) => ({
+            ...it,
+            amount: Math.round(grandTotal * (Number(it.percentage) || 25) / 100)
+          }));
+        }
+
+        savedPricingSheet = await this.proposalRepository.updateSheet(
+          proposal.id,
+          input.organizationId,
+          pricingDef.name,
+          pricingDef.order,
+          updatedPricingData,
+          true
+        );
+
+        await this.proposalRepository.update(proposal.id, input.organizationId, {
+          totalCost: grandTotal
+        });
+      }
+
       const saved = await this.proposalRepository.updateSheet(
         proposal.id,
         input.organizationId,
@@ -155,6 +237,10 @@ export class GenerateProposalSheetsUseCase {
       );
       if (!saved) throw new NotFoundError('Proposal not found while saving generated content.');
       generatedSheets.push(saved);
+
+      if (savedPricingSheet && !sheetNames.includes('Pricing & Quotation')) {
+        generatedSheets.push(savedPricingSheet);
+      }
     }
 
     return {

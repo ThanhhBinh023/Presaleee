@@ -19,6 +19,8 @@ const SYSTEM_PROMPTS: Record<number, string> = {
     "You are a Principal Solutions Architect for 'Presaleee'. Provide technical architecture, stack justification, and NFRs."
 };
 
+export const GEMINI_CANDIDATE_MODELS = ['gemini-3-flash-preview', 'gemini-3.1-flash-lite'] as const;
+
 export class FastAPILMGateway implements ILLMGateway {
   private readonly baseUrl: string;
   private geminiClient: GoogleGenAI | null = null;
@@ -38,7 +40,8 @@ export class FastAPILMGateway implements ILLMGateway {
   }
 
   async generate(options: LLMGenerateOptions): Promise<string> {
-    // 1. Try local FastAPI AI service first (with generous 30s timeout)
+    // 1. Try local FastAPI AI service first (with generous 60s timeout)
+    const fastApiStart = Date.now();
     try {
       const response = await axios.post(
         `${this.baseUrl}/api/v1/generate`,
@@ -48,27 +51,30 @@ export class FastAPILMGateway implements ILLMGateway {
           temperature: options.temperature ?? 0.2,
           max_tokens: options.maxTokens ?? 2000
         },
-        { timeout: 30000 }
+        { timeout: 60000 }
       );
 
+      const duration = Date.now() - fastApiStart;
       if (response.data && typeof response.data.output === 'string' && response.data.output.trim().length > 0) {
+        console.log(`[FastAPILMGateway] FastAPI request completed successfully in ${duration}ms.`);
         return response.data.output.trim();
       }
     } catch (err: any) {
-      console.warn(`[FastAPILMGateway] AI server at ${this.baseUrl} error/timeout: ${err?.message || err}. Falling back to direct Gemini / Dynamic parser.`);
+      const duration = Date.now() - fastApiStart;
+      console.warn(`[FastAPILMGateway] AI server at ${this.baseUrl} failed after ${duration}ms (${err?.message || err}). Falling back to direct Gemini.`);
     }
 
-    // 2. Direct Gemini Fallback (with generous timeout per call)
+    // 2. Direct Gemini Fallback (with generous 45s timeout per candidate, max 2 live models)
     if (env.geminiApiKey) {
       try {
         const client = this.getGeminiClient();
         const systemInstruction = SYSTEM_PROMPTS[options.taskMode] || 'You are a helpful IT Presale Assistant.';
-        const candidateModels = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-3-flash-preview'];
 
-        for (const model of candidateModels) {
+        for (const model of GEMINI_CANDIDATE_MODELS) {
+          const modelStart = Date.now();
           try {
             const timeoutPromise = new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error(`Timeout on model ${model}`)), 4000)
+              setTimeout(() => reject(new Error(`Timeout on model ${model} after 45000ms`)), 45000)
             );
 
             const generatePromise = client.models.generateContent({
@@ -81,12 +87,15 @@ export class FastAPILMGateway implements ILLMGateway {
             });
 
             const response = await Promise.race([generatePromise, timeoutPromise]);
+            const duration = Date.now() - modelStart;
             const outputText = response.text?.trim();
             if (outputText && outputText.length > 0) {
+              console.log(`[FastAPILMGateway] Direct Gemini model ${model} succeeded in ${duration}ms.`);
               return outputText;
             }
           } catch (modelErr: any) {
-            console.warn(`[FastAPILMGateway] Direct Gemini model ${model} failed: ${modelErr?.message || modelErr}. Trying next...`);
+            const duration = Date.now() - modelStart;
+            console.warn(`[FastAPILMGateway] Direct Gemini model ${model} failed after ${duration}ms: ${modelErr?.message || modelErr}. Trying next...`);
             continue;
           }
         }
@@ -95,10 +104,11 @@ export class FastAPILMGateway implements ILLMGateway {
       }
     }
 
-    // 3. Resilient Dynamic Fallback Engine (derives strictly from user's actual prompt text)
+    // 3. Resilient Dynamic Fallback Engine
     if (options.requireLiveModel) {
-      console.warn(`[FastAPILMGateway] Live model unavailable. Executing resilient intelligent fallback for ${options.taskMode}.`);
+      throw new ExternalServiceError('No AI model answered this request; the placeholder response is not sent to clients.');
     }
+
     return this.generateHeuristicFallback(options.taskMode, options.prompt);
   }
 
@@ -116,7 +126,7 @@ export class FastAPILMGateway implements ILLMGateway {
     }
 
     if (taskMode === LLMTaskMode.PROPOSAL_BUILDER) {
-      return this.heuristicProposalBuilder(prompt);
+      throw new ExternalServiceError('AI service unavailable for Proposal Generation. Heuristic placeholder is disabled.');
     }
 
     return JSON.stringify({
@@ -513,129 +523,5 @@ export class FastAPILMGateway implements ILLMGateway {
         ]
       }
     }, null, 2);
-  }
-
-  private heuristicProposalBuilder(prompt: string): string {
-    const sectionMatch = prompt.match(/Section name:\s*([^\n\r]+)/i);
-    const sectionName = sectionMatch ? sectionMatch[1].trim() : 'Overview';
-
-    const rfpMatch = prompt.match(/<rfp>([\s\S]*?)<\/rfp>/i);
-    const rfpText = rfpMatch ? rfpMatch[1].trim() : '';
-
-    const meetingMatch = prompt.match(/Inspected discovery meeting context:\s*([\s\S]*?)(?:\n\nRFP source text|$)/i);
-    const meetingText = meetingMatch ? meetingMatch[1].trim() : '';
-
-    const titleMatch = prompt.match(/Proposal title:\s*([^\n\r]+)/i);
-    const projectTitle = titleMatch ? titleMatch[1].trim() : 'Presale Solution Proposal';
-
-    const hasMeeting = meetingText.length > 20 && !meetingText.includes('(No inspected meetings');
-    
-    // Meeting notes synthesis
-    const meetingClarifications = hasMeeting 
-      ? `(Đã tích hợp các điểm thảo luận từ Discovery Meeting: ${meetingText.slice(0, 150).replace(/\n/g, ' ')}...)`
-      : '';
-
-    if (sectionName === 'Overview') {
-      return JSON.stringify({
-        projectName: projectTitle,
-        executiveSummary: `Đề xuất giải pháp toàn diện cho "${projectTitle}". Giải pháp đáp ứng trọn vẹn yêu cầu từ tài liệu RFP và các điểm thống nhất trong các phiên làm việc chuyên môn. ${meetingClarifications}`,
-        keyObjectives: [
-          'Chuẩn hóa và số hóa toàn diện quy trình vận hành',
-          'Đảm bảo kiến trúc hệ thống hiện đại, ổn định và khả năng mở rộng cao',
-          hasMeeting ? 'Giải quyết triệt để các bài toán kỹ thuật đã xác định trong phiên Discovery' : 'Tối ưu hóa hiệu năng và bảo mật đa tầng'
-        ],
-        currency: 'USD'
-      });
-    }
-
-    if (sectionName === 'Scope of Work') {
-      return JSON.stringify({
-        modules: [
-          {
-            name: 'Phân hệ Quản trị Cốt lõi',
-            description: `Triển khai các chức năng nghiệp vụ trung tâm cho ${projectTitle}.`,
-            deliverables: ['Giao diện người dùng Web & Mobile', 'API Gateway & Xác thực RBAC']
-          },
-          {
-            name: 'Phân hệ Tích hợp & Đồng bộ Dữ liệu',
-            description: hasMeeting 
-              ? `Tích hợp các hệ thống theo biên bản Discovery Meeting: ${meetingText.slice(0, 100).replace(/\n/g, ' ')}` 
-              : 'Tích hợp các cổng thanh toán, lưu trữ và dịch vụ bên thứ ba.',
-            deliverables: ['Đầu nối API RESTful', 'Cơ chế xử lý bất đồng bộ & Khả năng hoạt động offline']
-          },
-          {
-            name: 'Báo cáo & Giám sát Hệ thống',
-            description: 'Bảng điều khiển KPI, telemetry và kiểm toán bảo mật dữ liệu.',
-            deliverables: ['Dashboard trực quan', 'Nhật ký audit log tập trung']
-          }
-        ]
-      });
-    }
-
-    if (sectionName === 'Architecture & Tech Stack') {
-      return JSON.stringify({
-        stack: [
-          { layer: 'Frontend', technology: 'React / Next.js, Tailwind CSS, TypeScript' },
-          { layer: 'Backend', technology: 'Node.js / Go microservices, FastAPI AI Engine' },
-          { layer: 'Database', technology: 'PostgreSQL với pgvector, Redis Cache' },
-          { layer: 'Infrastructure', technology: 'Docker, Kubernetes, AWS / Cloud Multi-tenant' }
-        ],
-        nonFunctionalRequirements: [
-          hasMeeting ? 'Đáp ứng yêu cầu kỹ thuật chi tiết từ Discovery Meeting' : 'Thời gian phản hồi API p95 < 200ms',
-          'Khả năng chịu tải cao và tính sẵn sàng 99.9%',
-          'Tuân thủ tiêu chuẩn an toàn bảo mật OWASP Top 10'
-        ]
-      });
-    }
-
-    if (sectionName === 'Timeline & Milestones') {
-      return JSON.stringify({
-        totalWeeks: 16,
-        milestones: [
-          { name: 'Khởi động & Phân tích Chi tiết (Inception)', week: 4, deliverables: 'SRS, Architecture Design Document' },
-          { name: 'Phát triển Sprint 1 - Core Modules', week: 8, deliverables: 'Bản Alpha và môi trường Staging' },
-          { name: 'Tích hợp & Kiểm thử Toàn diện (Integration & UAT)', week: 12, deliverables: 'UAT Sign-off, Kiểm thử tải' },
-          { name: 'Triển khai Production & Chuyển giao', week: 16, deliverables: 'Go-live, Tài liệu đào tạo & Bảo hành' }
-        ]
-      });
-    }
-
-    if (sectionName === 'Pricing & Quotation') {
-      return JSON.stringify({
-        currency: 'USD',
-        items: [
-          { item: 'Chi phí Khảo sát Kiến trúc & Thiết kế', cost: 15000 },
-          { item: 'Chi phí Phát triển Phân hệ Cốt lõi', cost: 65000 },
-          { item: 'Chi phí Tích hợp & Kiểm thử UAT', cost: 20000 }
-        ],
-        subtotal: 100000,
-        taxPercentage: 10,
-        taxAmount: 10000,
-        grandTotal: 110000
-      });
-    }
-
-    if (sectionName === 'Risk Management (RAID)') {
-      return JSON.stringify({
-        risks: [
-          {
-            risk: hasMeeting ? 'Sai lệch tích hợp hệ thống cũ (legacy)' : 'Rủi ro thay đổi phạm vi nghiệp vụ',
-            severity: 'Medium',
-            mitigation: 'Thống nhất OpenAPI spec và tài liệu kỹ thuật trong Discovery phase.'
-          },
-          {
-            risk: 'Rủi ro an ninh dữ liệu và tuân thủ',
-            severity: 'High',
-            mitigation: 'Áp dụng mã hóa dữ liệu End-to-End và kiểm toán định kỳ.'
-          }
-        ]
-      });
-    }
-
-    return JSON.stringify({
-      title: sectionName,
-      summary: `Nội dung tổng hợp cho mục ${sectionName} của dự án ${projectTitle}.`,
-      status: 'PROCESSED'
-    });
   }
 }

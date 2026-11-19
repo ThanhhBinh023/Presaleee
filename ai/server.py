@@ -98,22 +98,34 @@ def get_local_llm():
         print(f"[WARN] Failed to load local Qwen model: {e}. Falling back to Gemini Cloud LLM.")
         return None, None
 
+GEMINI_CANDIDATE_MODELS = ["gemini-3-flash-preview", "gemini-3.1-flash-lite"]
+
+def clean_markdown_fences(text: str) -> str:
+    clean = text.strip()
+    if clean.startswith("```json"):
+        clean = clean[7:]
+    elif clean.startswith("```"):
+        clean = clean[3:]
+    if clean.endswith("```"):
+        clean = clean[:-3]
+    return clean.strip()
+
 def generate_with_gemini(system_prompt: str, prompt: str, temperature: float = 0.1, max_tokens: int = 2000) -> str:
     if not gemini_client:
         raise HTTPException(status_code=500, detail="GEMINI_API_KEY is not configured on AI Service.")
     
     combined_prompt = f"{system_prompt}\n\n{prompt}"
-    candidate_models = ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-3.8-flash", "gemini-flash-latest"]
     
     last_err = None
-    for model_name in candidate_models:
+    for model_name in GEMINI_CANDIDATE_MODELS:
         try:
             resp = gemini_client.models.generate_content(
                 model=model_name,
                 contents=combined_prompt,
                 config=types.GenerateContentConfig(
                     temperature=temperature,
-                    max_output_tokens=max_tokens
+                    max_output_tokens=max_tokens,
+                    http_options=types.HttpOptions(timeout=45000)
                 )
             )
             if resp.text:
@@ -258,7 +270,7 @@ def generate_endpoint(req: GenerateRequest):
                 )
                 
             response_text = local_tok.decode(outputs[0][inputs.input_ids.shape[1]:], skip_special_tokens=True).strip()
-            return GenerateResponse(output=response_text)
+            return GenerateResponse(output=clean_markdown_fences(response_text))
         except Exception as e:
             print(f"⚠️ Local generation failed: {e}. Falling back to Gemini.")
 
@@ -270,17 +282,7 @@ def generate_endpoint(req: GenerateRequest):
         max_tokens=req.max_tokens or 2000
     )
     
-    # Clean up markdown fences
-    clean = response_text.strip()
-    if clean.startswith("```json"):
-        clean = clean[7:]
-    elif clean.startswith("```"):
-        clean = clean[3:]
-    if clean.endswith("```"):
-        clean = clean[:-3]
-    response_text = clean.strip()
-        
-    return GenerateResponse(output=response_text)
+    return GenerateResponse(output=clean_markdown_fences(response_text))
 
 if __name__ == "__main__":
     import uvicorn

@@ -2,7 +2,8 @@ import { ILLMGateway, LLMTaskMode } from '../../domain/repositories/ILLMGateway.
 import { IProposalRepository } from '../../domain/repositories/IProposalRepository.js';
 import { ILeadRepository } from '../../domain/repositories/ILeadRepository.js';
 import { ConflictError, NotFoundError, ValidationError } from '../../domain/errors/AppError.js';
-import { STANDARD_PROPOSAL_SHEETS, ProposalSheet } from '../../domain/entities/Proposal.js';
+import { STANDARD_PROPOSAL_SHEETS, ProposalSheet, ProposalWithSheets } from '../../domain/entities/Proposal.js';
+import { RateCard } from '../../domain/entities/RateCard.js';
 import { deriveMonthlyRate } from '../../domain/services/calculatePricing.js';
 import { SearchHybridRAGUseCase } from './SearchHybridRAGUseCase.js';
 import { IMeetingRepository } from '../../domain/repositories/IMeetingRepository.js';
@@ -37,6 +38,73 @@ function validateSheetNames(value: unknown): string[] {
   const unknown = names.find(name => !STANDARD_PROPOSAL_SHEETS.some(sheet => sheet.name === name));
   if (unknown) throw new ValidationError(`Unknown proposal sheet: ${unknown}.`);
   return names;
+}
+
+/** Every monetary figure comes from an organization rate card; an unmatched role fails the whole batch instead of inventing a rate. */
+function enrichTeamRolesWithRateCards(sheetData: Record<string, any>, activeCards: RateCard[]): void {
+  const roles = Array.isArray(sheetData.roles) ? sheetData.roles as Record<string, any>[] : [];
+  let teamCost = 0;
+  let effortTotal = 0;
+  for (const r of roles) {
+    const roleName = String(r.role || r.roleName || '').trim();
+    const level = r.level ? String(r.level).trim().toUpperCase() : undefined;
+    const matched = activeCards.find(c => c.roleName.trim().toLowerCase() === roleName.toLowerCase() && (!level || c.level === level))
+      || activeCards.find(c => c.roleName.trim().toLowerCase() === roleName.toLowerCase());
+    if (!matched) {
+      throw new ConflictError(`No active rate card matches role "${roleName}". No sheet data was saved.`);
+    }
+    const rate = (matched.monthlyRateUsd !== null && Number.isFinite(matched.monthlyRateUsd))
+      ? matched.monthlyRateUsd
+      : deriveMonthlyRate(matched);
+    if (rate === null || !Number.isFinite(rate) || rate <= 0) {
+      throw new ConflictError(`Rate card for role "${roleName}" has no usable monthly rate. No sheet data was saved.`);
+    }
+    const effort = Number(r.manMonths);
+    if (!Number.isFinite(effort) || effort <= 0) {
+      throw new ConflictError(`AI returned an invalid manMonths for role "${roleName}". No sheet data was saved.`);
+    }
+    r.monthlyRate = rate;
+    r.totalCost = Math.round(effort * rate);
+    teamCost += r.totalCost;
+    effortTotal += effort;
+  }
+  sheetData.totalTeamCost = teamCost;
+  sheetData.totalEffortManMonths = Math.round(effortTotal * 10) / 10;
+}
+
+/** Keeps the pricing semantics of GenerateProposalFromLeadUseCase: tax only when the existing sheet already defines it. */
+function recomputePricingFromTeam(proposal: ProposalWithSheets, teamData: Record<string, any>): Record<string, any> {
+  const prev = proposal.sheets.find(s => s.sheetName === 'Pricing & Quotation')?.sheetData || {};
+  const teamCost = Number(teamData.totalTeamCost) || 0;
+  const infraCost = Number(prev.infrastructureCost) || 0;
+  const contingencyCost = Number(prev.contingencyBuffer) || 0;
+  const taxPercentage = Number(prev.taxPercentage) || 0;
+  const subtotal = teamCost + infraCost;
+  const taxAmount = Math.round(subtotal * taxPercentage / 100);
+  const grandTotal = subtotal + taxAmount + contingencyCost;
+
+  const updated: Record<string, any> = {
+    ...prev,
+    currency: proposal.currency || 'USD',
+    teamCost,
+    subtotal,
+    taxPercentage,
+    taxAmount,
+    grandTotal,
+    totalEffortManMonths: teamData.totalEffortManMonths
+  };
+
+  if (Array.isArray(prev.paymentMilestones) && prev.paymentMilestones.length > 0) {
+    let allocated = 0;
+    updated.paymentMilestones = prev.paymentMilestones.map((pm: any, idx: number) => {
+      const amount = idx === prev.paymentMilestones.length - 1
+        ? grandTotal - allocated
+        : Math.round(grandTotal * (Number(pm.percentage) || 0) / 100);
+      allocated += amount;
+      return { ...pm, amount };
+    });
+  }
+  return updated;
 }
 
 export interface GenerateProposalSheetsInput {
@@ -98,13 +166,16 @@ export class GenerateProposalSheetsUseCase {
       const title = typeof chunk.metadata?.title === 'string' ? chunk.metadata.title : 'Knowledge reference';
       return `Reference ${index + 1}: ${title}\n${chunk.chunkContent}`;
     }).join('\n\n');
-    const roleCatalogue = sheetNames.includes('Team & Rate Cards')
-      ? (await this.rateCardRepository.listActive(input.organizationId, proposal.currency || undefined))
-        .map(card => `${card.roleName} [level=${card.level}, currency=${card.currency}]`)
-        .join('\n')
-      : '';
-    const generatedSheets: ProposalSheet[] = [];
+    const activeCards = sheetNames.includes('Team & Rate Cards')
+      ? await this.rateCardRepository.listActive(input.organizationId, proposal.currency || undefined)
+      : [];
+    const roleCatalogue = activeCards
+      .map(card => `${card.roleName} [level=${card.level}, currency=${card.currency}]`)
+      .join('\n');
+    const recomputePricing = sheetNames.includes('Team & Rate Cards') && !sheetNames.includes('Pricing & Quotation');
 
+    // Phase 1: generate and validate every sheet before any write, so a failure leaves the proposal untouched
+    const prepared: Array<{ name: string; order: number; sheetData: Record<string, unknown> }> = [];
     for (const name of sheetNames) {
       const definition = STANDARD_PROPOSAL_SHEETS.find(sheet => sheet.name === name)!;
       const existing = proposal.sheets.find(sheet => sheet.sheetName === name);
@@ -147,99 +218,40 @@ export class GenerateProposalSheetsUseCase {
         throw new ConflictError('AI returned an invalid totalWeeks. The sheet was not saved.');
       }
 
-      // #11 Giá stale: Khi regen Team & Rate Cards, tính lại sheet Pricing từ roles × rate card
-      let savedPricingSheet: ProposalSheet | null = null;
       if (name === 'Team & Rate Cards') {
-        const activeCards = await this.rateCardRepository.listActive(input.organizationId, proposal.currency || undefined);
-        const roles = Array.isArray(sheetData.roles) ? sheetData.roles as Record<string, any>[] : [];
-        let calculatedTeamCost = 0;
-        let calculatedEffort = 0;
-
-        for (const r of roles) {
-          const roleName = String(r.role || r.roleName || '').trim().toLowerCase();
-          const level = r.level ? String(r.level).trim().toUpperCase() : undefined;
-          const matchedCard = activeCards.find(c =>
-            c.roleName.trim().toLowerCase() === roleName && (!level || c.level === level)
-          ) || activeCards.find(c => c.roleName.trim().toLowerCase() === roleName);
-
-          let monthlyRate = 5000;
-          if (matchedCard) {
-            monthlyRate = (matchedCard.monthlyRateUsd !== null && Number.isFinite(matchedCard.monthlyRateUsd))
-              ? matchedCard.monthlyRateUsd
-              : (deriveMonthlyRate(matchedCard) ?? 5000);
-          }
-          const effort = Number.isFinite(Number(r.manMonths)) && Number(r.manMonths) > 0 ? Number(r.manMonths) : 1;
-          const cost = Math.round(effort * monthlyRate);
-          r.monthlyRate = monthlyRate;
-          r.totalCost = cost;
-          calculatedTeamCost += cost;
-          calculatedEffort += effort;
-        }
-
-        sheetData.totalTeamCost = calculatedTeamCost;
-        sheetData.totalEffortManMonths = Math.round(calculatedEffort * 10) / 10;
-
-        // Recalculate Sheet 6 (Pricing & Quotation)
-        const pricingDef = STANDARD_PROPOSAL_SHEETS.find(s => s.name === 'Pricing & Quotation')!;
-        const existingPricing = proposal.sheets.find(s => s.sheetName === 'Pricing & Quotation');
-        const prevPricingData = existingPricing?.sheetData || {};
-        const infraCost = Number(prevPricingData.infrastructureCost) || 0;
-        const contingencyCost = Number(prevPricingData.contingencyBuffer) || 0;
-        const subtotal = calculatedTeamCost + infraCost;
-        const taxPercentage = Number(prevPricingData.taxPercentage) || 10;
-        const taxAmount = Math.round(subtotal * taxPercentage / 100);
-        const grandTotal = Math.round((subtotal + taxAmount + contingencyCost) * 100) / 100;
-
-        const updatedPricingData: Record<string, any> = {
-          ...prevPricingData,
-          currency: proposal.currency || 'USD',
-          teamCost: calculatedTeamCost,
-          subtotal,
-          taxPercentage,
-          taxAmount,
-          grandTotal,
-          totalEffortManMonths: sheetData.totalEffortManMonths
-        };
-
-        if (Array.isArray(prevPricingData.paymentMilestones) && prevPricingData.paymentMilestones.length > 0) {
-          updatedPricingData.paymentMilestones = prevPricingData.paymentMilestones.map((pm: any) => ({
-            ...pm,
-            amount: Math.round(grandTotal * (Number(pm.percentage) || 25) / 100)
-          }));
-        } else if (Array.isArray(prevPricingData.items) && prevPricingData.items.length > 0) {
-          updatedPricingData.items = prevPricingData.items.map((it: any) => ({
-            ...it,
-            amount: Math.round(grandTotal * (Number(it.percentage) || 25) / 100)
-          }));
-        }
-
-        savedPricingSheet = await this.proposalRepository.updateSheet(
-          proposal.id,
-          input.organizationId,
-          pricingDef.name,
-          pricingDef.order,
-          updatedPricingData,
-          true
-        );
-
-        await this.proposalRepository.update(proposal.id, input.organizationId, {
-          totalCost: grandTotal
-        });
+        enrichTeamRolesWithRateCards(sheetData, activeCards);
       }
+      prepared.push({ name, order: definition.order, sheetData });
+    }
 
+    // Phase 2: persist the validated batch; pricing is recalculated only after the Team sheet is safely saved
+    const generatedSheets: ProposalSheet[] = [];
+    for (const item of prepared) {
       const saved = await this.proposalRepository.updateSheet(
         proposal.id,
         input.organizationId,
-        name,
-        definition.order,
-        sheetData,
+        item.name,
+        item.order,
+        item.sheetData,
         true
       );
       if (!saved) throw new NotFoundError('Proposal not found while saving generated content.');
       generatedSheets.push(saved);
 
-      if (savedPricingSheet && !sheetNames.includes('Pricing & Quotation')) {
-        generatedSheets.push(savedPricingSheet);
+      const roles = item.sheetData.roles;
+      if (item.name === 'Team & Rate Cards' && recomputePricing && Array.isArray(roles) && roles.length > 0) {
+        const pricingDef = STANDARD_PROPOSAL_SHEETS.find(s => s.name === 'Pricing & Quotation')!;
+        const updatedPricing = recomputePricingFromTeam(proposal, item.sheetData);
+        const savedPricing = await this.proposalRepository.updateSheet(
+          proposal.id,
+          input.organizationId,
+          pricingDef.name,
+          pricingDef.order,
+          updatedPricing,
+          false
+        );
+        if (!savedPricing) throw new NotFoundError('Proposal not found while saving recalculated pricing.');
+        generatedSheets.push(savedPricing);
       }
     }
 

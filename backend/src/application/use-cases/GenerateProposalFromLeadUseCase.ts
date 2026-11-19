@@ -3,7 +3,7 @@ import { IProposalRepository } from '../../domain/repositories/IProposalReposito
 import { ILLMGateway, LLMTaskMode } from '../../domain/repositories/ILLMGateway.js';
 import { SearchHybridRAGUseCase } from './SearchHybridRAGUseCase.js';
 import { Proposal, ProposalWithSheets } from '../../domain/entities/Proposal.js';
-import { ConflictError, NotFoundError, ValidationError } from '../../domain/errors/AppError.js';
+import { ConflictError, ExternalServiceError, NotFoundError, ValidationError } from '../../domain/errors/AppError.js';
 
 export interface GenerateProposalFromLeadInput {
   leadId: string;
@@ -42,7 +42,7 @@ export class GenerateProposalFromLeadUseCase {
     // 1.1. Check existing proposal lock status BEFORE calling AI or RAG to avoid wasted AI calls
     const existingProposal = await this.proposalRepo.findByLeadId(input.leadId, input.organizationId);
     if (existingProposal) {
-      const lockedStatuses: Proposal['status'][] = ['APPROVED', 'SENT_TO_CLIENT', 'ACCEPTED', 'IN_REVIEW'];
+      const lockedStatuses: Proposal['status'][] = ['APPROVED', 'SENT_TO_CLIENT', 'ACCEPTED'];
       if (lockedStatuses.includes(existingProposal.status)) {
         throw new ConflictError(
           `Proposal is ${existingProposal.status}; send it back to DRAFT before regenerating from the lead.`
@@ -77,7 +77,6 @@ export class GenerateProposalFromLeadUseCase {
     }
 
     // 3. Search RAG Knowledge Base for relevant technical reference chunks
-    const domainQuery = `${lead.title} ${meta.clientIndustry || 'Enterprise'}`;
     const ragResult = await this.searchRAGUseCase.execute({
       query: `${lead.title} ${lead.raw_rfp_content || ''}`,
       domain: meta.clientIndustry || undefined,
@@ -173,40 +172,38 @@ Return ONLY the raw JSON object without markdown code fences:
 }
 `;
 
-    // 5. Call LLM Gateway
-    let aiProposal: any = null;
+    // 5. Call LLM Gateway — fail fast: nothing is created or updated without a valid AI synthesis
+    let rawAi: string;
     try {
-      const rawAi = await this.llmGateway.generate({
+      rawAi = await this.llmGateway.generate({
         taskMode: LLMTaskMode.PROPOSAL_BUILDER,
         prompt,
         temperature: 0.2,
         maxTokens: 3500
       });
-
-      let clean = rawAi.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
-      const firstBrace = clean.indexOf('{');
-      const lastBrace = clean.lastIndexOf('}');
-      if (firstBrace >= 0 && lastBrace > firstBrace) {
-        clean = clean.slice(firstBrace, lastBrace + 1);
-      }
-
-      try {
-        aiProposal = JSON.parse(clean);
-      } catch {
-        for (const suffix of ['}', '"}', '"]}', '"]}}', '"]\n}', '"\n}', '\n}']) {
-          try {
-            aiProposal = JSON.parse(clean + suffix);
-            break;
-          } catch {}
-        }
-      }
     } catch (llmErr) {
-      console.warn('[GenerateProposalFromLeadUseCase] LLM generation warning:', llmErr);
+      console.warn('[GenerateProposalFromLeadUseCase] AI synthesis failed:', llmErr);
+      throw new ExternalServiceError('Dịch vụ AI không khả dụng, thử lại sau.');
     }
 
-    // Fallback if AI synthesis returned incomplete JSON
+    let clean = rawAi.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+    const firstBrace = clean.indexOf('{');
+    const lastBrace = clean.lastIndexOf('}');
+    if (firstBrace >= 0 && lastBrace > firstBrace) {
+      clean = clean.slice(firstBrace, lastBrace + 1);
+    }
+
+    let aiProposal: any;
+    try {
+      aiProposal = JSON.parse(clean);
+    } catch {
+      throw new ConflictError('AI returned invalid proposal JSON. No proposal was created or updated.');
+    }
+    if (!aiProposal || typeof aiProposal !== 'object' || Array.isArray(aiProposal)) {
+      throw new ConflictError('AI returned invalid proposal JSON. No proposal was created or updated.');
+    }
+
     const title = lead.title || 'Technical Solution Proposal';
-    const totalWeeks = meta.timelineWeeks || 20;
 
     const modules = aiProposal?.scope_of_work?.length > 0
       ? aiProposal.scope_of_work
@@ -239,6 +236,13 @@ Return ONLY the raw JSON object without markdown code fences:
           { phase: 'Giai đoạn 5', milestone: 'Bàn giao, Đào tạo Vận hành & Hỗ trợ Hypercare', durationWeeks: 2, deliverables: 'Vận hành chính thức (Go-Live), Tài liệu HDSD' }
         ];
 
+    // Header timeline must agree with the milestone sheet; fall back to lead metadata only when AI durations are unusable
+    const milestoneWeeksValid = milestones.every((m: any) => Number.isFinite(Number(m.durationWeeks)) && Number(m.durationWeeks) > 0);
+    const milestoneWeeksTotal = milestones.reduce((sum: number, m: any) => sum + Number(m.durationWeeks), 0);
+    const totalWeeks = milestoneWeeksValid && milestoneWeeksTotal > 0
+      ? Math.round(milestoneWeeksTotal)
+      : (meta.timelineWeeks || 20);
+
     // Compute dynamic team cost and rate cards
     const roles = [
       { role: 'Project Manager (PM)', level: 'SENIOR', allocation: '50%', manMonths: Math.round(totalWeeks / 4 * 0.5 * 10) / 10, monthlyRate: 4500, totalCost: 0 },
@@ -257,6 +261,12 @@ Return ONLY the raw JSON object without markdown code fences:
     const infraCost = 15000;
     const contingencyCost = Math.round(totalTeamCost * 0.1);
     const grandTotal = totalTeamCost + infraCost + contingencyCost;
+
+    // Last milestone absorbs rounding so the four amounts always sum to grandTotal
+    const kickoffAmount = Math.round(grandTotal * 0.3);
+    const blueprintAmount = Math.round(grandTotal * 0.25);
+    const uatAmount = Math.round(grandTotal * 0.3);
+    const goLiveAmount = grandTotal - kickoffAmount - blueprintAmount - uatAmount;
 
     // 6. Build the 10 standard proposal sheets
     const sheets = [
@@ -323,7 +333,7 @@ Return ONLY the raw JSON object without markdown code fences:
       {
         sheetName: 'Team & Rate Cards',
         sheetOrder: 5,
-        aiGenerated: true,
+        aiGenerated: false,
         sheetData: {
           title: 'Team Composition & Role Allocation',
           roles,
@@ -334,7 +344,7 @@ Return ONLY the raw JSON object without markdown code fences:
       {
         sheetName: 'Pricing & Quotation',
         sheetOrder: 6,
-        aiGenerated: true,
+        aiGenerated: false,
         sheetData: {
           title: 'Commercial Pricing & Milestone Payment Schedule',
           currency: 'USD',
@@ -343,10 +353,10 @@ Return ONLY the raw JSON object without markdown code fences:
           contingencyBuffer: contingencyCost,
           grandTotal,
           paymentMilestones: [
-            { milestone: 'Ký hợp đồng & Khởi động dự án (Kick-off)', percentage: 30, amount: Math.round(grandTotal * 0.3) },
-            { milestone: 'Hoàn thành Khảo sát & Phê duyệt Blueprint', percentage: 25, amount: Math.round(grandTotal * 0.25) },
-            { milestone: 'Nghiệm thu Giai đoạn Thử nghiệm UAT', percentage: 30, amount: Math.round(grandTotal * 0.3) },
-            { milestone: 'Vận hành Chính thức (Go-Live) & Bàn giao', percentage: 15, amount: Math.round(grandTotal * 0.15) }
+            { milestone: 'Ký hợp đồng & Khởi động dự án (Kick-off)', percentage: 30, amount: kickoffAmount },
+            { milestone: 'Hoàn thành Khảo sát & Phê duyệt Blueprint', percentage: 25, amount: blueprintAmount },
+            { milestone: 'Nghiệm thu Giai đoạn Thử nghiệm UAT', percentage: 30, amount: uatAmount },
+            { milestone: 'Vận hành Chính thức (Go-Live) & Bàn giao', percentage: 15, amount: goLiveAmount }
           ]
         }
       },
@@ -393,17 +403,10 @@ Return ONLY the raw JSON object without markdown code fences:
       {
         sheetName: 'Appendices & Case Studies',
         sheetOrder: 10,
-        aiGenerated: true,
+        aiGenerated: false,
         sheetData: {
           title: 'Appendices, Credentials & Case Studies',
-          caseStudies: [
-            {
-              client: 'Dự án Tiêu chuẩn Doanh nghiệp Tương đương',
-              industry: meta.clientIndustry || 'Công nghệ Thông tin',
-              result: 'Triển khai thành công hệ thống chịu tải 50,000+ giao dịch/giây, tiết kiệm 40% chi phí vận hành hạ tầng.',
-              referenceArchitecture: 'Microservices, PostGIS/PostgreSQL, Event-driven Streaming, Kubernetes'
-            }
-          ]
+          caseStudies: []
         }
       }
     ];
@@ -421,26 +424,34 @@ Return ONLY the raw JSON object without markdown code fences:
 
       // Update all sheets
       for (const s of sheets) {
-        await this.proposalRepo.updateSheet(existingProposal.id, input.organizationId, s.sheetName, s.sheetOrder, s.sheetData, true);
+        await this.proposalRepo.updateSheet(existingProposal.id, input.organizationId, s.sheetName, s.sheetOrder, s.sheetData, s.aiGenerated);
       }
 
       const refreshed = await this.proposalRepo.findById(existingProposal.id, input.organizationId);
       return refreshed!;
     } else {
       // Create new proposal with all 10 sheets
-      const created = await this.proposalRepo.create({
-        title,
-        leadId: input.leadId,
-        organizationId: input.organizationId,
-        createdBy: input.userId || null,
-        version: 'v1.0',
-        status: 'DRAFT',
-        totalCost: grandTotal,
-        currency: 'USD',
-        estimatedTimelineWeeks: totalWeeks,
-        initialSheets: sheets
-      });
-      return created;
+      try {
+        const created = await this.proposalRepo.create({
+          title,
+          leadId: input.leadId,
+          organizationId: input.organizationId,
+          createdBy: input.userId || null,
+          version: 'v1.0',
+          status: 'DRAFT',
+          totalCost: grandTotal,
+          currency: 'USD',
+          estimatedTimelineWeeks: totalWeeks,
+          initialSheets: sheets
+        });
+        return created;
+      } catch (err: any) {
+        // Unique violation on lead_id: a concurrent request already created the proposal
+        if (err?.code === '23505') {
+          throw new ConflictError('A proposal already exists for this lead. Reload and try again.');
+        }
+        throw err;
+      }
     }
   }
 }

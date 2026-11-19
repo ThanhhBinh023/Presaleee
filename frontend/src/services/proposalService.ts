@@ -1,4 +1,4 @@
-import { apiDownload, apiRequest, apiRequestWithMeta } from './apiClient';
+import { apiDownload, apiRequest, apiRequestWithMeta, ApiError } from './apiClient';
 import type { ListMeta } from '../types/auth';
 import type {
   GenerateSheetsResult,
@@ -10,6 +10,7 @@ import type {
 
 const PREFIX = '/api/v1/proposals';
 const AI_TIMEOUT_MS = 120_000;
+const AI_BATCH_TIMEOUT_MS = 300_000;
 
 export interface ProposalSheetItem {
   id: string;
@@ -214,12 +215,20 @@ export const proposalService = {
   updateSheet: (id: string, sheetName: string, sheetData: Record<string, unknown>) =>
     apiRequest<ProposalSheet>(sheetPath(id, sheetName), { method: 'PUT', body: { sheetData } }),
 
-  generate: (id: string, body: { sheetNames?: string[]; instructions?: string } = {}) =>
-    apiRequest<GenerateSheetsResult>(`${PREFIX}/${encodeURIComponent(id)}/generate`, {
-      method: 'POST',
-      body,
-      timeoutMs: AI_TIMEOUT_MS
-    }),
+  generate: async (id: string, body: { sheetNames?: string[]; instructions?: string } = {}) => {
+    try {
+      return await apiRequest<GenerateSheetsResult>(`${PREFIX}/${encodeURIComponent(id)}/generate`, {
+        method: 'POST',
+        body,
+        timeoutMs: AI_BATCH_TIMEOUT_MS
+      });
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 0) {
+        throw new ApiError(0, 'Hết thời gian chờ sinh proposal. Server có thể vẫn đang xử lý — hãy tải lại trang sau ít phút để kiểm tra kết quả, đừng bấm sinh lại ngay.');
+      }
+      throw err;
+    }
+  },
 
   generateSheet: (id: string, sheetName: string, instructions?: string) =>
     apiRequest<GenerateSheetsResult>(`${sheetPath(id, sheetName)}/generate`, {

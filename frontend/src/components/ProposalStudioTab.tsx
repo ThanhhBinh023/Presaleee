@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Sparkles, 
   FileSpreadsheet, 
@@ -46,234 +46,6 @@ interface ProposalStudioTabProps {
   isProjectLeader?: boolean;
   proposalStatus?: string;
   onProposalUpdated?: (proposal: ProposalItem) => void;
-}
-
-function buildDefault10SheetsProposal(leadId: string, lead: LeadItem | null): ProposalItem {
-  const title = lead?.title || 'Enterprise Solution Proposal';
-  const meta = lead?.extractedMetadata || {};
-  const budget = meta.budgetUsd || 120000;
-  const timeline = meta.timelineWeeks || 20;
-  const techStack = Array.isArray(meta.techStack) ? meta.techStack.join(', ') : (meta.techStack || 'React 19, TypeScript, Node.js, PostgreSQL, Kubernetes, Redis, Apache Kafka');
-  const platforms = meta.targetPlatforms?.length ? meta.targetPlatforms.join(', ') : 'Web Portal, iOS, Android, Cloud Native Microservices';
-  const compliance = Array.isArray(meta.complianceStandards) ? meta.complianceStandards.join(', ') : (meta.complianceStandards || 'SOC-2 Type II, ISO 27001, PCI-DSS Level 1, OWASP Top 10');
-
-  return {
-    id: leadId,
-    leadId: leadId,
-    title: `${title} - Giải pháp Kỹ thuật & Báo giá 10 Sheets`,
-    version: 'v1.0-PROPOSAL',
-    status: 'APPROVED',
-    totalCost: budget,
-    currency: 'USD',
-    estimatedTimelineWeeks: timeline,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    sheets: [
-      {
-        id: `${leadId}-sheet-1`,
-        proposalId: leadId,
-        sheetName: 'Overview',
-        sheetOrder: 1,
-        version: 1,
-        updatedAt: new Date().toISOString(),
-        sheetData: {
-          executiveSummary: `Đề xuất giải pháp toàn diện cho dự án "${title}". Hệ thống được kiến trúc theo tiêu chuẩn doanh nghiệp, tối ưu độ trễ, đảm bảo tính sẵn sàng cao 99.999% và đáp ứng quy chuẩn bảo mật ${compliance}.`,
-          keyObjectives: [
-            `Xây dựng nền tảng trên các môi trường ${platforms} với khả năng chịu tải cao.`,
-            `Tích hợp hệ thống kiến trúc Microservices & Hybrid Cloud hiện đại (${techStack}).`,
-            `Đảm bảo tuân thủ nghiêm ngặt các tiêu chuẩn bảo mật và kiểm toán dữ liệu (${compliance}).`,
-            `Chuyển giao và bàn giao toàn bộ tài liệu kiến trúc, mã nguồn và quy trình CI/CD trong ${timeline} tuần.`
-          ],
-          deliveryMethodology: 'Agile Scrum (2 tuần/Sprint) với kiểm thử tự động CI/CD & Security Gate'
-        }
-      },
-      {
-        id: `${leadId}-sheet-2`,
-        proposalId: leadId,
-        sheetName: 'Scope of Work',
-        sheetOrder: 2,
-        version: 1,
-        updatedAt: new Date().toISOString(),
-        sheetData: {
-          modules: [
-            { wbs: '1.1', module: 'Core Services & Authentication', feature: 'Xác thực phân quyền RBAC/mTLS, SSO, Audit Trail', complexity: 'Medium', priority: 'High', estimatedDays: 18 },
-            { wbs: '1.2', module: 'Data Synchronization & Gateway', feature: 'Đồng bộ dữ liệu thời gian thực, Kafka Streaming bus, Caching', complexity: 'High', priority: 'Critical', estimatedDays: 28 },
-            { wbs: '2.1', module: 'Business Logic & Workflows', feature: 'Xử lý quy trình nghiệp vụ lõi, báo cáo và trích xuất chỉ số', complexity: 'High', priority: 'High', estimatedDays: 32 },
-            { wbs: '2.2', module: 'Client Portal & Integration APIs', feature: 'Giao diện cổng thông tin tương tác, OpenAPI 3.0, SDK client', complexity: 'Medium', priority: 'High', estimatedDays: 22 },
-            { wbs: '3.1', module: 'DevOps & Security Hardening', feature: 'Hạ tầng Kubernetes, Vault, CI/CD pipeline, tuân thủ SOC-2', complexity: 'High', priority: 'Critical', estimatedDays: 20 }
-          ]
-        }
-      },
-      {
-        id: `${leadId}-sheet-3`,
-        proposalId: leadId,
-        sheetName: 'Architecture & Tech Stack',
-        sheetOrder: 3,
-        version: 1,
-        updatedAt: new Date().toISOString(),
-        sheetData: {
-          stack: [
-            { layer: 'Frontend & Client Apps', technology: platforms, rationale: 'Giao diện phản hồi nhanh, tối ưu trải nghiệm người dùng đa thiết bị.' },
-            { layer: 'Backend & Microservices', technology: 'Node.js, TypeScript, Express, Clean Architecture', rationale: 'Khả năng module hóa cao, bảo trì dễ dàng và độc lập mở rộng.' },
-            { layer: 'Database & Event Streaming', technology: 'PostgreSQL, Redis Cache, Apache Kafka', rationale: 'Đảm bảo tính toàn vẹn dữ liệu ACID và khả năng xử lý thông lượng lớn.' },
-            { layer: 'Security & Compliance', technology: compliance, rationale: 'Bảo mật đa tầng từ hạ tầng đến payload ứng dụng theo chuẩn ngân hàng/doanh nghiệp.' }
-          ],
-          nonFunctionalRequirements: [
-            { category: 'Availability', requirement: 'SLA cam kết 99.999% uptime với Multi-AZ Failover' },
-            { category: 'Latency', requirement: 'Độ trễ API < 150ms tại P95 dưới tải cao điểm' },
-            { category: 'RPO / RTO', requirement: 'RPO < 1 phút, RTO < 15 phút với sao lưu tự động' },
-            { category: 'Scalability', requirement: 'Auto-scaling pod ngang mở rộng tự động theo CPU/RAM' }
-          ]
-        }
-      },
-      {
-        id: `${leadId}-sheet-4`,
-        proposalId: leadId,
-        sheetName: 'Timeline & Milestones',
-        sheetOrder: 4,
-        version: 1,
-        updatedAt: new Date().toISOString(),
-        sheetData: {
-          totalWeeks: timeline,
-          milestones: [
-            { phase: 'Phase 1', milestone: 'Kiến Trúc & Phân Tích Sơ Bộ (Sprint 0-2)', durationWeeks: Math.round(timeline * 0.2), deliverables: 'Architecture Blueprint, SRS & HLD/LLD sign-off' },
-            { phase: 'Phase 2', milestone: 'Phát Triển Tính Năng Cốt Lõi (Sprint 3-6)', durationWeeks: Math.round(timeline * 0.4), deliverables: 'Core Backend, Database & Key APIs deploy Staging' },
-            { phase: 'Phase 3', milestone: 'Tích Hợp Giao Diện & Client Portal (Sprint 7-9)', durationWeeks: Math.round(timeline * 0.25), deliverables: 'Client Web/Mobile, End-to-end integration' },
-            { phase: 'Phase 4', milestone: 'Kiểm Thử UAT, Bảo Mật & Bàn Giao (Sprint 10)', durationWeeks: Math.round(timeline * 0.15), deliverables: 'UAT Sign-off, Pentest Report & Go-Live Production' }
-          ]
-        }
-      },
-      {
-        id: `${leadId}-sheet-5`,
-        proposalId: leadId,
-        sheetName: 'Team & Rate Cards',
-        sheetOrder: 5,
-        version: 1,
-        updatedAt: new Date().toISOString(),
-        sheetData: {
-          totalEffortManMonths: Math.round(timeline * 0.8),
-          totalTeamCost: Math.round(budget * 0.85),
-          roles: (() => {
-            const assigned = (lead?.extractedMetadata as any)?.assigned_roles || (lead?.extractedMetadata as any)?.assignedRoles || [];
-            if (Array.isArray(assigned) && assigned.length > 0) {
-              const list: any[] = [];
-              if (assigned.includes('SOLUTION_ARCHITECT')) {
-                list.push({ role: 'Solution Architect', level: 'Principal/Lead', allocation: '50%', manMonths: 2.5, monthlyRate: 7500, totalCost: 18750 });
-              }
-              if (assigned.includes('PRESALE_LEAD')) {
-                list.push({ role: 'Presale Lead / Bid Director', level: 'Director', allocation: '30%', manMonths: 1.5, monthlyRate: 8000, totalCost: 12000 });
-              }
-              if (assigned.includes('PRESALE_CONSULTANT')) {
-                list.push({ role: 'Presale Consultant & BA', level: 'Senior', allocation: '70%', manMonths: 3.5, monthlyRate: 6000, totalCost: 21000 });
-              }
-              if (assigned.includes('SALES_REP')) {
-                list.push({ role: 'Account Executive / Client Partner', level: 'Senior', allocation: '25%', manMonths: 1.0, monthlyRate: 4500, totalCost: 4500 });
-              }
-              if (assigned.includes('ADMIN')) {
-                list.push({ role: 'Technical Governance & PMO', level: 'Lead', allocation: '20%', manMonths: 1.0, monthlyRate: 5000, totalCost: 5000 });
-              }
-              // Project engineering delivery core
-              list.push(
-                { role: 'Senior Backend Engineer', level: 'Senior', allocation: '100%', manMonths: 5.0, monthlyRate: 5000, totalCost: 25000 },
-                { role: 'Senior Frontend Engineer', level: 'Senior', allocation: '100%', manMonths: 4.0, monthlyRate: 4800, totalCost: 19200 },
-                { role: 'DevOps & Cloud Specialist', level: 'Senior', allocation: '50%', manMonths: 2.5, monthlyRate: 6000, totalCost: 15000 },
-                { role: 'QA Automation Lead', level: 'Mid-Senior', allocation: '100%', manMonths: 3.5, monthlyRate: 3500, totalCost: 12250 }
-              );
-              return list;
-            }
-            return [
-              { role: 'Solution Architect', level: 'Lead', allocation: '50%', manMonths: 2.5, monthlyRate: 7500, totalCost: 18750 },
-              { role: 'Project Manager / Scrum Master', level: 'Senior', allocation: '100%', manMonths: 4.5, monthlyRate: 5500, totalCost: 24750 },
-              { role: 'Senior Backend Engineer', level: 'Senior', allocation: '100%', manMonths: 5.0, monthlyRate: 5000, totalCost: 25000 },
-              { role: 'Senior Frontend Engineer', level: 'Senior', allocation: '100%', manMonths: 4.0, monthlyRate: 4800, totalCost: 19200 },
-              { role: 'DevOps & Security Specialist', level: 'Senior', allocation: '50%', manMonths: 2.5, monthlyRate: 6000, totalCost: 15000 },
-              { role: 'QA & Test Automation Lead', level: 'Mid-Senior', allocation: '100%', manMonths: 3.5, monthlyRate: 3500, totalCost: 12250 }
-            ];
-          })()
-        }
-      },
-      {
-        id: `${leadId}-sheet-6`,
-        proposalId: leadId,
-        sheetName: 'Pricing & Quotation',
-        sheetOrder: 6,
-        version: 1,
-        updatedAt: new Date().toISOString(),
-        sheetData: {
-          currency: 'USD',
-          teamCost: Math.round(budget * 0.85),
-          infrastructureCost: Math.round(budget * 0.15),
-          grandTotal: budget,
-          paymentMilestones: [
-            { milestone: 'Đợt 1: Ký hợp đồng & Khởi động dự án (Mobilization)', percentage: 20, amount: Math.round(budget * 0.2) },
-            { milestone: 'Đợt 2: Hoàn tất phê duyệt Kiến trúc & Thiết kế kỹ thuật', percentage: 25, amount: Math.round(budget * 0.25) },
-            { milestone: 'Đợt 3: Hoàn thành phát triển Alpha Release & UAT Staging', percentage: 35, amount: Math.round(budget * 0.35) },
-            { milestone: 'Đợt 4: Nghiệm thu vận hành Go-Live chính thức & Bàn giao', percentage: 20, amount: Math.round(budget * 0.2) }
-          ]
-        }
-      },
-      {
-        id: `${leadId}-sheet-7`,
-        proposalId: leadId,
-        sheetName: 'Assumptions & Dependencies',
-        sheetOrder: 7,
-        version: 1,
-        updatedAt: new Date().toISOString(),
-        sheetData: {
-          items: [
-            { category: 'Hạ Tầng Khách Hàng', description: 'Khách hàng cung cấp môi trường Cloud (AWS/Azure/GCP) hoặc thông số Server On-premise trước Sprint 1.' },
-            { category: 'API Phụ Thuộc Bên Thứ Ba', description: 'Đội ngũ kỹ thuật phía khách hàng hỗ trợ cung cấp tài liệu kết nối API và tài khoản Sandbox trong 5 ngày làm việc.' },
-            { category: 'Quy Trình Nghiệm Thu', description: 'Các đợt nghiệm thu từng Sprint và UAT được phản hồi chính thức trong vòng tối đa 7 ngày làm việc kể từ ngày bàn giao bản thử nghiệm.' }
-          ]
-        }
-      },
-      {
-        id: `${leadId}-sheet-8`,
-        proposalId: leadId,
-        sheetName: 'Risk Management (RAID)',
-        sheetOrder: 8,
-        version: 1,
-        updatedAt: new Date().toISOString(),
-        sheetData: {
-          risks: [
-            { risk: 'Thay đổi yêu cầu chức năng (Scope Creep) trong giai đoạn giữa', impact: 'Medium', probability: 'Low', mitigation: 'Áp dụng quy trình Change Request (CR) rõ ràng và đánh giá tác động ngân sách trước khi triển khai.' },
-            { risk: 'Độ trễ API đối tác vượt ngưỡng cam kết SLA trong cao điểm', impact: 'High', probability: 'Medium', mitigation: 'Thiết kế Circuit Breaker và cơ chế Fallback Cache cục bộ để giao diện không bị gián đoạn.' },
-            { risk: 'Yêu cầu chứng chỉ bảo mật và Audit tuân thủ kéo dài thời gian', impact: 'Medium', probability: 'Low', mitigation: 'Áp dụng chuẩn hóa DevSecOps và tự động hóa Static Code Analysis ngay từ Sprint đầu tiên.' }
-          ]
-        }
-      },
-      {
-        id: `${leadId}-sheet-9`,
-        proposalId: leadId,
-        sheetName: 'SLA & Maintenance',
-        sheetOrder: 9,
-        version: 1,
-        updatedAt: new Date().toISOString(),
-        sheetData: {
-          metrics: [
-            { metric: 'Availability SLA (Thời gian hoạt động)', target: '99.999% tính theo tháng' },
-            { metric: 'Phản hồi sự cố nghiêm trọng (P1 Critical)', target: '< 15 phút (24/7/365)' },
-            { metric: 'Thời gian khắc phục sự cố P1 (Mean Time to Resolve)', target: '< 2 giờ' },
-            { metric: 'Bảo hành & Hỗ trợ kỹ thuật sau Go-live', target: '12 tháng bảo hành toàn diện bao gồm vá lỗi và bảo trì định kỳ' }
-          ]
-        }
-      },
-      {
-        id: `${leadId}-sheet-10`,
-        proposalId: leadId,
-        sheetName: 'Appendices & Case Studies',
-        sheetOrder: 10,
-        version: 1,
-        updatedAt: new Date().toISOString(),
-        sheetData: {
-          caseStudies: [
-            { client: 'Tập đoàn Bán lẻ & Chuỗi Siêu thị Toàn quốc (EcoMart Retail)', result: 'Hiện đại hóa thành công hệ thống POS offline-first cho 85 chi nhánh, thời gian sync delta < 2 giây, giảm 98% sự cố nghẽn mạng.', referenceArchitecture: 'Event-driven Microservices trên Kubernetes, Apache Kafka, SQLite local cache' },
-            { client: 'Ngân hàng Thương mại Cổ phần & Fintech Gateway', result: 'Triển khai cổng thanh toán bảo mật mTLS đạt chuẩn PCI-DSS Level 1, xử lý 45,000 TPS trong ngày hội mua sắm.', referenceArchitecture: 'High-availability Dual-Active Cloud, Redis Cluster, HSM Encryption' }
-          ]
-        }
-      }
-    ]
-  };
 }
 
 export const ProposalStudioTab: React.FC<ProposalStudioTabProps> = ({ 
@@ -350,7 +122,7 @@ export const ProposalStudioTab: React.FC<ProposalStudioTabProps> = ({
   const [chatInput, setChatInput] = useState<string>('');
   const [isAiReplying, setIsAiReplying] = useState<boolean>(false);
 
-  // Load proposal for active lead - Tự động tải hoặc sinh 10 sheets trực tiếp khi chọn dự án
+  // Load proposal for active lead - chỉ đọc, không tự sinh; việc sinh proposal do người dùng bấm nút
   useEffect(() => {
     if (!leadId) {
       setProposal(null);
@@ -363,57 +135,44 @@ export const ProposalStudioTab: React.FC<ProposalStudioTabProps> = ({
   async function loadProposal(id: string) {
     try {
       setLoading(true);
-      let data = await fetchProposalByLead(id);
-      
-      // Nếu chưa có proposal trong DB cho lead này, tự động sinh 10 sheets từ context dự án
-      if (!data) {
-        try {
-          data = await generateProposalFromLead(id);
-        } catch {
-          // Fallback tự động xây dựng 10 sheets chuẩn từ dữ liệu activeProject
-          data = buildDefault10SheetsProposal(id, activeProject);
-        }
-      }
-
-      // Đảm bảo data luôn có đủ 10 sheets
-      if (!data || !data.sheets || data.sheets.length === 0) {
-        data = buildDefault10SheetsProposal(id, activeProject);
-      }
-
+      const data = await fetchProposalByLead(id);
       setProposal(data);
-      const currentSheet = data.sheets.find(s => s.sheetName === activeSheetName) || data.sheets[0];
-      if (currentSheet) {
+      if (data && data.sheets.length > 0) {
+        const currentSheet = data.sheets.find(s => s.sheetName === activeSheetName) || data.sheets[0];
         setActiveSheetName(currentSheet.sheetName);
         setJsonText(JSON.stringify(currentSheet.sheetData, null, 2));
-      }
-
-      const overview = data.sheets.find(s => s.sheetName === 'Overview');
-      if (overview?.sheetData?.uiDesignBrief) {
-        setUiBrief(overview.sheetData.uiDesignBrief);
+        const overview = data.sheets.find(s => s.sheetName === 'Overview');
+        if (overview?.sheetData?.uiDesignBrief) {
+          setUiBrief(overview.sheetData.uiDesignBrief);
+        }
+      } else {
+        setUiBrief(null);
       }
     } catch (err) {
       console.error('Failed to load proposal:', err);
-      // Luôn đảm bảo người dùng có 10 sheets để xem và xuất
-      const fallback = buildDefault10SheetsProposal(id, activeProject);
-      setProposal(fallback);
-      setActiveSheetName(fallback.sheets[0].sheetName);
-      setJsonText(JSON.stringify(fallback.sheets[0].sheetData, null, 2));
+      setProposal(null);
+      toast.error('Không tải được proposal của lead này. Hãy thử tải lại trang.', 'Lỗi tải Proposal');
     } finally {
       setLoading(false);
     }
   }
 
-  // Handle generating proposal from lead context
+  const generateInFlight = useRef(false);
+
+  // Handle generating proposal from lead context (chỉ chạy khi người dùng bấm nút)
   async function handleGenerateProposal() {
     if (!leadId) {
       toast.warning('Vui lòng chọn hoặc khởi tạo một Dự án (Lead) trước.', 'Chưa chọn Dự án');
       return;
     }
+    if (generateInFlight.current) return;
+    generateInFlight.current = true;
 
     try {
       setGenerating(true);
       const created = await generateProposalFromLead(leadId, customInstructions.trim() || undefined);
       setProposal(created);
+      onProposalUpdated?.(created);
       setActiveSheetName('Overview');
       const overview = created.sheets.find(s => s.sheetName === 'Overview');
       if (overview) {
@@ -427,6 +186,7 @@ export const ProposalStudioTab: React.FC<ProposalStudioTabProps> = ({
       console.error('Generate proposal error:', err);
       toast.error(`Lỗi sinh proposal: ${err.message || 'Không thể tạo đề xuất'}`, 'Lỗi Tạo Đề Xuất');
     } finally {
+      generateInFlight.current = false;
       setGenerating(false);
     }
   }
@@ -558,28 +318,8 @@ ${uiBrief.interaction_flow}
       setAssessmentData(res);
       toast.success(`Đã tự đánh giá 10 sheets hoàn tất! Điểm tổng kết: ${res.overallScore}/100`, 'Tự Đánh Giá 10 Sheets');
     } catch (err: any) {
-      console.warn('Backend self-assess fallback:', err);
-      const fallbackSheets = proposal.sheets.map((s, idx) => ({
-        sheetOrder: s.sheetOrder || idx + 1,
-        sheetName: s.sheetName,
-        score: Math.min(98, 88 + (idx % 6) * 2),
-        status: 'PASSED' as const,
-        criteria: `Kiểm tra độ bao phủ và tính khả thi kỹ thuật của Sheet #${s.sheetOrder}`,
-        findings: ['Dữ liệu đã được nạp đầy đủ cấu trúc JSON', 'Khớp với định hướng nghiệp vụ'],
-        recommendations: 'Nội dung đạt chuẩn doanh nghiệp, sẵn sàng trình duyệt.'
-      }));
-      const avg = Math.round(fallbackSheets.reduce((a, b) => a + b.score, 0) / fallbackSheets.length);
-      setAssessmentData({
-        proposalId: proposal.id,
-        proposalTitle: proposal.title,
-        overallScore: avg,
-        rating: avg >= 90 ? 'ĐẠT CHUẨN XUẤT SẮC' : 'CẦN BỔ SUNG',
-        assessedByRole: 'PRESALE_CONSULTANT',
-        evaluatedAt: new Date().toISOString(),
-        summary: `Hồ sơ đề xuất đã hoàn thiện 10/10 sheets kỹ thuật. Điểm trung bình ${avg}/100. Tính đồng bộ giữa SOW, kiến trúc và ngân sách đạt chuẩn chất lượng cao.`,
-        sheets: fallbackSheets
-      });
-      toast.success('Đã tự đánh giá 10 sheets hoàn tất!', 'Tự Đánh Giá 10 Sheets');
+      console.error('Self-assess failed:', err);
+      toast.error(`Lỗi tự đánh giá: ${err.message || 'Không thể đánh giá 10 sheets'}`, 'Lỗi Tự Đánh Giá');
     } finally {
       setIsRunningAssessment(false);
     }
@@ -790,13 +530,43 @@ ${uiBrief.interaction_flow}
     return (
       <div className="bg-white rounded-3xl border border-slate-200 shadow-card p-12 text-center space-y-3">
         <RefreshCw className="w-8 h-8 text-brand-600 animate-spin mx-auto" />
-        <h3 className="text-base font-bold text-slate-800">Đang nạp 10 Sheets Proposal kỹ thuật...</h3>
-        <p className="text-xs font-mono text-slate-500">Đang chuẩn bị thông số kiến trúc, WBS, bảng giá RateCard và lộ trình từ dự án</p>
+        <h3 className="text-base font-bold text-slate-800">
+          {generating ? 'Đang sinh 10 Sheets Proposal bằng AI...' : 'Đang nạp 10 Sheets Proposal kỹ thuật...'}
+        </h3>
+        <p className="text-xs font-mono text-slate-500">
+          {generating
+            ? 'AI đang tổng hợp từ RFP, meeting và kho tri thức — quá trình này có thể mất vài phút'
+            : 'Đang chuẩn bị thông số kiến trúc, WBS, bảng giá RateCard và lộ trình từ dự án'}
+        </p>
       </div>
     );
   }
 
-  const currentProposal = proposal || buildDefault10SheetsProposal(leadId, activeProject);
+  if (!proposal) {
+    return (
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-card p-12 text-center space-y-4">
+        <FileText className="w-10 h-10 text-slate-300 mx-auto" />
+        <h3 className="text-base font-bold text-slate-800">Lead này chưa có proposal</h3>
+        <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
+          {isSalesRep || isViewer
+            ? 'Hồ sơ đề xuất sẽ do đội ngũ Presale tạo. Bạn có quyền xem và xuất file sau khi proposal được tạo.'
+            : 'Bấm nút bên dưới để AI tổng hợp hồ sơ đề xuất 10 sheets từ dữ liệu RFP, meeting đã kiểm duyệt và kho tri thức của dự án.'}
+        </p>
+        {!isSalesRep && !isViewer && (
+          <button
+            onClick={handleGenerateProposal}
+            disabled={generating}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white text-sm font-semibold shadow-sm cursor-pointer"
+          >
+            <Sparkles className="w-4 h-4" />
+            <span>Sinh proposal bằng AI</span>
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  const currentProposal = proposal;
   const activeSheet = currentProposal.sheets.find(s => s.sheetName === activeSheetName) || currentProposal.sheets[0];
   const proposalData = currentProposal;
 
@@ -986,7 +756,7 @@ ${uiBrief.interaction_flow}
             <span>Client Portal &rarr;</span>
           </button>
 
-          {!isViewer && (
+          {!isViewer && !isSalesRep && (
             <button
               onClick={handleGenerateProposal}
               disabled={generating}

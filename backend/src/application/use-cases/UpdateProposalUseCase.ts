@@ -71,9 +71,7 @@ export class UpdateProposalUseCase {
           throw new ForbiddenError('Đại diện kinh doanh (SALES_REP) không có thẩm quyền phê duyệt hồ sơ đề xuất. Quyền này thuộc về Trưởng dự án (PRESALE_LEAD).');
         }
         if (!['ADMIN', 'PRESALE_LEAD'].includes(dto.actorRole)) {
-          if (existing.createdBy !== dto.actorId) {
-            throw new ForbiddenError('Chỉ Trưởng dự án (PRESALE_LEAD) mới có quyền phê duyệt hoặc từ chối hồ sơ đề xuất.');
-          }
+          throw new ForbiddenError('Chỉ Trưởng dự án (PRESALE_LEAD) hoặc Quản trị viên mới có quyền phê duyệt hoặc từ chối hồ sơ đề xuất.');
         }
       }
       const transitions: Record<Proposal['status'], Proposal['status'][]> = {

@@ -74,7 +74,10 @@ export class ProposalController {
         return;
       }
       const { leadId, customInstructions } = req.body;
-      const { organizationId, userId } = authContext(req);
+      const { organizationId, userId, role } = authContext(req);
+      if (role === 'SALES_REP') {
+        throw new ForbiddenError('Đại diện kinh doanh (SALES_REP) chỉ có quyền xem đề xuất (Proposal), không có quyền sinh Proposal từ Lead.');
+      }
       const proposal = await this.generateFromLeadUseCase.execute({
         leadId,
         organizationId,
@@ -112,37 +115,28 @@ export class ProposalController {
     }
   };
 
-  private async resolveEffectiveRole(proposalId: string, userId: string, baseRole: UserRole): Promise<UserRole> {
+  private async resolveEffectiveRole(proposalId: string, userId: string, baseRole: UserRole, organizationId: string): Promise<UserRole> {
     if (baseRole === 'ADMIN') return 'ADMIN';
+    // SALES_REP is view + export only; auto-seeded project memberships must not grant write or approval rights
+    if (baseRole === 'SALES_REP' || baseRole === 'VIEWER') return baseRole;
     if (!dbPool) return baseRole;
     try {
       const memRes = await dbPool.query(`
         SELECT pm.project_role 
         FROM project_memberships pm
+        JOIN leads l ON l.id = pm.project_id
         WHERE pm.user_id = $1 
+          AND l.organization_id = $3
           AND (
             pm.project_id = $2 
-            OR pm.project_id = (SELECT lead_id FROM proposals WHERE id = $2 OR lead_id = $2 LIMIT 1)
+            OR pm.project_id = (SELECT lead_id FROM proposals WHERE (id = $2 OR lead_id = $2) AND organization_id = $3 ORDER BY updated_at DESC LIMIT 1)
           )
         ORDER BY (CASE WHEN pm.project_role = 'PRESALE_LEAD' THEN 1 ELSE 2 END) ASC
         LIMIT 1;
-      `, [userId, proposalId]);
+      `, [userId, proposalId, organizationId]);
       if (memRes.rows[0]?.project_role) {
         return memRes.rows[0].project_role as UserRole;
       }
-
-      const leadRes = await dbPool.query(`
-        SELECT 1 FROM leads 
-        WHERE (id = $2 OR id = (SELECT lead_id FROM proposals WHERE id = $2 OR lead_id = $2 LIMIT 1))
-          AND (created_by = $1 OR assigned_to = $1)
-        LIMIT 1;
-      `, [userId, proposalId]);
-      if (leadRes.rows.length > 0) return 'PRESALE_LEAD';
-
-      const propRes = await dbPool.query(`
-        SELECT 1 FROM proposals WHERE id = $2 AND created_by = $1 LIMIT 1;
-      `, [userId, proposalId]);
-      if (propRes.rows.length > 0) return 'PRESALE_LEAD';
     } catch (err) {
       console.error('[ProposalController.resolveEffectiveRole] Error:', err);
     }
@@ -156,7 +150,7 @@ export class ProposalController {
     try {
       const id = getParam(req.params.id);
       const { organizationId, userId, role } = authContext(req);
-      const effectiveRole = await this.resolveEffectiveRole(id, userId, role);
+      const effectiveRole = await this.resolveEffectiveRole(id, userId, role, organizationId);
       const { status, reviewNotes } = req.body;
       const updated = await this.updateUseCase.execute({
         id,
@@ -272,7 +266,7 @@ export class ProposalController {
     try {
       const id = getParam(req.params.id);
       const { organizationId, userId, role } = authContext(req);
-      const effectiveRole = await this.resolveEffectiveRole(id, userId, role);
+      const effectiveRole = await this.resolveEffectiveRole(id, userId, role, organizationId);
       const {
         title,
         version,
@@ -303,7 +297,7 @@ export class ProposalController {
     try {
       const { organizationId, userId, role } = authContext(req);
       const proposalId = getParam(req.params.id);
-      const effectiveRole = await this.resolveEffectiveRole(proposalId, userId, role);
+      const effectiveRole = await this.resolveEffectiveRole(proposalId, userId, role, organizationId);
       const body = bodyObject(req);
       const sheetName = decodeURIComponent(getParam(req.params.sheetName));
       const updatedSheet = await this.updateSheetUseCase.execute({
@@ -323,7 +317,7 @@ export class ProposalController {
     try {
       const { organizationId, userId, role } = authContext(req);
       const proposalId = getParam(req.params.id);
-      const effectiveRole = await this.resolveEffectiveRole(proposalId, userId, role);
+      const effectiveRole = await this.resolveEffectiveRole(proposalId, userId, role, organizationId);
       if (effectiveRole === 'SALES_REP') {
         throw new ForbiddenError('Đại diện kinh doanh (SALES_REP) chỉ có quyền xem đề xuất (Proposal), không có quyền sinh lại Proposal.');
       }
@@ -340,7 +334,7 @@ export class ProposalController {
     try {
       const { organizationId, userId, role } = authContext(req);
       const proposalId = getParam(req.params.id);
-      const effectiveRole = await this.resolveEffectiveRole(proposalId, userId, role);
+      const effectiveRole = await this.resolveEffectiveRole(proposalId, userId, role, organizationId);
       if (effectiveRole === 'SALES_REP') {
         throw new ForbiddenError('Đại diện kinh doanh (SALES_REP) chỉ có quyền xem đề xuất (Proposal), không có quyền sinh lại Proposal.');
       }
@@ -356,12 +350,17 @@ export class ProposalController {
 
   regenerateSection = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { organizationId } = authContext(req);
+      const { organizationId, userId, role } = authContext(req);
+      const proposalId = getParam(req.params.id);
+      const effectiveRole = await this.resolveEffectiveRole(proposalId, userId, role, organizationId);
+      if (effectiveRole === 'SALES_REP') {
+        throw new ForbiddenError('Đại diện kinh doanh (SALES_REP) chỉ có quyền xem đề xuất (Proposal), không có quyền sinh lại Proposal.');
+      }
       const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body)
         ? req.body as Record<string, unknown> : {};
       const sectionName = decodeURIComponent(getParam(req.params.sectionName));
       const result = await this.generateSheetsUseCase.execute({
-        proposalId: getParam(req.params.id), organizationId,
+        proposalId, organizationId,
         sheetNames: [sectionName], instructions: body.instructions
       });
       res.status(200).json({ success: true, data: result });
@@ -370,7 +369,10 @@ export class ProposalController {
 
   submitForReview = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { organizationId, userId } = authContext(req);
+      const { organizationId, userId, role } = authContext(req);
+      if (role === 'SALES_REP') {
+        throw new ForbiddenError('Đại diện kinh doanh (SALES_REP) chỉ có quyền xem đề xuất (Proposal), không có quyền trình duyệt Proposal.');
+      }
       const proposal = await this.submitForReviewUseCase.execute(getParam(req.params.id), organizationId, userId);
       res.status(200).json({ success: true, data: proposal });
     } catch (error) { next(error); }
@@ -415,7 +417,7 @@ export class ProposalController {
     try {
       const { organizationId, userId, role } = authContext(req);
       const proposalId = getParam(req.params.id);
-      const effectiveRole = await this.resolveEffectiveRole(proposalId, userId, role);
+      const effectiveRole = await this.resolveEffectiveRole(proposalId, userId, role, organizationId);
       if (effectiveRole === 'SALES_REP') {
         throw new ForbiddenError('Đại diện kinh doanh (SALES_REP) chỉ có quyền xem đề xuất (Proposal), không có quyền sử dụng AI chỉnh sửa Proposal.');
       }
@@ -511,26 +513,109 @@ HƯỚNG DẪN:
       if (!proposal) throw new NotFoundError('Proposal not found.');
 
       const standardSheets = [
-        { order: 1, name: 'Overview', criteria: 'Tính đầy đủ của Executive Summary, mục tiêu dự án và phương pháp triển khai Agile.' },
+        { order: 1, name: 'Overview', criteria: 'Tính đầy đủ của Executive Summary và mục tiêu dự án.' },
         { order: 2, name: 'Scope of Work', criteria: 'Mức độ phân rã WBS, độ chi tiết của các tính năng và ước tính ngày công.' },
-        { order: 3, name: 'Architecture & Tech Stack', criteria: 'Tính tương thích của kiến trúc vi dịch vụ, bảo mật, SLA 99.999% và NFRs.' },
-        { order: 4, name: 'Timeline & Milestones', criteria: 'Lộ trình bàn giao qua các Sprint, thời gian UAT và mốc Go-Live.' },
-        { order: 5, name: 'Team & Rate Cards', criteria: 'Cơ cấu đội ngũ (Lead, SA, Dev, QA, DevOps) và định mức nhân sự.' },
+        { order: 3, name: 'Architecture & Tech Stack', criteria: 'Tính đầy đủ của các tầng công nghệ và lựa chọn kiến trúc.' },
+        { order: 4, name: 'Timeline & Milestones', criteria: 'Lộ trình bàn giao qua các mốc và tính nhất quán của tổng thời gian.' },
+        { order: 5, name: 'Team & Rate Cards', criteria: 'Cơ cấu đội ngũ, định mức nhân sự và chi phí khớp rate card.' },
         { order: 6, name: 'Pricing & Quotation', criteria: 'Bảng phân bổ chi phí theo đợt nghiệm thu, tính minh bạch ngân sách.' },
-        { order: 7, name: 'Assumptions & Dependencies', criteria: 'Các điều kiện tiên quyết về hạ tầng Cloud, dữ liệu và API bên thứ ba.' },
+        { order: 7, name: 'Assumptions & Dependencies', criteria: 'Các điều kiện tiên quyết về hạ tầng, dữ liệu và API bên thứ ba.' },
         { order: 8, name: 'Risk Management (RAID)', criteria: 'Đánh giá rủi ro tác động kỹ thuật và phương án giảm thiểu dự phòng.' },
-        { order: 9, name: 'SLA & Maintenance', criteria: 'Chỉ số cam kết phản hồi P1/P2 và chính sách bảo hành 12 tháng.' },
-        { order: 10, name: 'Appendices & Case Studies', criteria: 'Hồ sơ năng lực tham chiếu dự án tương đương và tài liệu kỹ thuật.' }
+        { order: 9, name: 'SLA & Maintenance', criteria: 'Chỉ số cam kết chất lượng dịch vụ và chính sách bảo trì.' },
+        { order: 10, name: 'Appendices & Case Studies', criteria: 'Hồ sơ năng lực tham chiếu đã kiểm chứng (được phép trống, không bịa số liệu).' }
       ];
 
+      const nonEmpty = (v: unknown): boolean => typeof v === 'string' && v.trim().length > 0;
+      const positive = (v: unknown): boolean => typeof v === 'number' && Number.isFinite(v) && v > 0;
+      const arr = (v: unknown): Record<string, any>[] => (Array.isArray(v) ? v : []);
+      type SheetCheck = { label: string; ok: boolean };
+      const rubric: Record<string, (d: Record<string, any>) => SheetCheck[]> = {
+        'Overview': d => [
+          { label: 'executiveSummary có nội dung', ok: nonEmpty(d.executiveSummary) },
+          { label: 'keyObjectives là danh sách mục tiêu không rỗng', ok: arr(d.keyObjectives).length > 0 && arr(d.keyObjectives).every(nonEmpty) }
+        ],
+        'Scope of Work': d => {
+          const modules = arr(d.modules);
+          return [
+            { label: 'modules có ít nhất một phân hệ', ok: modules.length > 0 },
+            { label: 'mỗi phân hệ có tên và mô tả tính năng', ok: modules.length > 0 && modules.every(m => nonEmpty(m.module) && nonEmpty(m.feature)) },
+            { label: 'estimatedDays của mọi phân hệ là số dương', ok: modules.length > 0 && modules.every(m => positive(m.estimatedDays)) }
+          ];
+        },
+        'Architecture & Tech Stack': d => {
+          const stack = arr(d.stack);
+          return [
+            { label: 'stack có ít nhất một tầng công nghệ', ok: stack.length > 0 },
+            { label: 'mỗi tầng có layer và technology', ok: stack.length > 0 && stack.every(s => nonEmpty(s.layer) && nonEmpty(s.technology)) }
+          ];
+        },
+        'Timeline & Milestones': d => {
+          const milestones = arr(d.milestones);
+          const weeksSum = milestones.reduce((sum, m) => sum + (Number(m.durationWeeks) || 0), 0);
+          return [
+            { label: 'totalWeeks là số nguyên dương', ok: positive(d.totalWeeks) && Number.isInteger(d.totalWeeks) },
+            { label: 'milestones không rỗng, durationWeeks luôn dương', ok: milestones.length > 0 && milestones.every(m => positive(m.durationWeeks)) },
+            { label: 'tổng durationWeeks khớp totalWeeks', ok: milestones.length > 0 && weeksSum === d.totalWeeks }
+          ];
+        },
+        'Team & Rate Cards': d => {
+          const roles = arr(d.roles);
+          const costSum = roles.reduce((sum, r) => sum + (Number(r.totalCost) || 0), 0);
+          return [
+            { label: 'roles không rỗng', ok: roles.length > 0 },
+            { label: 'mỗi role có tên, manMonths và monthlyRate dương', ok: roles.length > 0 && roles.every(r => nonEmpty(r.role) && positive(r.manMonths) && positive(r.monthlyRate)) },
+            { label: 'totalTeamCost khớp tổng totalCost các role', ok: roles.length > 0 && positive(d.totalTeamCost) && costSum === d.totalTeamCost }
+          ];
+        },
+        'Pricing & Quotation': d => {
+          const payments = arr(d.paymentMilestones);
+          const paidSum = payments.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+          return [
+            { label: 'grandTotal là số dương', ok: positive(d.grandTotal) },
+            { label: 'teamCost là số không âm', ok: typeof d.teamCost === 'number' && Number.isFinite(d.teamCost) && d.teamCost >= 0 },
+            { label: 'tổng paymentMilestones khớp grandTotal', ok: payments.length === 0 || paidSum === d.grandTotal }
+          ];
+        },
+        'Assumptions & Dependencies': d => {
+          const items = arr(d.items);
+          return [
+            { label: 'items không rỗng', ok: items.length > 0 },
+            { label: 'mỗi giả định có mô tả', ok: items.length > 0 && items.every(i => nonEmpty(i.description)) }
+          ];
+        },
+        'Risk Management (RAID)': d => {
+          const risks = arr(d.risks);
+          return [
+            { label: 'risks không rỗng', ok: risks.length > 0 },
+            { label: 'mỗi rủi ro có mô tả và phương án giảm thiểu', ok: risks.length > 0 && risks.every(r => nonEmpty(r.risk) && nonEmpty(r.mitigation)) }
+          ];
+        },
+        'SLA & Maintenance': d => {
+          const metrics = arr(d.metrics);
+          return [
+            { label: 'metrics không rỗng', ok: metrics.length > 0 },
+            { label: 'mỗi chỉ số có metric và target', ok: metrics.length > 0 && metrics.every(m => nonEmpty(m.metric) && nonEmpty(m.target)) }
+          ];
+        },
+        'Appendices & Case Studies': d => {
+          const cases = arr(d.caseStudies);
+          return [
+            { label: 'caseStudies là danh sách hợp lệ (được phép trống khi chưa có tham chiếu kiểm chứng)', ok: Array.isArray(d.caseStudies) },
+            { label: 'mỗi case study có client và outcome', ok: cases.every(c => nonEmpty(c.client) && nonEmpty(c.outcome)) }
+          ];
+        }
+      };
+
       const sheetAssessments = standardSheets.map(s => {
-        const found = proposal.sheets.find(ps => ps.sheetName.toLowerCase() === s.name.toLowerCase() || ps.sheetOrder === s.order);
-        const hasData = found && found.sheetData && Object.keys(found.sheetData).length > 0;
-        const score = hasData ? Math.min(98, 88 + (s.order % 7) * 2) : 75;
+        const found = proposal.sheets.find(ps => ps.sheetName.toLowerCase() === s.name.toLowerCase())
+          || proposal.sheets.find(ps => ps.sheetOrder === s.order);
+        const checks = found ? (rubric[s.name]?.(found.sheetData as Record<string, any>) ?? []) : [];
+        const passedCount = checks.filter(c => c.ok).length;
+        const score = checks.length > 0 ? Math.round((passedCount / checks.length) * 100) : 0;
         const status = score >= 90 ? 'PASSED' : 'NEEDS_REVISION';
-        const findings = hasData 
-          ? [`Đã hoàn thiện cấu trúc dữ liệu cho Sheet #${s.order}`, `Khớp chuẩn: ${s.criteria.slice(0, 48)}...`]
-          : [`Chưa có đầy đủ dữ liệu chi tiết cho Sheet #${s.order}`];
+        const findings = found
+          ? checks.map(c => `${c.ok ? 'ĐẠT' : 'THIẾU'}: ${c.label}`)
+          : ['Sheet chưa được tạo trong proposal.'];
         return {
           sheetOrder: s.order,
           sheetName: s.name,
@@ -538,10 +623,13 @@ HƯỚNG DẪN:
           status,
           criteria: s.criteria,
           findings,
-          recommendations: score >= 90 ? 'Nội dung đạt chuẩn doanh nghiệp, sẵn sàng trình duyệt.' : 'Nên bổ sung thêm thông số kỹ thuật chi tiết.'
+          recommendations: status === 'PASSED'
+            ? 'Nội dung đạt các tiêu chí kiểm tra, sẵn sàng trình duyệt.'
+            : 'Bổ sung các mục bị đánh dấu THIẾU trước khi trình duyệt.'
         };
       });
 
+      const passedSheets = sheetAssessments.filter(s => s.status === 'PASSED').length;
       const totalScore = Math.round(sheetAssessments.reduce((sum, s) => sum + s.score, 0) / sheetAssessments.length);
 
       res.status(200).json({
@@ -550,10 +638,10 @@ HƯỚNG DẪN:
           proposalId: proposal.id,
           proposalTitle: proposal.title,
           overallScore: totalScore,
-          rating: totalScore >= 90 ? 'ĐẠT CHUẨN XUẤT SẮC' : 'CẦN BỔ SUNG KỸ THUẬT',
+          rating: totalScore >= 90 ? 'ĐẠT CHUẨN TRÌNH DUYỆT' : 'CẦN BỔ SUNG KỸ THUẬT',
           assessedByRole: 'PRESALE_CONSULTANT',
           evaluatedAt: new Date().toISOString(),
-          summary: `Hồ sơ đề xuất đã hoàn thiện 10/10 sheets kỹ thuật. Điểm đánh giá trung bình ${totalScore}/100. Tính đồng bộ giữa SOW, kiến trúc và ngân sách đạt chuẩn chất lượng cao.`,
+          summary: `Đánh giá theo tiêu chí nội dung: ${passedSheets}/10 sheets đạt, điểm trung bình ${totalScore}/100.${passedSheets < 10 ? ' Các sheets chưa đạt cần bổ sung trước khi trình duyệt.' : ''}`,
           sheets: sheetAssessments
         }
       });

@@ -155,6 +155,9 @@ export class AuthController {
     try {
       if (!req.auth?.sub) throw new UnauthorizedError();
       const user = await this.currentUserUseCase.execute(req.auth.sub);
+      if (req.auth.organizationId !== user.organizationId) {
+        res.cookie(ACCESS_COOKIE, issueAccessToken(user as any), cookieOptions(ACCESS_TTL_MS, ACCESS_COOKIE_PATH));
+      }
       res.status(200).json({ success: true, data: { user } });
     } catch (error) { next(error); }
   };

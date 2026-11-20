@@ -19,7 +19,8 @@ import {
   ArrowRight,
   Check,
   XCircle,
-  Plus
+  Plus,
+  Download
 } from 'lucide-react';
 import type { LeadItem } from '../services/leadService';
 import { useAuth } from '../hooks/useAuth';
@@ -574,198 +575,213 @@ ${uiBrief.interaction_flow}
     <div className="space-y-6">
       
       {/* 1. TOP HEADER & PROPOSAL TOOLBAR */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-card p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-card p-6 space-y-4">
         
-        <div className="space-y-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-brand-50 text-brand-700 border border-brand-200">
-              {proposalData.version}
-            </span>
-            <span className={`text-xs font-mono font-bold px-2.5 py-0.5 rounded-full border ${
-              proposalData.status === 'APPROVED' 
-                ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                : proposalData.status === 'IN_REVIEW'
-                ? 'bg-amber-50 text-amber-800 border-amber-300'
-                : 'bg-slate-100 text-slate-700 border-slate-300'
-            }`}>
-              STATUS: {proposalData.status}
-            </span>
-            <span className="text-xs font-mono text-slate-500">
-              10 Sheets Tiêu chuẩn
-            </span>
+        {/* Main Row: Proposal Info & Lifecycle Action Buttons */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-brand-50 text-brand-700 border border-brand-200">
+                {proposalData.version}
+              </span>
+              <span className={`text-xs font-mono font-bold px-2.5 py-0.5 rounded-full border ${
+                proposalData.status === 'APPROVED' 
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                  : proposalData.status === 'IN_REVIEW'
+                  ? 'bg-amber-50 text-amber-800 border-amber-300'
+                  : 'bg-slate-100 text-slate-700 border-slate-300'
+              }`}>
+                STATUS: {proposalData.status}
+              </span>
+              <span className="text-xs font-mono text-slate-500">
+                10 Sheets Tiêu chuẩn
+              </span>
+            </div>
+
+            <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
+              {proposalData.title}
+            </h1>
           </div>
 
-          <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
-            {proposalData.title}
-          </h1>
-        </div>
+          {/* Toolbar Action Buttons (Primary Operations) */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Presale Consultant / Lead: Tự Đánh Giá 10 Sheets */}
+            {!isViewer && !isSalesRep && (
+              <button
+                onClick={() => {
+                  setIsAssessmentModalOpen(true);
+                  if (!assessmentData) {
+                    void handleRunSelfAssessment();
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
+                title="Presale Consultant tự đánh giá chất lượng và độ hoàn thiện của 10 sheets kỹ thuật"
+              >
+                <ClipboardCheck className="w-3.5 h-3.5 text-emerald-200" />
+                <span>Tự Đánh Giá 10 Sheets</span>
+                {assessmentData && (
+                  <span className="ml-1 px-1.5 py-0.2 rounded-full bg-white/20 text-white font-mono text-[10px] font-bold">
+                    {assessmentData.overallScore}/100
+                  </span>
+                )}
+              </button>
+            )}
 
-        {/* Toolbar Action Buttons */}
-        <div className="flex flex-wrap items-center gap-2.5">
-          {/* Presale Consultant / Lead: Tự Đánh Giá 10 Sheets */}
-          {!isViewer && !isSalesRep && (
+            {/* Status-based Approval & Submit Lifecycle */}
+            {/* 1. APPROVED State */}
+            {proposalData.status === 'APPROVED' && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-300 text-xs font-semibold">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Proposal Đã Phê Duyệt</span>
+              </span>
+            )}
+
+            {/* 2. DRAFT State - HIDE for Presale Lead */}
+            {proposalData.status === 'DRAFT' && !canPrivilege && !isSalesRep && !isViewer && (
+              <button
+                onClick={() => handleUpdateStatus('IN_REVIEW')}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs cursor-pointer"
+                title="Gửi hồ sơ lên Presale Lead để phê duyệt (Submit for Review)"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>Submit for Review</span>
+              </button>
+            )}
+
+            {/* 3. IN_REVIEW State */}
+            {proposalData.status === 'IN_REVIEW' && (
+              canPrivilege ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleUpdateStatus('APPROVED')}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Phê Duyệt Proposal</span>
+                  </button>
+                  <button
+                    onClick={() => setIsRejectModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-xs cursor-pointer"
+                    title="Từ chối đề xuất và yêu cầu chỉnh sửa"
+                  >
+                    <XCircle className="w-3.5 h-3.5" />
+                    <span>Từ Chối (Yêu cầu sửa)</span>
+                  </button>
+                </div>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 text-blue-800 border border-blue-200 text-xs font-semibold">
+                  <Clock className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Đang Chờ Presale Lead Duyệt (IN_REVIEW)</span>
+                </span>
+              )
+            )}
+
+            {/* 4. REJECTED State - HIDE Gửi Duyệt Lại for Presale Lead */}
+            {proposalData.status === 'REJECTED' && (
+              <div className="flex items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-rose-50 text-rose-800 border border-rose-200 text-xs font-semibold">
+                  <XCircle className="w-3.5 h-3.5 text-rose-600" />
+                  <span>Đã Từ Chối (Cần sửa lại)</span>
+                </span>
+                {!canPrivilege && !isSalesRep && !isViewer && (
+                  <button
+                    onClick={() => handleUpdateStatus('IN_REVIEW')}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs cursor-pointer"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Gửi Duyệt Lại</span>
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Sales Rep Read-only indicator */}
+            {isSalesRep && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-indigo-50 text-indigo-800 border border-indigo-200 text-xs font-semibold">
+                <span>Sales Rep (Chỉ đọc)</span>
+              </span>
+            )}
+
             <button
               onClick={() => {
-                setIsAssessmentModalOpen(true);
-                if (!assessmentData) {
-                  void handleRunSelfAssessment();
+                window.location.hash = `#portal?proposalId=${proposalData.id}`;
+              }}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-brand-300 bg-brand-50 hover:bg-brand-100 text-brand-800 text-xs font-semibold shadow-xs transition-all cursor-pointer"
+              title="Mở Client Portal Desk để tạo token và link chia sẻ cho khách hàng comment"
+            >
+              <Globe className="w-4 h-4 text-brand-600" />
+              <span>Client Portal &rarr;</span>
+            </button>
+
+            {!isViewer && !isSalesRep && (
+              <button
+                onClick={handleGenerateProposal}
+                disabled={generating}
+                title="Sinh lại toàn bộ 10 sheets bằng AI RAG"
+                className="p-2 rounded-xl border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 cursor-pointer"
+              >
+                <RefreshCw className={`w-4 h-4 ${generating ? 'animate-spin' : ''}`} />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Row 2: Dedicated Export Actions Row (chuyển sang hàng khác để giao diện tối ưu hơn cho mọi role) */}
+        <div className="pt-3.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
+            <Download className="w-3.5 h-3.5 text-slate-400" />
+            <span>Xuất tài liệu hồ sơ đề xuất (Export):</span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              onClick={async () => {
+                try {
+                  setExportingExcel(true);
+                  await proposalService.exportExcel(proposalData.id);
+                  toast.success('Đã xuất và tải file Excel (.xlsx) 10 Sheets thành công!', 'Proposal Studio');
+                } catch (err: any) {
+                  toast.error(`Lỗi xuất file Excel: ${err.message}`, 'Lỗi Xuất File');
+                } finally {
+                  setExportingExcel(false);
                 }
               }}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
-              title="Presale Consultant tự đánh giá chất lượng và độ hoàn thiện của 10 sheets kỹ thuật"
+              disabled={exportingExcel}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
+              title="Xuất trọn bộ 10 sheets kỹ thuật ra tệp bảng tính Microsoft Excel (.xlsx)"
             >
-              <ClipboardCheck className="w-3.5 h-3.5 text-emerald-200" />
-              <span>Tự Đánh Giá 10 Sheets</span>
-              {assessmentData && (
-                <span className="ml-1 px-1.5 py-0.2 rounded-full bg-white/20 text-white font-mono text-[10px] font-bold">
-                  {assessmentData.overallScore}/100
-                </span>
+              {exportingExcel ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <FileSpreadsheet className="w-3.5 h-3.5" />
               )}
+              <span>{exportingExcel ? 'Đang xuất Excel...' : 'Export to Excel (.xlsx)'}</span>
             </button>
-          )}
 
-          {/* Status-based Approval & Submit Lifecycle */}
-          {/* 1. APPROVED State */}
-          {proposalData.status === 'APPROVED' && (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-300 text-xs font-semibold">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Proposal Đã Phê Duyệt</span>
-            </span>
-          )}
-
-          {/* 2. DRAFT State */}
-          {proposalData.status === 'DRAFT' && !isSalesRep && !isViewer && (
             <button
-              onClick={() => handleUpdateStatus('IN_REVIEW')}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs cursor-pointer"
-              title="Gửi hồ sơ lên Presale Lead để phê duyệt (Submit for Review)"
+              onClick={async () => {
+                try {
+                  setExportingPdf(true);
+                  await proposalService.exportPdf(proposalData.id);
+                  toast.success('Đã xuất và tải file PDF (.pdf) đề xuất kỹ thuật thành công!', 'Proposal Studio');
+                } catch (err: any) {
+                  toast.error(`Lỗi xuất file PDF: ${err.message}`, 'Lỗi Xuất File');
+                } finally {
+                  setExportingPdf(false);
+                }
+              }}
+              disabled={exportingPdf}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
+              title="Xuất hồ sơ đề xuất kỹ thuật ra định dạng tài liệu PDF (.pdf)"
             >
-              <Send className="w-3.5 h-3.5" />
-              <span>Submit for Review</span>
-            </button>
-          )}
-
-          {/* 3. IN_REVIEW State */}
-          {proposalData.status === 'IN_REVIEW' && (
-            canPrivilege ? (
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => handleUpdateStatus('APPROVED')}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs cursor-pointer"
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>Phê Duyệt Proposal</span>
-                </button>
-                <button
-                  onClick={() => setIsRejectModalOpen(true)}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-xs cursor-pointer"
-                  title="Từ chối đề xuất và yêu cầu chỉnh sửa"
-                >
-                  <XCircle className="w-3.5 h-3.5" />
-                  <span>Từ Chối (Yêu cầu sửa)</span>
-                </button>
-              </div>
-            ) : (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 text-blue-800 border border-blue-200 text-xs font-semibold">
-                <Clock className="w-3.5 h-3.5 text-blue-600" />
-                <span>Đang Chờ Presale Lead Duyệt (IN_REVIEW)</span>
-              </span>
-            )
-          )}
-
-          {/* 4. REJECTED State */}
-          {proposalData.status === 'REJECTED' && (
-            <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-rose-50 text-rose-800 border border-rose-200 text-xs font-semibold">
-                <XCircle className="w-3.5 h-3.5 text-rose-600" />
-                <span>Đã Từ Chối (Cần sửa lại)</span>
-              </span>
-              {!isSalesRep && !isViewer && (
-                <button
-                  onClick={() => handleUpdateStatus('IN_REVIEW')}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs cursor-pointer"
-                >
-                  <Send className="w-3.5 h-3.5" />
-                  <span>Gửi Duyệt Lại</span>
-                </button>
+              {exportingPdf ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-brand-400" />
+              ) : (
+                <FileText className="w-3.5 h-3.5 text-brand-400" />
               )}
-            </div>
-          )}
-
-          {/* Sales Rep Read-only indicator */}
-          {isSalesRep && (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-indigo-50 text-indigo-800 border border-indigo-200 text-xs font-semibold">
-              <span>Sales Rep (Chỉ đọc)</span>
-            </span>
-          )}
-
-          <button
-            onClick={async () => {
-              try {
-                setExportingExcel(true);
-                await proposalService.exportExcel(proposalData.id);
-                toast.success('Đã xuất và tải file Excel (.xlsx) 10 Sheets thành công!', 'Proposal Studio');
-              } catch (err: any) {
-                toast.error(`Lỗi xuất file Excel: ${err.message}`, 'Lỗi Xuất File');
-              } finally {
-                setExportingExcel(false);
-              }
-            }}
-            disabled={exportingExcel}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-brand-500 hover:bg-brand-600 disabled:opacity-50 text-white text-xs font-semibold shadow-sm shadow-brand-500/20 transition-all cursor-pointer"
-          >
-            {exportingExcel ? (
-              <RefreshCw className="w-4 h-4 animate-spin" />
-            ) : (
-              <FileSpreadsheet className="w-4 h-4" />
-            )}
-            <span>{exportingExcel ? 'Đang xuất Excel...' : 'Export to Excel (.xlsx)'}</span>
-          </button>
-
-          <button
-            onClick={async () => {
-              try {
-                setExportingPdf(true);
-                await proposalService.exportPdf(proposalData.id);
-                toast.success('Đã xuất và tải file PDF (.pdf) đề xuất kỹ thuật thành công!', 'Proposal Studio');
-              } catch (err: any) {
-                toast.error(`Lỗi xuất file PDF: ${err.message}`, 'Lỗi Xuất File');
-              } finally {
-                setExportingPdf(false);
-              }
-            }}
-            disabled={exportingPdf}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-semibold shadow-sm transition-all cursor-pointer"
-          >
-            {exportingPdf ? (
-              <RefreshCw className="w-4 h-4 animate-spin text-brand-400" />
-            ) : (
-              <FileText className="w-4 h-4 text-brand-400" />
-            )}
-            <span>{exportingPdf ? 'Đang xuất PDF...' : 'Export to PDF (.pdf)'}</span>
-          </button>
-
-          <button
-            onClick={() => {
-              window.location.hash = `#portal?proposalId=${proposalData.id}`;
-            }}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-brand-300 bg-brand-50 hover:bg-brand-100 text-brand-800 text-xs font-semibold shadow-xs transition-all cursor-pointer"
-            title="Mở Client Portal Desk để tạo token và link chia sẻ cho khách hàng comment"
-          >
-            <Globe className="w-4 h-4 text-brand-600" />
-            <span>Client Portal &rarr;</span>
-          </button>
-
-          {!isViewer && !isSalesRep && (
-            <button
-              onClick={handleGenerateProposal}
-              disabled={generating}
-              title="Sinh lại toàn bộ 10 sheets bằng AI RAG"
-              className="p-2 rounded-xl border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50"
-            >
-              <RefreshCw className={`w-4 h-4 ${generating ? 'animate-spin' : ''}`} />
+              <span>{exportingPdf ? 'Đang xuất PDF...' : 'Export to PDF (.pdf)'}</span>
             </button>
-          )}
+          </div>
         </div>
 
       </div>

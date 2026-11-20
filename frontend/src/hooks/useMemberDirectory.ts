@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { userService } from '../services/userService';
 import type { MemberListQuery } from '../services/userService';
 import type { ListMeta } from '../types/auth';
 import type { MemberDirectoryEntry } from '../types/user';
+
+const POLL_INTERVAL_MS = 5000;
 
 export interface MemberDirectoryState {
   members: MemberDirectoryEntry[];
@@ -21,29 +23,62 @@ export function useMemberDirectory(query: MemberListQuery = {}): MemberDirectory
   const [error, setError] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
 
-  useEffect(() => {
-    let cancelled = false;
-    setIsLoading(true);
-    setError(null);
+  const queryRef = useRef({ page, limit, role, status, search, allOrganizations });
+  queryRef.current = { page, limit, role, status, search, allOrganizations };
 
-    userService
-      .listMembers({ page, limit, role, status, search, allOrganizations })
-      .then((result) => {
-        if (cancelled) return;
-        setMembers(result.members);
-        setMeta(result.meta);
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load members.');
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
-      });
+  const fetchMembers = useCallback(async (isSilent = false) => {
+    if (!isSilent) {
+      setIsLoading(true);
+      setError(null);
+    }
+    try {
+      const result = await userService.listMembers(queryRef.current);
+      setMembers(result.members);
+      setMeta(result.meta);
+      if (!isSilent) setError(null);
+    } catch (err: unknown) {
+      if (!isSilent) {
+        setError(err instanceof Error ? err.message : 'Failed to load members.');
+      }
+    } finally {
+      if (!isSilent) {
+        setIsLoading(false);
+      }
+    }
+  }, []);
+
+  // Fetch when query filters or manual reload changes
+  useEffect(() => {
+    fetchMembers(false);
+  }, [fetchMembers, page, limit, role, status, search, allOrganizations, reloadToken]);
+
+  // Continuous background polling and window focus
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        void fetchMembers(true);
+      }
+    }, POLL_INTERVAL_MS);
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void fetchMembers(true);
+      }
+    };
+
+    const onFocus = () => {
+      void fetchMembers(true);
+    };
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('focus', onFocus);
 
     return () => {
-      cancelled = true;
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('focus', onFocus);
     };
-  }, [page, limit, role, status, search, allOrganizations, reloadToken]);
+  }, [fetchMembers]);
 
   return {
     members,

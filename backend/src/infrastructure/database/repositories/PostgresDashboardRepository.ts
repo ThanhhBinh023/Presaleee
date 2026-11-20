@@ -38,34 +38,107 @@ export class PostgresDashboardRepository implements IDashboardRepository {
   constructor(private readonly pool: Pool) {}
 
   async getOverview(scope: DashboardScope, leadLimit: number): Promise<DashboardOverview> {
+    const isOrgAdmin = scope.role === 'ADMIN';
+    const filterByUser = Boolean(scope.userId && !isOrgAdmin);
+
+    const countsPromise = filterByUser
+      ? this.pool.query<CountRow>(
+          `SELECT COUNT(*)::text AS total,
+             COUNT(*) FILTER (WHERE l.status NOT IN ('WON', 'LOST', 'REJECTED'))::text AS active,
+             COUNT(*) FILTER (WHERE l.status IN ('QUALIFIED', 'PROPOSAL_DRAFTING', 'APPROVED'))::text AS qualified,
+             (SELECT COUNT(*) FROM proposals p 
+              JOIN leads pl ON pl.id = p.lead_id
+              WHERE p.organization_id = $1 AND p.status IN ('DRAFT', 'IN_REVIEW')
+                AND (
+                  pl.created_by = $2 
+                  OR pl.assigned_to = $2 
+                  OR EXISTS (SELECT 1 FROM project_memberships pm WHERE pm.project_id = pl.id AND pm.user_id = $2)
+                )
+             )::text AS proposals_in_progress
+           FROM leads l 
+           WHERE l.organization_id = $1
+             AND (
+               l.created_by = $2 
+               OR l.assigned_to = $2 
+               OR EXISTS (SELECT 1 FROM project_memberships pm WHERE pm.project_id = l.id AND pm.user_id = $2)
+             );`,
+          [scope.organizationId, scope.userId!]
+        )
+      : this.pool.query<CountRow>(
+          `SELECT COUNT(*)::text AS total,
+             COUNT(*) FILTER (WHERE status NOT IN ('WON', 'LOST', 'REJECTED'))::text AS active,
+             COUNT(*) FILTER (WHERE status IN ('QUALIFIED', 'PROPOSAL_DRAFTING', 'APPROVED'))::text AS qualified,
+             (SELECT COUNT(*) FROM proposals p WHERE p.organization_id = $1 AND p.status IN ('DRAFT', 'IN_REVIEW'))::text AS proposals_in_progress
+           FROM leads WHERE organization_id = $1;`,
+          [scope.organizationId]
+        );
+
+    const valueRowsPromise = filterByUser
+      ? this.pool.query<ValueRow>(
+          `SELECT p.currency, SUM(p.total_cost)::text AS amount FROM proposals p
+           JOIN leads l ON l.id = p.lead_id
+           WHERE p.organization_id = $1 AND p.status NOT IN ('REJECTED') AND p.total_cost IS NOT NULL
+             AND (
+               l.created_by = $2 
+               OR l.assigned_to = $2 
+               OR EXISTS (SELECT 1 FROM project_memberships pm WHERE pm.project_id = l.id AND pm.user_id = $2)
+             )
+           GROUP BY p.currency ORDER BY p.currency;`,
+          [scope.organizationId, scope.userId!]
+        )
+      : this.pool.query<ValueRow>(
+          `SELECT currency, SUM(total_cost)::text AS amount FROM proposals
+           WHERE organization_id = $1 AND status NOT IN ('REJECTED') AND total_cost IS NOT NULL
+           GROUP BY currency ORDER BY currency;`,
+          [scope.organizationId]
+        );
+
+    const stageCountRowsPromise = filterByUser
+      ? this.pool.query<StageCountRow>(
+          `SELECT l.status, COUNT(*)::text AS count FROM leads l
+           WHERE l.organization_id = $1
+             AND (
+               l.created_by = $2 
+               OR l.assigned_to = $2 
+               OR EXISTS (SELECT 1 FROM project_memberships pm WHERE pm.project_id = l.id AND pm.user_id = $2)
+             )
+           GROUP BY l.status;`,
+          [scope.organizationId, scope.userId!]
+        )
+      : this.pool.query<StageCountRow>(
+          `SELECT status, COUNT(*)::text AS count FROM leads
+           WHERE organization_id = $1 GROUP BY status;`,
+          [scope.organizationId]
+        );
+
+    const pipelineRowsPromise = filterByUser
+      ? this.pool.query<PipelineRow>(
+          `SELECT l.status, p.currency, SUM(p.total_cost)::text AS amount
+           FROM leads l
+           JOIN proposals p ON p.lead_id = l.id AND p.organization_id = l.organization_id AND p.status <> 'REJECTED'
+           WHERE l.organization_id = $1
+             AND (
+               l.created_by = $2 
+               OR l.assigned_to = $2 
+               OR EXISTS (SELECT 1 FROM project_memberships pm WHERE pm.project_id = l.id AND pm.user_id = $2)
+             )
+           GROUP BY l.status, p.currency ORDER BY l.status, p.currency;`,
+          [scope.organizationId, scope.userId!]
+        )
+      : this.pool.query<PipelineRow>(
+          `SELECT l.status, p.currency, SUM(p.total_cost)::text AS amount
+           FROM leads l
+           JOIN proposals p ON p.lead_id = l.id AND p.organization_id = l.organization_id AND p.status <> 'REJECTED'
+           WHERE l.organization_id = $1
+           GROUP BY l.status, p.currency ORDER BY l.status, p.currency;`,
+          [scope.organizationId]
+        );
+
     const [counts, valueRows, stageCountRows, pipelineRows, activeLeads] = await Promise.all([
-      this.pool.query<CountRow>(
-        `SELECT COUNT(*)::text AS total,
-           COUNT(*) FILTER (WHERE status NOT IN ('WON', 'LOST', 'REJECTED'))::text AS active,
-           COUNT(*) FILTER (WHERE status IN ('QUALIFIED', 'PROPOSAL_DRAFTING', 'APPROVED'))::text AS qualified,
-           (SELECT COUNT(*) FROM proposals p WHERE p.organization_id = $1 AND p.status IN ('DRAFT', 'IN_REVIEW'))::text AS proposals_in_progress
-         FROM leads WHERE organization_id = $1;`,
-        [scope.organizationId]
-      ),
-      this.pool.query<ValueRow>(
-        `SELECT currency, SUM(total_cost)::text AS amount FROM proposals
-         WHERE organization_id = $1 AND status NOT IN ('REJECTED') AND total_cost IS NOT NULL
-         GROUP BY currency ORDER BY currency;`,
-        [scope.organizationId]
-      ),
-      this.pool.query<StageCountRow>(
-        `SELECT status, COUNT(*)::text AS count FROM leads
-         WHERE organization_id = $1 GROUP BY status;`,
-        [scope.organizationId]
-      ),
-      this.pool.query<PipelineRow>(
-        `SELECT l.status, p.currency, SUM(p.total_cost)::text AS amount
-         FROM leads l
-         JOIN proposals p ON p.lead_id = l.id AND p.organization_id = l.organization_id AND p.status <> 'REJECTED'
-         WHERE l.organization_id = $1
-         GROUP BY l.status, p.currency ORDER BY l.status, p.currency;`,
-        [scope.organizationId]
-      ),
+      countsPromise,
+      valueRowsPromise,
+      stageCountRowsPromise,
+      pipelineRowsPromise,
       this.listLeads(scope, leadLimit)
     ]);
 
@@ -102,6 +175,27 @@ export class PostgresDashboardRepository implements IDashboardRepository {
   }
 
   async listLeads(scope: DashboardScope, limit: number): Promise<DashboardLead[]> {
+    if (scope.userId) {
+      const result = await this.pool.query<LeadRow>(
+        `SELECT l.id, l.title, l.source, l.status, l.bant_score, c.company_name AS client_name,
+           l.assigned_to, l.created_at, l.updated_at
+         FROM leads l LEFT JOIN clients c ON c.id = l.client_id AND c.organization_id = l.organization_id
+         WHERE l.organization_id = $1 
+           AND l.status NOT IN ('WON', 'LOST', 'REJECTED')
+           AND (
+             l.created_by = $2 
+             OR l.assigned_to = $2 
+             OR EXISTS (
+               SELECT 1 FROM project_memberships pm 
+               WHERE pm.project_id = l.id AND pm.user_id = $2
+             )
+           )
+         ORDER BY l.updated_at DESC, l.created_at DESC LIMIT $3;`,
+        [scope.organizationId, scope.userId, limit]
+      );
+      return result.rows.map(mapLead);
+    }
+
     const result = await this.pool.query<LeadRow>(
       `SELECT l.id, l.title, l.source, l.status, l.bant_score, c.company_name AS client_name,
          l.assigned_to, l.created_at, l.updated_at
@@ -114,6 +208,53 @@ export class PostgresDashboardRepository implements IDashboardRepository {
   }
 
   async listActivity(scope: DashboardScope, limit: number): Promise<DashboardActivity[]> {
+    if (scope.userId && scope.role !== 'ADMIN') {
+      const result = await this.pool.query<ActivityRow>(
+        `WITH user_leads AS (
+           SELECT id FROM leads
+           WHERE organization_id = $1
+             AND (
+               created_by = $2
+               OR assigned_to = $2
+               OR EXISTS (SELECT 1 FROM project_memberships pm WHERE pm.project_id = id AND pm.user_id = $2)
+             )
+         ),
+         activity AS (
+           SELECT l.id::text || ':created' AS id, 'LEAD_CREATED' AS type, l.id AS entity_id,
+             l.title, l.status, l.created_at AS occurred_at 
+           FROM leads l
+           JOIN user_leads ul ON ul.id = l.id
+           UNION ALL
+           SELECT l.id::text || ':updated' AS id, 'LEAD_UPDATED' AS type, l.id AS entity_id,
+             l.title, l.status, l.updated_at AS occurred_at 
+           FROM leads l
+           JOIN user_leads ul ON ul.id = l.id
+           WHERE l.updated_at > l.created_at + INTERVAL '1 second'
+           UNION ALL
+           SELECT p.id::text || ':created' AS id, 'PROPOSAL_CREATED' AS type, p.id AS entity_id,
+             p.title, p.status, p.created_at AS occurred_at 
+           FROM proposals p
+           LEFT JOIN user_leads ul ON ul.id = p.lead_id
+           WHERE p.organization_id = $1 AND (p.lead_id IS NULL OR ul.id IS NOT NULL)
+           UNION ALL
+           SELECT p.id::text || ':updated' AS id, 'PROPOSAL_UPDATED' AS type, p.id AS entity_id,
+             p.title, p.status, p.updated_at AS occurred_at 
+           FROM proposals p
+           LEFT JOIN user_leads ul ON ul.id = p.lead_id
+           WHERE p.organization_id = $1 
+             AND (p.lead_id IS NULL OR ul.id IS NOT NULL)
+             AND p.updated_at > p.created_at + INTERVAL '1 second'
+         )
+         SELECT id, type, entity_id, title, status, occurred_at FROM activity
+         ORDER BY occurred_at DESC LIMIT $3;`,
+        [scope.organizationId, scope.userId, limit]
+      );
+      return result.rows.map(row => ({
+        id: row.id, type: row.type, entityId: row.entity_id, title: row.title,
+        status: row.status, occurredAt: new Date(row.occurred_at).toISOString()
+      }));
+    }
+
     const result = await this.pool.query<ActivityRow>(
       `WITH activity AS (
          SELECT id::text || ':created' AS id, 'LEAD_CREATED' AS type, id AS entity_id,

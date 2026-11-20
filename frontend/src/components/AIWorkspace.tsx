@@ -704,6 +704,30 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                         <XCircle className="w-3.5 h-3.5 text-rose-600" />
                         <span>Đã Từ Chối (Chờ sửa lại)</span>
                       </span>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
+              {/* Proposal Submit for Presale Consultant */}
+              {selectedProject && isPresaleConsultant && (
+                <div className="flex items-center gap-2 shrink-0">
+                  {realProposal?.status === 'APPROVED' ? (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-300 text-xs font-semibold">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Proposal Đã Phê Duyệt</span>
+                    </span>
+                  ) : realProposal?.status === 'IN_REVIEW' ? (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 text-blue-800 border border-blue-200 text-xs font-semibold">
+                      <Clock className="w-3.5 h-3.5 text-blue-600" />
+                      <span>Đang Chờ Lead Duyệt</span>
+                    </span>
+                  ) : realProposal?.status === 'REJECTED' ? (
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-50 text-rose-800 border border-rose-200 text-xs font-semibold">
+                        <XCircle className="w-3.5 h-3.5 text-rose-600" />
+                        <span>Cần Sửa Lại</span>
+                      </span>
                       <button
                         onClick={handleSubmitProposalForReview}
                         className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"

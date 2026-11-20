@@ -1,5 +1,5 @@
 import { UnauthorizedError, ValidationError } from '../../domain/errors/AppError.js';
-import { IDashboardRepository } from '../../domain/repositories/IDashboardRepository.js';
+import { IDashboardRepository, DashboardScope } from '../../domain/repositories/IDashboardRepository.js';
 
 function parseLimit(value: string | number | undefined, defaultValue: number, max: number, field = 'limit'): number {
   if (value === undefined || value === '') return defaultValue;
@@ -10,38 +10,44 @@ function parseLimit(value: string | number | undefined, defaultValue: number, ma
   return parsed;
 }
 
+function resolveScope(scopeOrOrgId: DashboardScope | string): DashboardScope {
+  const scope: DashboardScope = typeof scopeOrOrgId === 'string' ? { organizationId: scopeOrOrgId } : scopeOrOrgId;
+  if (!scope.organizationId) throw new UnauthorizedError('Authenticated organization is required.');
+  return scope;
+}
+
 export class GetDashboardOverviewUseCase {
   constructor(private readonly dashboardRepository: IDashboardRepository) {}
-  async execute(organizationId: string, requestedLeadLimit?: string | number) {
-    if (!organizationId) throw new UnauthorizedError('Authenticated organization is required.');
+  async execute(scopeOrOrgId: DashboardScope | string, requestedLeadLimit?: string | number) {
+    const scope = resolveScope(scopeOrOrgId);
     const leadLimit = parseLimit(requestedLeadLimit, 8, 50, 'leadLimit');
-    return this.dashboardRepository.getOverview({ organizationId }, leadLimit);
+    return this.dashboardRepository.getOverview(scope, leadLimit);
   }
 }
 
 export class ListDashboardLeadsUseCase {
   constructor(private readonly dashboardRepository: IDashboardRepository) {}
-  async execute(organizationId: string, requestedLimit?: string | number) {
-    if (!organizationId) throw new UnauthorizedError('Authenticated organization is required.');
+  async execute(scopeOrOrgId: DashboardScope | string, requestedLimit?: string | number) {
+    const scope = resolveScope(scopeOrOrgId);
     const limit = parseLimit(requestedLimit, 20, 100);
-    return this.dashboardRepository.listLeads({ organizationId }, limit);
+    return this.dashboardRepository.listLeads(scope, limit);
   }
 }
 
 export class ListDashboardActivityUseCase {
   constructor(private readonly dashboardRepository: IDashboardRepository) {}
-  async execute(organizationId: string, requestedLimit?: string | number) {
-    if (!organizationId) throw new UnauthorizedError('Authenticated organization is required.');
+  async execute(scopeOrOrgId: DashboardScope | string, requestedLimit?: string | number) {
+    const scope = resolveScope(scopeOrOrgId);
     const limit = parseLimit(requestedLimit, 20, 100);
-    return this.dashboardRepository.listActivity({ organizationId }, limit);
+    return this.dashboardRepository.listActivity(scope, limit);
   }
 }
 
 export class GetDashboardAdminAnalyticsUseCase {
   constructor(private readonly dashboardRepository: IDashboardRepository) {}
-  async execute(organizationId: string, period?: string) {
-    if (!organizationId) throw new UnauthorizedError('Authenticated organization is required.');
+  async execute(scopeOrOrgId: DashboardScope | string, period?: string) {
+    const scope = resolveScope(scopeOrOrgId);
     const validPeriod = period || '30d';
-    return this.dashboardRepository.getAdminAnalytics({ organizationId }, validPeriod);
+    return this.dashboardRepository.getAdminAnalytics(scope, validPeriod);
   }
 }

@@ -98,6 +98,12 @@ export function extractToken(req: Request): string | undefined {
   return bearerToken || cookieToken;
 }
 
+const CANONICAL_ORG_MAP: Record<string, string> = {
+  'fb5e76e1-edeb-450f-a579-4596feeaf8df': '4206747f-b65f-4e4a-a431-b1345545d88e',
+  '8c4c2ffe-9ee1-4ae2-9e11-1c2d62fe8fae': '4206747f-b65f-4e4a-a431-b1345545d88e',
+  'bee57320-5957-423e-8a5e-b8aa2ae97107': '4206747f-b65f-4e4a-a431-b1345545d88e'
+};
+
 export function requireAuth(req: Request, _res: Response, next: NextFunction): void {
   const token = extractToken(req);
   if (!token) {
@@ -106,6 +112,9 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction): v
   }
   try {
     req.auth = verifyAccessToken(token);
+    if (req.auth?.organizationId && CANONICAL_ORG_MAP[req.auth.organizationId]) {
+      req.auth.organizationId = CANONICAL_ORG_MAP[req.auth.organizationId];
+    }
     next();
   } catch (error) {
     next(error);
@@ -117,6 +126,9 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction): 
   if (token) {
     try {
       req.auth = verifyAccessToken(token);
+      if (req.auth?.organizationId && CANONICAL_ORG_MAP[req.auth.organizationId]) {
+        req.auth.organizationId = CANONICAL_ORG_MAP[req.auth.organizationId];
+      }
     } catch {
       // Ignore invalid token for optional auth
     }

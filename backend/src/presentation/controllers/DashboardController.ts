@@ -13,6 +13,14 @@ function organizationId(req: Request): string {
   return req.auth.organizationId;
 }
 
+function dashboardScope(req: Request) {
+  return {
+    organizationId: organizationId(req),
+    userId: req.auth?.sub,
+    role: req.auth?.role
+  };
+}
+
 /** Query strings arrive unshaped; only scalars are forwarded so the use case can reject garbage with 400. */
 function queryScalar(value: unknown): string | number | undefined {
   if (value === undefined || value === null) return undefined;
@@ -37,7 +45,7 @@ export class DashboardController {
 
   overview = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const data = await this.overviewUseCase.execute(organizationId(req), queryScalar(req.query.leadLimit));
+      const data = await this.overviewUseCase.execute(dashboardScope(req), queryScalar(req.query.leadLimit));
       res.status(200).json({ success: true, data });
     } catch (error) { next(error); }
   };
@@ -46,7 +54,7 @@ export class DashboardController {
     try {
       const requested = queryScalar(req.query.limit);
       const limit = requestedLimit(requested) ?? 20;
-      const data = await this.leadsUseCase.execute(organizationId(req), requested);
+      const data = await this.leadsUseCase.execute(dashboardScope(req), requested);
       res.status(200).json({ success: true, data, meta: { total: data.length, limit } });
     } catch (error) { next(error); }
   };
@@ -55,7 +63,7 @@ export class DashboardController {
     try {
       const requested = queryScalar(req.query.limit);
       const limit = requestedLimit(requested) ?? 20;
-      const data = await this.activityUseCase.execute(organizationId(req), requested);
+      const data = await this.activityUseCase.execute(dashboardScope(req), requested);
       res.status(200).json({ success: true, data, meta: { total: data.length, limit } });
     } catch (error) { next(error); }
   };

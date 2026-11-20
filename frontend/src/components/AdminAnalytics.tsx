@@ -262,6 +262,10 @@ export const AdminAnalytics: React.FC<AdminAnalyticsProps> = ({
                   <span className="text-[10px] font-mono text-purple-300/70">
                     Dữ liệu cập nhật: {analytics ? formatDateTime(analytics.generatedAt) : '…'}
                   </span>
+                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    Cập nhật liên tục
+                  </span>
                 </div>
                 <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
                   Bảng Phân Tích &amp; Thống Kê Nền Tảng

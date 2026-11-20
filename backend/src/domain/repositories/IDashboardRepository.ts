@@ -1,6 +1,10 @@
 import { AdminPlatformAnalytics, DashboardActivity, DashboardLead, DashboardOverview } from '../entities/Dashboard.js';
 
-export interface DashboardScope { organizationId: string; }
+export interface DashboardScope { 
+  organizationId: string; 
+  userId?: string;
+  role?: string;
+}
 
 export interface IDashboardRepository {
   getOverview(scope: DashboardScope, leadLimit: number): Promise<DashboardOverview>;

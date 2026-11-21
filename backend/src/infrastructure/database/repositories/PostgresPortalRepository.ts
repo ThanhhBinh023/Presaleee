@@ -113,6 +113,29 @@ export class PostgresPortalRepository implements IPortalRepository {
     }));
   }
 
+  async listStaffComments(proposalId: string, organizationId: string, sessionId?: string): Promise<PortalComment[]> {
+    const query = sessionId
+      ? `SELECT id, proposal_id, portal_session_id, author_name, author_email, body, created_at
+         FROM proposal_portal_comments
+         WHERE proposal_id = $1 AND organization_id = $2 AND portal_session_id = $3
+         ORDER BY created_at DESC LIMIT 500;`
+      : `SELECT id, proposal_id, portal_session_id, author_name, author_email, body, created_at
+         FROM proposal_portal_comments
+         WHERE proposal_id = $1 AND organization_id = $2
+         ORDER BY created_at DESC LIMIT 500;`;
+    const params = sessionId ? [proposalId, organizationId, sessionId] : [proposalId, organizationId];
+    const result = await this.pool.query(query, params);
+    return result.rows.map(row => ({
+      id: row.id,
+      proposalId: row.proposal_id,
+      sessionId: row.portal_session_id,
+      authorName: row.author_name,
+      authorEmail: row.author_email,
+      body: row.body,
+      createdAt: new Date(row.created_at).toISOString()
+    }));
+  }
+
   async createComment(input: {
     proposalId: string; organizationId: string; sessionId: string;
     authorName: string; body: string;

@@ -118,15 +118,24 @@ export class ListPortalCommentsUseCase {
   }
 }
 
+export class ListStaffPortalCommentsUseCase {
+  constructor(private readonly repository: IPortalRepository) {}
+  execute(proposalId: string, organizationId: string, sessionId?: string) {
+    if (!proposalId) throw new ValidationError('Proposal ID is required.');
+    return this.repository.listStaffComments(proposalId, organizationId, sessionId);
+  }
+}
+
 export class CreatePortalCommentUseCase {
   constructor(private readonly repository: IPortalRepository) {}
-  async execute(input: { proposalId: string; organizationId: string; session: PortalSession; body: unknown }) {
+  async execute(input: { proposalId: string; organizationId: string; session: PortalSession; body: unknown; authorName?: unknown }) {
     if (typeof input.body !== 'string' || !input.body.trim() || input.body.length > 5000) {
       throw new ValidationError('Comment body is required and must not exceed 5,000 characters.');
     }
-    // Attribution comes from the authenticated session only; a body authorName would let one client
-    // post as another client's executive.
-    const authorName = input.session.clientName || input.session.clientEmail;
+    const customAuthor = typeof input.authorName === 'string' && input.authorName.trim().length > 0 
+      ? input.authorName.trim().slice(0, 200) 
+      : null;
+    const authorName = customAuthor || input.session.clientName || input.session.clientEmail || 'Khách hàng';
     const comment = await this.repository.createComment({
       proposalId: input.proposalId, organizationId: input.organizationId, sessionId: input.session.id,
       authorName, body: input.body.trim()

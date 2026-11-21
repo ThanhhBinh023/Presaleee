@@ -5,9 +5,17 @@ import { proposalService } from '../services/proposalService';
 import { portalStaffService } from '../services/portalService';
 import { navigateTo, readHashQuery } from '../navigation';
 import { formatDateTime } from '../utils/format';
-import type { PortalMaterialDetail, PortalSessionCreated, PortalSessionDetail } from '../types/portal';
+import type { PortalComment, PortalMaterialDetail, PortalSessionCreated, PortalSessionDetail } from '../types/portal';
 import type { ProposalRecord, ProposalStatus } from '../types/proposal';
 import { AppSidebar } from './workspace/AppSidebar';
+import { 
+  MessageSquare, 
+  Clock, 
+  User, 
+  Mail, 
+  ChevronRight, 
+  X
+} from 'lucide-react';
 
 interface PortalDeskProps {
   onBackToOverview?: () => void;
@@ -39,6 +47,9 @@ export const PortalDesk: React.FC<PortalDeskProps> = ({ onBackToOverview, onLogo
   const canManage = user?.role === 'ADMIN' || user?.role === 'PRESALE_LEAD' || Boolean(selected);
   const [sessions, setSessions] = useState<PortalSessionDetail[]>([]);
   const [materials, setMaterials] = useState<PortalMaterialDetail[]>([]);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [proposalComments, setProposalComments] = useState<PortalComment[]>([]);
+  const [isLoadingComments, setIsLoadingComments] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [isWorking, setIsWorking] = useState(false);
@@ -66,23 +77,49 @@ export const PortalDesk: React.FC<PortalDeskProps> = ({ onBackToOverview, onLogo
 
   const loadPortal = async (proposal: ProposalRecord, announce?: string) => {
     setSelected(proposal);
+    setSelectedSessionId(null);
     setIsWorking(true);
     setActionError(null);
     if (announce) setNotice(announce);
     navigateTo('portal', { proposalId: proposal.id });
     try {
-      const [sessionResult, materialResult] = await Promise.all([
+      const [sessionResult, materialResult, commentResult] = await Promise.all([
         portalStaffService.listSessions(proposal.id),
-        portalStaffService.listMaterials(proposal.id)
+        portalStaffService.listMaterials(proposal.id),
+        portalStaffService.listComments(proposal.id)
       ]);
       setSessions(sessionResult.sessions);
       setMaterials(materialResult.materials);
+      setProposalComments(commentResult.comments);
     } catch (err) {
       setSessions([]);
       setMaterials([]);
+      setProposalComments([]);
       setActionError(err instanceof Error ? err.message : 'Failed to load portal data.');
     } finally {
       setIsWorking(false);
+    }
+  };
+
+  const handleSelectSession = async (session: PortalSessionDetail) => {
+    if (selectedSessionId === session.id) {
+      setSelectedSessionId(null);
+      return;
+    }
+    setSelectedSessionId(session.id);
+    if (selected) {
+      try {
+        setIsLoadingComments(true);
+        const res = await portalStaffService.listComments(selected.id, session.id);
+        setProposalComments((prev) => {
+          const others = prev.filter((c) => c.sessionId !== session.id);
+          return [...others, ...res.comments];
+        });
+      } catch (err) {
+        console.error('Error fetching comments for session:', err);
+      } finally {
+        setIsLoadingComments(false);
+      }
     }
   };
 
@@ -183,6 +220,10 @@ export const PortalDesk: React.FC<PortalDeskProps> = ({ onBackToOverview, onLogo
   // PostgresPortalRepository.createSession chỉ nhận 3 trạng thái này và tự đổi APPROVED -> SENT_TO_CLIENT.
   const shareable = Boolean(selected && ['APPROVED', 'SENT_TO_CLIENT', 'ACCEPTED'].includes(selected.status));
   const totalPages = meta?.totalPages ?? 1;
+  const selectedSession = sessions.find((s) => s.id === selectedSessionId) || null;
+  const selectedSessionComments = selectedSessionId
+    ? proposalComments.filter((c) => c.sessionId === selectedSessionId)
+    : [];
 
   return (
     <div className="min-h-screen bg-[#f8fafc] flex text-slate-900 font-sans">
@@ -342,44 +383,253 @@ export const PortalDesk: React.FC<PortalDeskProps> = ({ onBackToOverview, onLogo
                   )}
                 </div>
 
-                <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
-                  <div className="border-b border-slate-100 px-4 py-3 text-sm font-bold">Sessions ({sessions.length})</div>
-                  <table className="w-full text-left text-sm">
-                    <thead className="bg-slate-50 text-[10px] font-mono font-bold text-slate-500">
-                      <tr>
-                        <th className="px-3 py-2">CLIENT</th>
-                        <th className="px-3 py-2">EXPIRES</th>
-                        <th className="px-3 py-2">LAST ACCESS</th>
-                        <th className="px-3 py-2">COMMENTS</th>
-                        <th className="px-3 py-2"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sessions.length === 0 ? (
-                        <tr><td className="px-3 py-4 text-slate-400" colSpan={5}>No sessions.</td></tr>
-                      ) : (
-                        sessions.map((session) => (
-                          <tr key={session.id} className="border-t border-slate-100">
-                            <td className="px-3 py-2">
-                              <div className="font-bold">{session.clientName || session.clientEmail}</div>
-                              <div className="font-mono text-[10px] text-slate-400">{session.clientEmail}</div>
-                              {session.revokedAt && <div className="text-[10px] font-bold text-rose-600">REVOKED {formatDateTime(session.revokedAt)}</div>}
-                            </td>
-                            <td className="px-3 py-2 font-mono text-xs">{formatDateTime(session.expiresAt)}</td>
-                            <td className="px-3 py-2 font-mono text-xs">{formatDateTime(session.lastAccessedAt)}</td>
-                            <td className="px-3 py-2 font-mono text-xs">{session.commentCount}</td>
-                            <td className="px-3 py-2 text-right">
-                              {canManage && !session.revokedAt && (
-                                <button onClick={() => void revoke(session.id)} disabled={isWorking} className="text-xs font-bold text-rose-600 disabled:opacity-50">
-                                  Revoke
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        ))
+                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs">
+                  <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold text-slate-800">Sessions ({sessions.length})</span>
+                      <span className="text-xs text-slate-400 font-normal">· Nhấp vào phiên để xem chi tiết &amp; phản hồi</span>
+                    </div>
+                    {selectedSessionId && (
+                      <button
+                        onClick={() => setSelectedSessionId(null)}
+                        className="text-xs text-slate-500 hover:text-slate-800 flex items-center gap-1 font-semibold cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        <span>Bỏ chọn</span>
+                      </button>
+                    )}
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead className="bg-slate-50 text-[10px] font-mono font-bold text-slate-500">
+                        <tr>
+                          <th className="px-3 py-2">CLIENT</th>
+                          <th className="px-3 py-2">EXPIRES</th>
+                          <th className="px-3 py-2">LAST ACCESS</th>
+                          <th className="px-3 py-2">COMMENTS</th>
+                          <th className="px-3 py-2"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {sessions.length === 0 ? (
+                          <tr><td className="px-3 py-4 text-slate-400" colSpan={5}>No sessions.</td></tr>
+                        ) : (
+                          sessions.map((session) => {
+                            const isSelected = selectedSessionId === session.id;
+                            return (
+                              <tr
+                                key={session.id}
+                                onClick={() => void handleSelectSession(session)}
+                                className={`border-t border-slate-100 cursor-pointer transition-colors ${
+                                  isSelected
+                                    ? 'bg-emerald-50/80 border-l-4 border-l-brand-600 font-medium'
+                                    : 'hover:bg-slate-50'
+                                }`}
+                              >
+                                <td className="px-3 py-2.5">
+                                  <div className="flex items-center gap-2">
+                                    <div className={`w-2 h-2 rounded-full shrink-0 ${session.revokedAt ? 'bg-rose-400' : 'bg-emerald-500'}`} />
+                                    <div>
+                                      <div className="font-bold text-slate-800">{session.clientName || session.clientEmail}</div>
+                                      <div className="font-mono text-[10px] text-slate-400">{session.clientEmail}</div>
+                                      {session.revokedAt && (
+                                        <div className="text-[10px] font-bold text-rose-600">REVOKED {formatDateTime(session.revokedAt)}</div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-3 py-2.5 font-mono text-xs text-slate-600">{formatDateTime(session.expiresAt)}</td>
+                                <td className="px-3 py-2.5 font-mono text-xs text-slate-600">
+                                  {session.lastAccessedAt ? formatDateTime(session.lastAccessedAt) : <span className="text-slate-400">Chưa truy cập</span>}
+                                </td>
+                                <td className="px-3 py-2.5 font-mono text-xs">
+                                  <span
+                                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                                      session.commentCount > 0
+                                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                        : 'bg-slate-100 text-slate-500'
+                                    }`}
+                                  >
+                                    <MessageSquare className="w-3 h-3" />
+                                    <span>{session.commentCount}</span>
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2.5 text-right">
+                                  <div className="flex items-center justify-end gap-2">
+                                    {canManage && !session.revokedAt && (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          void revoke(session.id);
+                                        }}
+                                        disabled={isWorking}
+                                        className="text-xs font-bold text-rose-600 hover:text-rose-800 disabled:opacity-50"
+                                      >
+                                        Revoke
+                                      </button>
+                                    )}
+                                    <ChevronRight className={`w-4 h-4 transition-transform ${isSelected ? 'rotate-90 text-brand-600' : 'text-slate-400'}`} />
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Informational hint when no session is selected */}
+                  {!selectedSessionId && sessions.length > 0 && (
+                    <div className="border-t border-slate-100 px-4 py-3 bg-slate-50/60 text-xs text-slate-500 flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <span>💡</span>
+                        <span>Nhấp vào bất kỳ phiên nào trong danh sách trên để xem chi tiết phiên và ý kiến phản hồi (Feedback) của khách hàng.</span>
+                      </span>
+                      {proposalComments.length > 0 && (
+                        <span className="font-mono font-semibold text-emerald-700 shrink-0">
+                          Tổng cộng {proposalComments.length} phản hồi
+                        </span>
                       )}
-                    </tbody>
-                  </table>
+                    </div>
+                  )}
+
+                  {/* Selected Session Details & Client Feedback */}
+                  {selectedSession && (
+                    <div className="border-t-2 border-brand-500 bg-gradient-to-b from-emerald-50/40 via-white to-white p-5 space-y-4">
+                      {/* Session Details Header */}
+                      <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-200">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-9 h-9 rounded-xl bg-brand-500 text-white flex items-center justify-center font-bold text-sm shadow-xs shrink-0">
+                            <User className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h3 className="font-bold text-slate-900 text-base">
+                                {selectedSession.clientName || 'Khách hàng'}
+                              </h3>
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider ${
+                                selectedSession.revokedAt
+                                  ? 'bg-rose-100 text-rose-700 border border-rose-200'
+                                  : new Date(selectedSession.expiresAt) < new Date()
+                                  ? 'bg-amber-100 text-amber-700 border border-amber-200'
+                                  : 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                              }`}>
+                                {selectedSession.revokedAt ? 'ĐÃ THU HỒI' : new Date(selectedSession.expiresAt) < new Date() ? 'HẾT HẠN' : 'ĐANG HIỆU LỰC'}
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-500 font-mono mt-0.5 flex items-center gap-1.5">
+                              <Mail className="w-3.5 h-3.5 text-slate-400" />
+                              <span>{selectedSession.clientEmail}</span>
+                              <span className="text-slate-300">·</span>
+                              <span>Session ID: {selectedSession.id}</span>
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {canManage && !selectedSession.revokedAt && (
+                            <button
+                              onClick={() => void revoke(selectedSession.id)}
+                              disabled={isWorking}
+                              className="px-3 py-1.5 rounded-lg border border-rose-300 bg-white text-rose-600 hover:bg-rose-50 text-xs font-bold transition-colors disabled:opacity-50 cursor-pointer"
+                            >
+                              Thu hồi quyền truy cập
+                            </button>
+                          )}
+                          <button
+                            onClick={() => setSelectedSessionId(null)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer"
+                            title="Đóng chi tiết"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Information Grid */}
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs font-mono">
+                        <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-xs">
+                          <span className="text-[10px] text-slate-400 uppercase font-bold block">Thời Gian Cấp</span>
+                          <span className="font-semibold text-slate-800 block mt-1">{formatDateTime(selectedSession.createdAt)}</span>
+                        </div>
+                        <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-xs">
+                          <span className="text-[10px] text-slate-400 uppercase font-bold block">Hạn Truy Cập</span>
+                          <span className="font-semibold text-slate-800 block mt-1">{formatDateTime(selectedSession.expiresAt)}</span>
+                        </div>
+                        <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-xs">
+                          <span className="text-[10px] text-slate-400 uppercase font-bold block">Lần Xem Cuối</span>
+                          <span className="font-semibold text-brand-700 block mt-1">
+                            {selectedSession.lastAccessedAt ? formatDateTime(selectedSession.lastAccessedAt) : 'Chưa mở link'}
+                          </span>
+                        </div>
+                        <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-xs">
+                          <span className="text-[10px] text-slate-400 uppercase font-bold block">Tổng Phản Hồi</span>
+                          <span className="font-semibold text-emerald-700 block mt-1">
+                            {selectedSessionComments.length} ý kiến góp ý
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Feedback / Comments List */}
+                      <div className="space-y-3 pt-2">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
+                          <div className="flex items-center gap-2">
+                            <MessageSquare className="w-4 h-4 text-brand-600" />
+                            <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-slate-800">
+                              Ý Kiến &amp; Phản Hồi Từ Khách Hàng ({selectedSessionComments.length})
+                            </h4>
+                          </div>
+                          <span className="text-[11px] text-slate-400 font-normal">
+                            Ghi nhận từ liên kết Client Portal (Không cần đăng nhập)
+                          </span>
+                        </div>
+
+                        {isLoadingComments ? (
+                          <div className="p-6 text-center text-xs text-slate-400 font-mono">
+                            Đang tải phản hồi từ khách hàng...
+                          </div>
+                        ) : selectedSessionComments.length === 0 ? (
+                          <div className="p-6 rounded-xl border border-dashed border-slate-200 bg-white text-center space-y-1.5">
+                            <MessageSquare className="w-6 h-6 text-slate-300 mx-auto" />
+                            <p className="text-xs font-semibold text-slate-700">Chưa có phản hồi nào từ khách hàng trong phiên này</p>
+                            <p className="text-[11px] text-slate-400 max-w-md mx-auto">
+                              Khi khách hàng truy cập đường link Client Portal và gửi thắc mắc hoặc góp ý, nội dung sẽ lập tức xuất hiện tại đây để đội ngũ Presale &amp; Sales kịp thời xử lý.
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="space-y-2.5">
+                            {selectedSessionComments.map((comment) => (
+                              <div
+                                key={comment.id}
+                                className="p-4 rounded-xl bg-white border border-slate-200 shadow-xs space-y-2 transition-all hover:border-emerald-300"
+                              >
+                                <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-100 text-xs">
+                                  <div className="flex items-center gap-2 font-semibold text-slate-800">
+                                    <div className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center text-[10px] font-bold">
+                                      {comment.authorName ? comment.authorName.charAt(0).toUpperCase() : 'K'}
+                                    </div>
+                                    <span>{comment.authorName || selectedSession.clientName || 'Khách hàng'}</span>
+                                    {comment.authorEmail && (
+                                      <span className="text-slate-400 font-normal font-mono text-[11px]">
+                                        ({comment.authorEmail})
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-1.5 text-slate-400 font-mono text-[11px]">
+                                    <Clock className="w-3 h-3" />
+                                    <span>{formatDateTime(comment.createdAt)}</span>
+                                  </div>
+                                </div>
+                                <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap pl-1 font-sans">
+                                  {comment.body}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="rounded-2xl border border-slate-200 bg-white p-5">

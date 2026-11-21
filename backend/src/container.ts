@@ -70,7 +70,8 @@ import {
   CreatePortalMaterialUseCase, DeletePortalMaterialUseCase,
   ExportPortalProposalPdfUseCase, GetPortalProposalUseCase, ListPortalCommentsUseCase,
   ListPortalMaterialsUseCase, RevokePortalSessionUseCase,
-  ListProposalPortalSessionsUseCase, ListProposalPortalMaterialsUseCase
+  ListProposalPortalSessionsUseCase, ListProposalPortalMaterialsUseCase,
+  ListStaffPortalCommentsUseCase
 } from './application/use-cases/PortalUseCases.js';
 import { PostgresClientRepository } from './infrastructure/database/repositories/PostgresClientRepository.js';
 import { PostgresRateCardRepository } from './infrastructure/database/repositories/PostgresRateCardRepository.js';
@@ -289,7 +290,8 @@ export function createContainer(): ServiceContainer {
     new CreatePortalMaterialUseCase(portalRepository),
     new DeletePortalMaterialUseCase(portalRepository),
     new ListProposalPortalSessionsUseCase(portalRepository, proposalRepository),
-    new ListProposalPortalMaterialsUseCase(portalRepository, proposalRepository)
+    new ListProposalPortalMaterialsUseCase(portalRepository, proposalRepository),
+    new ListStaffPortalCommentsUseCase(portalRepository)
   );
 
   const clientController = new ClientController(

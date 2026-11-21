@@ -56,6 +56,7 @@ export function createApiRouter(
   router.post('/proposals/:proposalId/portal-materials', requireAuth, requireOrganization, requireNotViewer, portalController.createMaterial);
   router.delete('/proposals/:proposalId/portal-materials/:materialId', requireAuth, requireOrganization, requireNotViewer, portalController.deleteMaterial);
   router.get('/proposals/:proposalId/portal-sessions', requireAuth, requireOrganization, portalController.listProposalSessions);
+  router.get('/proposals/:proposalId/portal-comments', requireAuth, requireOrganization, portalController.listStaffComments);
   router.use('/clients', createClientRouter(clientController));
   router.use('/rate-cards', createRateCardRouter(rateCardController));
   router.use('/users', createUserRouter(userController));

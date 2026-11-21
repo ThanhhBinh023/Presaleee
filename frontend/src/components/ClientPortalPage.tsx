@@ -41,6 +41,7 @@ export const ClientPortalPage: React.FC = () => {
   const [sheetName, setSheetName] = useState('');
   const [comments, setComments] = useState<PortalComment[]>([]);
   const [materials, setMaterials] = useState<PortalMaterial[]>([]);
+  const [authorName, setAuthorName] = useState('');
   const [commentBody, setCommentBody] = useState('');
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState<PortalQuestionAnswer | null>(null);
@@ -149,7 +150,12 @@ export const ClientPortalPage: React.FC = () => {
     setIsWorking(true);
     setError(null);
     try {
-      const created = await portalClientService.createComment(active.proposalId, active.token, commentBody.trim());
+      const created = await portalClientService.createComment(
+        active.proposalId, 
+        active.token, 
+        commentBody.trim(), 
+        authorName.trim() || undefined
+      );
       setComments((prev) => [created, ...prev]);
       setCommentBody('');
       setNotice('Đã gửi phản hồi thành công đến Đội ngũ Presale.');
@@ -490,36 +496,59 @@ export const ClientPortalPage: React.FC = () => {
 
             {/* Comments & Feedback */}
             <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-xs space-y-4">
-              <h3 className="text-sm font-bold text-slate-900">Ý kiến &amp; Phản hồi cho Đội ngũ Presale ({comments.length})</h3>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-brand-500"></span>
+                  <span>Ý kiến &amp; Phản hồi của Khách Hàng ({comments.length})</span>
+                </h3>
+                <span className="text-[11px] font-mono text-slate-400">
+                  Không cần đăng nhập · Chỉ cần nhập tên người gửi
+                </span>
+              </div>
               <ul className="space-y-2 text-xs">
                 {comments.length === 0 ? (
-                  <li className="text-slate-400 italic">Chưa có phản hồi nào. Bạn có thể để lại ý kiến đóng góp bên dưới.</li>
+                  <li className="text-slate-400 italic py-3 text-center bg-slate-50/60 rounded-xl border border-dashed border-slate-200">
+                    Chưa có phản hồi nào. Bạn có thể để lại ý kiến đóng góp bên dưới.
+                  </li>
                 ) : (
                   comments.map((comment) => (
                     <li key={comment.id} className="rounded-2xl border border-slate-100 bg-slate-50 p-3.5 space-y-1">
-                      <div className="text-[11px] font-mono text-slate-500 font-semibold">
-                        {comment.authorName || 'Khách hàng'} · {formatDateTime(comment.createdAt)}
+                      <div className="text-[11px] font-mono text-slate-500 font-semibold flex items-center justify-between">
+                        <span className="text-slate-900 font-bold">{comment.authorName || 'Khách hàng'}</span>
+                        <span>{formatDateTime(comment.createdAt)}</span>
                       </div>
-                      <p className="whitespace-pre-wrap text-slate-800 text-xs">{comment.body}</p>
+                      <p className="whitespace-pre-wrap text-slate-800 text-xs mt-1">{comment.body}</p>
                     </li>
                   ))
                 )}
               </ul>
-              <textarea 
-                className="w-full min-h-[80px] rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed focus:bg-white focus:outline-none focus:border-brand-500" 
-                maxLength={5000} 
-                value={commentBody} 
-                onChange={(e) => setCommentBody(e.target.value)} 
-                placeholder="Nhập phản hồi hoặc yêu cầu điều chỉnh của bạn..." 
-              />
-              <button 
-                onClick={() => void postComment()} 
-                disabled={isWorking || !commentBody.trim()} 
-                className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 px-4 py-2 text-xs font-semibold text-white shadow-xs cursor-pointer disabled:opacity-50"
-              >
-                <Send className="w-3.5 h-3.5" />
-                <span>Gửi phản hồi</span>
-              </button>
+              <div className="space-y-2 pt-2 border-t border-slate-100">
+                <input
+                  type="text"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs focus:bg-white focus:outline-none focus:border-brand-500"
+                  maxLength={150}
+                  value={authorName}
+                  onChange={(e) => setAuthorName(e.target.value)}
+                  placeholder="Họ và tên hoặc chức vụ của bạn (Ví dụ: Nguyễn Văn Khách - Trưởng phòng CNTT)..."
+                />
+                <textarea 
+                  className="w-full min-h-[80px] rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed focus:bg-white focus:outline-none focus:border-brand-500" 
+                  maxLength={5000} 
+                  value={commentBody} 
+                  onChange={(e) => setCommentBody(e.target.value)} 
+                  placeholder="Nhập phản hồi, yêu cầu điều chỉnh hoặc câu hỏi cần giải đáp của bạn..." 
+                />
+                <div className="flex justify-end">
+                  <button 
+                    onClick={() => void postComment()} 
+                    disabled={isWorking || !commentBody.trim()} 
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-brand-600 hover:bg-brand-700 px-4 py-2 text-xs font-semibold text-white shadow-xs cursor-pointer disabled:opacity-50 transition-all"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Gửi phản hồi cho Presale</span>
+                  </button>
+                </div>
+              </div>
             </div>
 
           </div>

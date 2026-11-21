@@ -60,7 +60,15 @@ export const portalStaffService = {
     apiRequest<void>(
       `${STAFF}/proposals/${encodeURIComponent(proposalId)}/portal-materials/${encodeURIComponent(materialId)}`,
       { method: 'DELETE' }
-    )
+    ),
+
+  listComments: async (proposalId: string, sessionId?: string): Promise<{ comments: PortalComment[]; meta: ListMeta | null }> => {
+    const query = sessionId ? `?sessionId=${encodeURIComponent(sessionId)}` : '';
+    const result = await apiRequestWithMeta<PortalComment[]>(
+      `${STAFF}/proposals/${encodeURIComponent(proposalId)}/portal-comments${query}`
+    );
+    return { comments: result.data ?? [], meta: result.meta };
+  }
 };
 
 function clientOpts(token: string, extra: { method?: 'GET' | 'POST'; body?: unknown; timeoutMs?: number } = {}) {

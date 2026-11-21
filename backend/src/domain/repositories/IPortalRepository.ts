@@ -22,4 +22,5 @@ export interface IPortalRepository {
   deleteMaterial(proposalId: string, materialId: string, organizationId: string, actorId: string): Promise<boolean>;
   listSessionsForProposal(proposalId: string, organizationId: string): Promise<PortalSessionDetail[]>;
   listMaterialsForStaff(proposalId: string, organizationId: string): Promise<PortalMaterialDetail[]>;
+  listStaffComments(proposalId: string, organizationId: string, sessionId?: string): Promise<PortalComment[]>;
 }

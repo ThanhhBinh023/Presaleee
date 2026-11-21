@@ -8,7 +8,6 @@ import {
   ShieldCheck, 
   FileText, 
   Bot, 
-  MessageSquare, 
   Send, 
   Eye, 
   Sparkles,
@@ -83,8 +82,6 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({
 
   const [clientQuery, setClientQuery] = useState('');
   const [aiAnswers, setAiAnswers] = useState<Array<{ q: string; a: string }>>([]);
-  const [comments, setComments] = useState<string[]>([]);
-  const [newComment, setNewComment] = useState('');
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
 
   if (!isOpen) return null;
@@ -100,14 +97,6 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({
       },
     ]);
     setClientQuery('');
-  };
-
-  const handleAddComment = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newComment.trim()) return;
-    setComments([...comments, `[Xem thử, chưa gửi] Khách hàng (Client Reviewer): "${newComment}"`]);
-    setNewComment('');
-    toast.info('Bản xem thử: phản hồi chỉ hiển thị ở trình duyệt, chưa được gửi về đội Presale.', 'Client Feedback');
   };
 
   const handleDownloadPdf = async () => {
@@ -254,7 +243,7 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({
             { id: 'proposal', label: '10 Sheets Proposal', icon: Sparkles },
             { id: 'prototype', label: 'Interactive UI Prototype', icon: Eye },
             { id: 'materials', label: 'Shared Materials', icon: ShieldCheck },
-            { id: 'discussion', label: 'Discussions & AI Assistant', icon: MessageSquare },
+            { id: 'discussion', label: 'AI Assistant', icon: Bot },
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -557,27 +546,33 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({
             </div>
           )}
 
-          {/* TAB 5: DISCUSSION & AI ASSISTANT */}
+          {/* TAB 5: AI ASSISTANT PREVIEW */}
           {activeTab === 'discussion' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Left: Ask AI */}
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col justify-between space-y-4">
+            <div className="space-y-4">
+              <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col justify-between space-y-4">
                 <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <Bot className="w-4 h-4 text-brand-600" />
-                    <span className="text-xs font-bold text-slate-900 font-mono">
-                      Hỏi Trợ Lý AI Về Hồ Sơ Đề Xuất Này
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <div className="flex items-center gap-2">
+                      <Bot className="w-5 h-5 text-brand-600" />
+                      <span className="text-sm font-bold text-slate-900 font-mono">
+                        Hỏi Trợ Lý AI Về Hồ Sơ Đề Xuất Này (Bản Xem Thử)
+                      </span>
+                    </div>
+                    <span className="text-[11px] font-mono text-slate-400">
+                      Feedback từ khách hàng được ghi nhận tại Client Portal Desk
                     </span>
                   </div>
 
-                  <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
+                  <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
                     {aiAnswers.length === 0 && (
-                      <p className="text-[11px] text-slate-500 font-mono">Chưa có câu hỏi nào. Câu trả lời ở đây chỉ là văn bản mẫu tạo tại trình duyệt, không gọi AI.</p>
+                      <p className="text-xs text-slate-500 font-mono py-4 text-center bg-white rounded-xl border border-dashed border-slate-200">
+                        Chưa có câu hỏi nào. Bạn có thể thử nghiệm đặt câu hỏi về giải pháp, SLA hoặc lộ trình tại ô bên dưới.
+                      </p>
                     )}
                     {aiAnswers.map((item, i) => (
-                      <div key={i} className="text-xs space-y-1">
+                      <div key={i} className="text-xs space-y-1.5">
                         <div className="font-semibold text-slate-800">Q: {item.q}</div>
-                        <div className="p-2.5 rounded-lg bg-white border border-slate-200 text-slate-600 font-mono text-[11px] leading-relaxed">
+                        <div className="p-3 rounded-xl bg-white border border-slate-200 text-slate-700 font-mono text-xs leading-relaxed">
                           {item.a}
                         </div>
                       </div>
@@ -591,52 +586,14 @@ export const ClientPortalModal: React.FC<ClientPortalModalProps> = ({
                     value={clientQuery}
                     onChange={(e) => setClientQuery(e.target.value)}
                     placeholder="Hỏi về SLA, kiến trúc, bảng giá..."
-                    className="flex-1 px-3 py-2 rounded-xl text-xs bg-white border border-slate-200 focus:outline-none focus:border-brand-500 font-mono"
+                    className="flex-1 px-3.5 py-2.5 rounded-xl text-xs bg-white border border-slate-200 focus:outline-none focus:border-brand-500 font-mono"
                   />
                   <button
                     type="submit"
-                    className="px-3 py-2 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-bold shadow-xs cursor-pointer"
+                    className="px-4 py-2.5 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-xs font-bold shadow-xs cursor-pointer flex items-center gap-1.5"
                   >
                     <Send className="w-3.5 h-3.5" />
-                  </button>
-                </form>
-              </div>
-
-              {/* Right: Comments */}
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col justify-between space-y-4">
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <MessageSquare className="w-4 h-4 text-brand-600" />
-                    <span className="text-xs font-bold text-slate-900 font-mono">
-                      Góp Ý &amp; Thắc Mắc Của Khách Hàng
-                    </span>
-                  </div>
-
-                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                    {comments.length === 0 && (
-                      <p className="text-[11px] text-slate-500 font-mono">Chưa có góp ý. Phản hồi khách hàng thật đi qua POST /portal/proposals/:id/comments và chỉ ghi được khi có token portal.</p>
-                    )}
-                    {comments.map((c, i) => (
-                      <div key={i} className="p-2.5 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 leading-relaxed font-mono text-[11px]">
-                        {c}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <form onSubmit={handleAddComment} className="flex gap-2 pt-2">
-                  <input
-                    type="text"
-                    value={newComment}
-                    onChange={(e) => setNewComment(e.target.value)}
-                    placeholder="Nhập phản hồi hoặc yêu cầu chỉnh sửa..."
-                    className="flex-1 px-3 py-2 rounded-xl text-xs bg-white border border-slate-200 focus:outline-none focus:border-brand-500 font-mono"
-                  />
-                  <button
-                    type="submit"
-                    className="px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-xs cursor-pointer"
-                  >
-                    Gửi
+                    <span>Hỏi AI</span>
                   </button>
                 </form>
               </div>

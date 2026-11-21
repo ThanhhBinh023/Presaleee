@@ -6,7 +6,8 @@ import {
   CreatePortalMaterialUseCase, DeletePortalMaterialUseCase,
   ExportPortalProposalPdfUseCase, GetPortalProposalUseCase, ListPortalCommentsUseCase,
   ListPortalMaterialsUseCase, RevokePortalSessionUseCase,
-  ListProposalPortalSessionsUseCase, ListProposalPortalMaterialsUseCase
+  ListProposalPortalSessionsUseCase, ListProposalPortalMaterialsUseCase,
+  ListStaffPortalCommentsUseCase
 } from '../../application/use-cases/PortalUseCases.js';
 
 function routeParam(req: Request, name: string): string {
@@ -35,7 +36,8 @@ export class PortalController {
     private readonly createMaterialUseCase: CreatePortalMaterialUseCase,
     private readonly deleteMaterialUseCase: DeletePortalMaterialUseCase,
     private readonly listSessionsUseCase: ListProposalPortalSessionsUseCase,
-    private readonly listMaterialsStaffUseCase: ListProposalPortalMaterialsUseCase
+    private readonly listMaterialsStaffUseCase: ListProposalPortalMaterialsUseCase,
+    private readonly listStaffCommentsUseCase?: ListStaffPortalCommentsUseCase
   ) {}
 
   createSession = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
@@ -115,9 +117,22 @@ export class PortalController {
       const body = objectBody(req);
       const comment = await this.createCommentUseCase.execute({
         proposalId: routeParam(req, 'proposalId'), organizationId: session.organizationId,
-        session, body: body.body
+        session, body: body.body, authorName: body.authorName
       });
       res.status(201).json({ success: true, data: comment });
+    } catch (error) { next(error); }
+  };
+
+  listStaffComments = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!req.auth?.organizationId) throw new ForbiddenError('Authenticated organization is required.');
+      const proposalId = routeParam(req, 'proposalId');
+      const sessionId = typeof req.query.sessionId === 'string' ? req.query.sessionId : undefined;
+      if (!this.listStaffCommentsUseCase) {
+        throw new Error('ListStaffPortalCommentsUseCase is not configured.');
+      }
+      const comments = await this.listStaffCommentsUseCase.execute(proposalId, req.auth.organizationId, sessionId);
+      res.status(200).json({ success: true, data: comments, meta: { total: comments.length } });
     } catch (error) { next(error); }
   };
 

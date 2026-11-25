@@ -12,5 +12,7 @@ export function createAuthRouter(controller: AuthController): Router {
   router.get('/me', requireAuth, controller.me);
   router.post('/forgot-password', controller.forgotPassword);
   router.post('/reset-password', controller.resetPassword);
+  router.get('/google/url', controller.getGoogleAuthUrl);
+  router.post('/google/exchange', controller.exchangeGoogleToken);
   return router;
 }

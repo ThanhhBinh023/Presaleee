@@ -8,7 +8,7 @@ import type { MemberDirectoryEntry } from '../types/user';
 import type { UserRole, UserStatus } from '../types/auth';
 import { AppSidebar } from './workspace/AppSidebar';
 
-const ROLES: UserRole[] = ['ADMIN', 'PRESALE_LEAD', 'PRESALE_CONSULTANT', 'SOLUTION_ARCHITECT', 'SALES_REP', 'VIEWER'];
+const ROLES: UserRole[] = ['ADMIN', 'PRESALE_LEAD', 'PRESALE_CONSULTANT', 'SALES_REP', 'VIEWER'];
 const STATUSES: UserStatus[] = ['ACTIVE', 'INVITED', 'DEACTIVATED'];
 const PAGE_SIZE = 20;
 

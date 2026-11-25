@@ -1,6 +1,9 @@
-import { AuthenticationError, ConflictError, UnauthorizedError, ValidationError } from '../../domain/errors/AppError.js';
+import { AppError, AuthenticationError, ConflictError, UnauthorizedError, ValidationError } from '../../domain/errors/AppError.js';
 import { AuthSessionContext, PublicAuthUser } from '../../domain/entities/AuthUser.js';
 import { IAuthRepository } from '../../domain/repositories/IAuthRepository.js';
+import { IAuditRepository } from '../../domain/repositories/IAuditRepository.js';
+import { Pool } from 'pg';
+import { verifyTotpCode } from '../services/TotpService.js';
 import { env } from '../../infrastructure/config/env.js';
 import {
   EMPTY_PASSWORD_HASH,
@@ -36,26 +39,121 @@ export interface AuthSessionResult {
   user: PublicAuthUser;
   accessToken: string;
   refreshToken: string;
+  requires2FA?: boolean;
 }
 
 export class LoginUseCase {
-  constructor(private readonly authRepository: IAuthRepository) {}
+  constructor(
+    private readonly authRepository: IAuthRepository,
+    private readonly dbPool?: Pool,
+    private readonly auditRepository?: IAuditRepository
+  ) {}
 
-  async execute(email: unknown, password: unknown, context: AuthSessionContext): Promise<AuthSessionResult> {
+  async execute(
+    email: unknown,
+    password: unknown,
+    context: AuthSessionContext,
+    totpCode?: unknown
+  ): Promise<AuthSessionResult> {
     const normalizedEmail = normalizeEmail(email);
     if (typeof password !== 'string' || password.length === 0 || password.length > PASSWORD_MAX_LENGTH) {
       throw new AuthenticationError(GENERIC_LOGIN_ERROR);
     }
     const user = await this.authRepository.findUserByEmail(normalizedEmail);
+
+    // Check account lockout policy
+    if (user && this.dbPool) {
+      const lockRes = await this.dbPool.query<{
+        failed_login_attempts: number;
+        locked_until: string | null;
+        two_factor_enabled: boolean;
+        two_factor_secret: string | null;
+      }>(
+        `SELECT failed_login_attempts, locked_until, two_factor_enabled, two_factor_secret FROM users WHERE id = $1 LIMIT 1;`,
+        [user.id]
+      ).catch(() => ({ rows: [] as any[] }));
+      const secRow = lockRes.rows[0];
+      if (secRow?.locked_until && new Date(secRow.locked_until).getTime() > Date.now()) {
+        const minsLeft = Math.max(1, Math.ceil((new Date(secRow.locked_until).getTime() - Date.now()) / 60_000));
+        throw new AppError(`Tài khoản tạm thời bị khóa do đăng nhập sai nhiều lần. Vui lòng thử lại sau ${minsLeft} phút.`, 423);
+      }
+    }
+
     const passwordMatches = user?.passwordHash
       ? await verifyPassword(password, user.passwordHash)
       : await verifyPassword(password, EMPTY_PASSWORD_HASH);
+
     if (!user || !passwordMatches || user.status !== 'ACTIVE') {
+      if (user && this.dbPool) {
+        try {
+          const policyRes = await this.dbPool.query<{ value: any }>(
+            `SELECT value FROM system_settings WHERE key = 'security_policy' LIMIT 1;`
+          );
+          const policy = policyRes.rows[0]?.value || {};
+          const maxAttempts = Number(policy.maxFailedLoginAttempts || 5);
+          const lockMins = Number(policy.lockoutDurationMinutes || 15);
+          await this.dbPool.query(
+            `UPDATE users
+             SET failed_login_attempts = failed_login_attempts + 1,
+                 locked_until = CASE WHEN failed_login_attempts + 1 >= $1 THEN NOW() + ($2 || ' minutes')::interval ELSE locked_until END
+             WHERE id = $3;`,
+            [maxAttempts, String(lockMins), user.id]
+          );
+        } catch {
+          // ignore if column/table not migrated yet
+        }
+        await this.auditRepository?.record({
+          organizationId: user.organizationId || '00000000-0000-0000-0000-000000000000',
+          actorId: user.id,
+          action: 'AUTH_LOGIN_FAILED',
+          entityType: 'user',
+          entityId: user.id,
+          payload: { reason: user.status !== 'ACTIVE' ? 'USER_NOT_ACTIVE' : 'BAD_PASSWORD' },
+          resultStatus: 'FAILED',
+          ipAddress: context.ipAddress
+        }).catch(() => {});
+      }
       throw new AuthenticationError(GENERIC_LOGIN_ERROR);
     }
 
+    // Reset failed attempts & check 2FA
+    let sessionTimeoutMinutes = 1440;
+    if (this.dbPool) {
+      try {
+        await this.dbPool.query(`UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = $1;`, [user.id]);
+        const [secRes, policyRes] = await Promise.all([
+          this.dbPool.query<{ two_factor_enabled: boolean; two_factor_secret: string | null }>(
+            `SELECT two_factor_enabled, two_factor_secret FROM users WHERE id = $1 LIMIT 1;`,
+            [user.id]
+          ),
+          this.dbPool.query<{ value: any }>(`SELECT value FROM system_settings WHERE key = 'security_policy' LIMIT 1;`)
+        ]);
+        const policyVal = policyRes.rows[0]?.value;
+        if (policyVal?.sessionTimeoutMinutes) {
+          sessionTimeoutMinutes = Number(policyVal.sessionTimeoutMinutes);
+        }
+        const twoFactor = secRes.rows[0];
+        if (twoFactor?.two_factor_enabled && twoFactor.two_factor_secret) {
+          if (typeof totpCode !== 'string' || !totpCode.trim()) {
+            return {
+              user: toPublicUser(user),
+              accessToken: '',
+              refreshToken: '',
+              requires2FA: true
+            };
+          }
+          if (!verifyTotpCode(twoFactor.two_factor_secret, totpCode.trim())) {
+            throw new AuthenticationError('Mã xác thực 2FA (6 chữ số) không chính xác hoặc đã hết hạn.');
+          }
+        }
+      } catch (err) {
+        if (err instanceof AppError) throw err;
+      }
+    }
+
     const refreshToken = createOpaqueToken();
-    await this.authRepository.createRefreshToken(user.id, hashToken(refreshToken), refreshExpiry(), context);
+    const expiry = new Date(Date.now() + Math.max(15, sessionTimeoutMinutes) * 60_000);
+    await this.authRepository.createRefreshToken(user.id, hashToken(refreshToken), expiry > refreshExpiry() ? refreshExpiry() : expiry, context);
     return { user: toPublicUser(user), accessToken: issueAccessToken(user), refreshToken };
   }
 }

@@ -50,7 +50,8 @@ app.use(
     container.clientController,
     container.rateCardController,
     container.userController,
-    container.auditController
+    container.auditController,
+    container.settingsController
   )
 );
 

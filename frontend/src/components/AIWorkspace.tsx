@@ -39,13 +39,16 @@ import {
   Plus,
   Building2,
   XCircle,
-  Send
+  Send,
+  Settings
 } from 'lucide-react';
 import { navigateTo } from '../navigation';
 import { ClientPortalModal } from './ClientPortalModal';
 import { ProjectMembersModal } from './ProjectMembersModal';
 import { DiscoveryMeetingsTab } from './DiscoveryMeetingsTab';
 import { ProposalStudioTab } from './ProposalStudioTab';
+import { ProjectSettingsPanel } from './ProjectSettingsPanel';
+import { NotificationBell } from './common/NotificationBell';
 import { useToast } from './common/Toast';
 import { portalStaffService } from '../services/portalService';
 import type { PortalSessionDetail, PortalMaterialDetail } from '../types/portal';
@@ -89,7 +92,7 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
   const [isProjectMembersModalOpen, setIsProjectMembersModalOpen] = useState(false);
 
   // Requirement 2: Default subnav is 'Intake & Scope'
-  const [activeSubnav, setActiveSubnav] = useState<'Intake & Scope' | 'Discovery Meetings' | 'Technical Sessions' | 'Proposal Builder v2.4' | 'Client Intelligence'>('Intake & Scope');
+  const [activeSubnav, setActiveSubnav] = useState<'Intake & Scope' | 'Discovery Meetings' | 'Technical Sessions' | 'Proposal Builder v2.4' | 'Client Intelligence' | 'Cài đặt Dự án'>('Intake & Scope');
 
   // Client Portal preview modal
   const [portalModalOpen, setPortalModalOpen] = useState(false);
@@ -210,6 +213,9 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
     let isCancelled = false;
     async function fetchRealData() {
       setIsLoadingIntelligence(true);
+      setRealProposal(null);
+      setRealSessions([]);
+      setRealMaterials([]);
       try {
         const prop = await fetchProposalByLead(selectedProjectId);
         if (isCancelled) return;
@@ -441,6 +447,15 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
     }
   };
 
+  if (loadingProjects && projects.length === 0) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-3 bg-[#f8fafc]">
+        <span className="w-8 h-8 rounded-full border-2 border-brand-500 border-t-transparent animate-spin" />
+        <span className="text-xs font-mono text-slate-500">Đang tải không gian làm việc AI Workspace...</span>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#f8fafc] flex text-slate-900 font-sans">
       
@@ -513,6 +528,7 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                 <span>Preview Client Portal</span>
               </button>
             )}
+            <NotificationBell />
           </div>
 
         </header>
@@ -641,6 +657,7 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                   { name: 'Technical Sessions' },
                   { name: 'Proposal Builder v2.4', icon: FileText },
                   { name: 'Client Intelligence' },
+                  { name: 'Cài đặt Dự án', icon: Settings },
                 ].map((tab, idx) => {
                   const isTabActive = activeSubnav === tab.name;
                   const Icon = tab.icon;
@@ -1850,6 +1867,24 @@ export const AIWorkspace: React.FC<AIWorkspaceProps> = ({
                 </div>
               );
             })()
+          )}
+
+          {/* TAB 6: CÀI ĐẶT DỰ ÁN (PROJECT WORKSPACE SETTINGS) */}
+          {activeSubnav === 'Cài đặt Dự án' && selectedProject && (
+            <ProjectSettingsPanel
+              leadId={selectedProject.id}
+              onProjectUpdated={() => {
+                void fetchLeads().then((list) => setProjects(list)).catch(() => {});
+              }}
+              onProjectDeleted={() => {
+                setSelectedProjectId('');
+                setActiveSubnav('Intake & Scope');
+                void fetchLeads().then((list) => {
+                  setProjects(list);
+                  if (list.length > 0) setSelectedProjectId(list[0].id);
+                }).catch(() => {});
+              }}
+            />
           )}
 
         </div>

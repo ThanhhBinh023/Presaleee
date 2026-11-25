@@ -63,19 +63,6 @@ export const ROLE_DETAILS: Record<UserRole, {
       'Tổ chức và điều phối các cuộc họp Discovery Meetings'
     ]
   },
-  SOLUTION_ARCHITECT: {
-    nameVi: 'Kiến trúc sư Giải pháp (Solution Architect)',
-    badgeClass: 'bg-sky-100 text-sky-800 border-sky-200',
-    colorClass: 'text-sky-800',
-    iconBg: 'bg-sky-500',
-    description: 'Thiết kế kiến trúc hệ thống, lựa chọn Tech Stack, thẩm định rủi ro RAID và kiến tạo UI Design Brief.',
-    keyPermissions: [
-      'Xây dựng kiến trúc giải pháp & Tech Stack (Sheet 3)',
-      'Điều phối các phiên Technical Deep Dive Sessions',
-      'Đánh giá rủi ro dự án trong ma trận RAID Log',
-      'Nạp tài liệu kỹ thuật & tạo AI UI Design Brief'
-    ]
-  },
   SALES_REP: {
     nameVi: 'Đại diện Kinh doanh (Sales Rep)',
     badgeClass: 'bg-indigo-100 text-indigo-800 border-indigo-200',

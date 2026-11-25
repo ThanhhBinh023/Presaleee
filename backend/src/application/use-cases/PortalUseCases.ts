@@ -8,12 +8,18 @@ import { ExportProposalToPdfUseCase } from './ExportProposalToPdfUseCase.js';
 import { PortalSession } from '../../domain/entities/Portal.js';
 import { UserRole } from '../../domain/entities/AuthUser.js';
 import { ConflictError, ExternalServiceError, ForbiddenError, NotFoundError, ValidationError } from '../../domain/errors/AppError.js';
+import { PostgresSettingsRepository } from '../../infrastructure/database/repositories/PostgresSettingsRepository.js';
+import { DEFAULT_PROJECT_SETTINGS, ProjectPortalBranding } from '../../domain/entities/Settings.js';
 
 const PORTAL_MANAGER_ROLES: readonly UserRole[] = ['ADMIN', 'PRESALE_LEAD', 'SALES_REP'];
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export class CreatePortalSessionUseCase {
-  constructor(private readonly portalRepository: IPortalRepository, private readonly proposalRepository: IProposalRepository) {}
+  constructor(
+    private readonly portalRepository: IPortalRepository,
+    private readonly proposalRepository: IProposalRepository,
+    private readonly settingsRepository?: PostgresSettingsRepository
+  ) {}
 
   async execute(input: {
     proposalId: string; organizationId: string; userId: string; role: UserRole;
@@ -34,13 +40,37 @@ export class CreatePortalSessionUseCase {
       }
       clientName = input.clientName.trim();
     }
-    const hours = input.expiresInHours === undefined ? 168 : Number(input.expiresInHours);
-    if (!Number.isInteger(hours) || hours < 1 || hours > 720) throw new ValidationError('expiresInHours must be an integer from 1 to 720.');
     const proposal = await this.proposalRepository.findById(input.proposalId, input.organizationId);
     if (!proposal) throw new NotFoundError('Proposal not found.');
     if (input.role !== 'ADMIN' && input.role !== 'PRESALE_LEAD' && input.role !== 'SALES_REP' && proposal.createdBy !== input.userId) {
       throw new ForbiddenError('Chỉ Trưởng dự án (PRESALE_LEAD) hoặc Đại diện kinh doanh (SALES_REP) phụ trách hồ sơ đề xuất này mới có quyền tạo phiên Client Portal.');
     }
+
+    let defaultHours = 168;
+    if (proposal.leadId && this.settingsRepository) {
+      const projSettings = await this.settingsRepository.getRawProjectSettings(proposal.leadId, input.organizationId).catch(() => null);
+      if (projSettings) {
+        if (!projSettings.portalConfig.isEnabled) {
+          throw new ForbiddenError('Client Portal của dự án này đang bị tắt trong Project Settings.');
+        }
+        const domains = projSettings.portalConfig.allowedDomains;
+        if (domains && domains.length > 0) {
+          const emailDomain = '@' + input.clientEmail.trim().toLowerCase().split('@')[1];
+          const allowed = domains.some(d => {
+            const norm = d.startsWith('@') ? d.toLowerCase() : `@${d.toLowerCase()}`;
+            return emailDomain === norm;
+          });
+          if (!allowed) {
+            throw new ValidationError(`Email khách hàng phải thuộc tên miền được phép: ${domains.join(', ')}`);
+          }
+        }
+        defaultHours = projSettings.portalConfig.defaultExpirationHours || 168;
+      }
+    }
+
+    const hours = input.expiresInHours === undefined ? defaultHours : Number(input.expiresInHours);
+    if (!Number.isInteger(hours) || hours < 1 || hours > 720) throw new ValidationError('expiresInHours must be an integer from 1 to 720.');
+
     // The status gate (APPROVED / SENT_TO_CLIENT / ACCEPTED) lives in PostgresPortalRepository.createSession
     // and also flips APPROVED to SENT_TO_CLIENT. Sharing is a PORTAL_MANAGER_ROLES action.
     const accessToken = createOpaqueToken();
@@ -62,23 +92,78 @@ export interface PortalProposalView {
   currency: string | undefined;
   estimatedTimelineWeeks: number | null | undefined;
   sheets: Array<{ sheetName: string; sheetOrder: number; sheetData: Record<string, any> }>;
+  portalConfig?: {
+    aiAssistantEnabled: boolean;
+    commentsEnabled: boolean;
+    passcodeRequired?: boolean;
+    branding: ProjectPortalBranding;
+  };
 }
 
 export class GetPortalProposalUseCase {
-  constructor(private readonly proposalRepository: IProposalRepository) {}
-  async execute(proposalId: string, organizationId: string): Promise<PortalProposalView> {
+  constructor(
+    private readonly proposalRepository: IProposalRepository,
+    private readonly settingsRepository?: PostgresSettingsRepository
+  ) {}
+  async execute(proposalId: string, organizationId: string, passcode?: string): Promise<PortalProposalView> {
     const proposal = await this.proposalRepository.findById(proposalId, organizationId);
     if (!proposal || !['SENT_TO_CLIENT', 'ACCEPTED'].includes(proposal.status)) throw new NotFoundError('Shared proposal not found.');
+
+    let aiAssistantEnabled = true;
+    let commentsEnabled = true;
+    let branding = DEFAULT_PROJECT_SETTINGS.portalConfig.branding;
+
+    if (proposal.leadId && this.settingsRepository) {
+      const projSettings = await this.settingsRepository.getRawProjectSettings(proposal.leadId, organizationId).catch(() => null);
+      if (projSettings) {
+        if (!projSettings.portalConfig.isEnabled) {
+          throw new ForbiddenError('Client Portal cho đề xuất này hiện đang tạm đóng bởi đội ngũ Presale.');
+        }
+        aiAssistantEnabled = projSettings.portalConfig.aiAssistantEnabled;
+        commentsEnabled = projSettings.portalConfig.commentsEnabled;
+        branding = projSettings.portalConfig.branding;
+
+        if (projSettings.portalConfig.passcodeEnabled && projSettings.portalConfig.passcodeHash) {
+          const clean = typeof passcode === 'string' ? passcode.trim() : '';
+          if (!clean || hashToken(clean) !== projSettings.portalConfig.passcodeHash) {
+            throw new ForbiddenError(
+              JSON.stringify({
+                code: 'PORTAL_PASSCODE_REQUIRED',
+                message: clean ? 'Mật khẩu truy cập (Passcode) không chính xác.' : 'Vui lòng nhập Passcode bảo mật để xem tài liệu.',
+                branding
+              })
+            );
+          }
+        }
+      }
+
+      // Notify project members in-app when client opens portal
+      await this.settingsRepository.notifyProjectMembers({
+        projectId: proposal.leadId,
+        organizationId,
+        eventKey: 'client_portal_opened',
+        title: 'Khách hàng đã mở Client Portal',
+        message: `Khách hàng vừa truy cập đề xuất "${proposal.title}".`,
+        entityType: 'proposal',
+        entityId: proposal.id
+      }).catch(() => {});
+    }
+
     return {
       id: proposal.id, title: proposal.title, version: proposal.version, status: proposal.status,
       totalCost: proposal.totalCost, currency: proposal.currency, estimatedTimelineWeeks: proposal.estimatedTimelineWeeks,
-      sheets: projectSheetsForClient(proposal.sheets.map(({ sheetName, sheetOrder, sheetData }) => ({ sheetName, sheetOrder, sheetData })))
+      sheets: projectSheetsForClient(proposal.sheets.map(({ sheetName, sheetOrder, sheetData }) => ({ sheetName, sheetOrder, sheetData }))),
+      portalConfig: { aiAssistantEnabled, commentsEnabled, branding }
     };
   }
 }
 
 export class AskPortalProposalUseCase {
-  constructor(private readonly proposalRepository: IProposalRepository, private readonly llmGateway: ILLMGateway) {}
+  constructor(
+    private readonly proposalRepository: IProposalRepository,
+    private readonly llmGateway: ILLMGateway,
+    private readonly settingsRepository?: PostgresSettingsRepository
+  ) {}
   async execute(proposalId: string, organizationId: string, question: unknown): Promise<{
     answer: string; citations: Array<{ label: string; sheetName: string }>;
   }> {
@@ -87,6 +172,22 @@ export class AskPortalProposalUseCase {
     }
     const proposal = await this.proposalRepository.findById(proposalId, organizationId);
     if (!proposal || !['SENT_TO_CLIENT', 'ACCEPTED'].includes(proposal.status)) throw new NotFoundError('Shared proposal not found.');
+
+    if (proposal.leadId && this.settingsRepository) {
+      const projSettings = await this.settingsRepository.getRawProjectSettings(proposal.leadId, organizationId).catch(() => null);
+      if (projSettings && (!projSettings.portalConfig.isEnabled || !projSettings.portalConfig.aiAssistantEnabled)) {
+        throw new ForbiddenError('Tính năng AI Assistant trên Client Portal đang bị tắt.');
+      }
+      await this.settingsRepository.notifyProjectMembers({
+        projectId: proposal.leadId,
+        organizationId,
+        eventKey: 'client_ai_interaction',
+        title: 'Khách hàng hỏi AI Assistant',
+        message: `Khách hàng vừa đặt câu hỏi cho AI trên đề xuất "${proposal.title}".`,
+        entityType: 'proposal',
+        entityId: proposal.id
+      }).catch(() => {});
+    }
     const sheets = projectSheetsForClient(proposal.sheets);
     const citations = sheets.map(sheet => ({ label: `[${sheet.sheetName}]`, sheetName: sheet.sheetName }));
     const content = sheets.map(sheet => `${sheet.sheetName} [${sheet.sheetName}]\n${JSON.stringify(sheet.sheetData).slice(0, 1800)}`).join('\n\n');
@@ -127,10 +228,29 @@ export class ListStaffPortalCommentsUseCase {
 }
 
 export class CreatePortalCommentUseCase {
-  constructor(private readonly repository: IPortalRepository) {}
+  constructor(
+    private readonly repository: IPortalRepository,
+    private readonly proposalRepository?: IProposalRepository,
+    private readonly settingsRepository?: PostgresSettingsRepository
+  ) {}
   async execute(input: { proposalId: string; organizationId: string; session: PortalSession; body: unknown; authorName?: unknown }) {
     if (typeof input.body !== 'string' || !input.body.trim() || input.body.length > 5000) {
       throw new ValidationError('Comment body is required and must not exceed 5,000 characters.');
+    }
+    let leadId: string | undefined;
+    let proposalTitle = 'Proposal';
+    if (this.proposalRepository && this.settingsRepository) {
+      const proposal = await this.proposalRepository.findById(input.proposalId, input.organizationId).catch(() => null);
+      if (proposal) {
+        leadId = proposal.leadId || undefined;
+        proposalTitle = proposal.title;
+        if (leadId) {
+          const projSettings = await this.settingsRepository.getRawProjectSettings(leadId, input.organizationId).catch(() => null);
+          if (projSettings && (!projSettings.portalConfig.isEnabled || !projSettings.portalConfig.commentsEnabled)) {
+            throw new ForbiddenError('Tính năng Thảo luận / Feedback trên Client Portal đang bị tắt.');
+          }
+        }
+      }
     }
     const customAuthor = typeof input.authorName === 'string' && input.authorName.trim().length > 0 
       ? input.authorName.trim().slice(0, 200) 
@@ -141,6 +261,19 @@ export class CreatePortalCommentUseCase {
       authorName, body: input.body.trim()
     });
     if (!comment) throw new NotFoundError('Portal session or proposal is no longer active.');
+
+    if (leadId && this.settingsRepository) {
+      await this.settingsRepository.notifyProjectMembers({
+        projectId: leadId,
+        organizationId: input.organizationId,
+        eventKey: 'client_comment_created',
+        title: `Phản hồi mới từ khách hàng (${authorName})`,
+        message: `${authorName} đã gửi phản hồi trên "${proposalTitle}": "${input.body.trim().slice(0, 100)}"`,
+        entityType: 'proposal',
+        entityId: input.proposalId
+      }).catch(() => {});
+    }
+
     return comment;
   }
 }

@@ -89,7 +89,8 @@ export class PortalController {
   getProposal = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const session = portalSession(req);
-      const proposal = await this.getProposalUseCase.execute(routeParam(req, 'proposalId'), session.organizationId);
+      const passcode = req.header('x-portal-passcode') || (typeof req.query.passcode === 'string' ? req.query.passcode : undefined);
+      const proposal = await this.getProposalUseCase.execute(routeParam(req, 'proposalId'), session.organizationId, passcode);
       res.status(200).json({ success: true, data: proposal });
     } catch (error) { next(error); }
   };

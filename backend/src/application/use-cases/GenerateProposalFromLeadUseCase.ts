@@ -94,10 +94,24 @@ export class GenerateProposalFromLeadUseCase {
       });
     }
 
+    if (lead.is_archived) {
+      throw new Error('Dự án đã được lưu trữ (Read-only). Không thể tạo lại proposal.');
+    }
+    const rawSettings = lead.project_settings && typeof lead.project_settings === 'object' ? lead.project_settings : {};
+    const aiCfg = rawSettings.aiInstructions || {};
+    const projectAiBlock = [
+      aiCfg.defaultLanguage ? `OUTPUT LANGUAGE: ${aiCfg.defaultLanguage}` : '',
+      aiCfg.toneOfVoice ? `TONE OF VOICE: ${aiCfg.toneOfVoice}` : '',
+      Array.isArray(aiCfg.customContextRules) && aiCfg.customContextRules.length > 0
+        ? `MANDATORY PROJECT CONTEXT RULES:\n- ${aiCfg.customContextRules.join('\n- ')}`
+        : ''
+    ].filter(Boolean).join('\n');
+
     // 4. Construct AI Synthesis Prompt
     const prompt = `
-You are the Principal Solutions Architect and Presale Director for 'Presaleee'.
+You are the Presale Lead & Technical Proposal Director for 'Presaleee'.
 Synthesize a comprehensive, executive-grade Technical Proposal for the following project.
+${projectAiBlock ? `\n${projectAiBlock}\n` : ''}
 
 PROJECT DETAILS:
 Title: "${lead.title}"

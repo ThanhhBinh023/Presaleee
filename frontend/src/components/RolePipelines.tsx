@@ -22,7 +22,6 @@ export const ROLE_ENGLISH_NAMES: Record<UserRole, string> = {
   ADMIN: 'System Admin',
   PRESALE_LEAD: 'Presale Lead',
   PRESALE_CONSULTANT: 'Presale Consultant',
-  SOLUTION_ARCHITECT: 'Solution Architect',
   SALES_REP: 'Sales Rep',
   VIEWER: 'Viewer',
 };
@@ -133,7 +132,7 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
       qualification: {
         readiness_level: 'Tier-1 High Priority'
       } as any,
-      assigned_roles: ['PRESALE_LEAD', 'PRESALE_CONSULTANT', 'SOLUTION_ARCHITECT', 'SALES_REP']
+      assigned_roles: ['PRESALE_LEAD', 'PRESALE_CONSULTANT', 'SALES_REP']
     },
     createdAt: new Date().toISOString()
   } as unknown as LeadItem), []);
@@ -240,7 +239,7 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
     if (Array.isArray(roles) && roles.length > 0) {
       return roles as UserRole[];
     }
-    return ['SALES_REP', 'PRESALE_CONSULTANT', 'SOLUTION_ARCHITECT'];
+    return ['SALES_REP', 'PRESALE_CONSULTANT'];
   }, [selectedProject]);
 
   const openTeamModal = () => {
@@ -1371,27 +1370,6 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
                   </div>
                 )}
 
-                {selectedRole === 'SOLUTION_ARCHITECT' && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-                    <div className="p-4 rounded-2xl bg-sky-50/60 border border-sky-200 space-y-1">
-                      <div className="font-bold text-sky-900">1. Technical Deep-Dive Sessions</div>
-                      <p className="text-[11px] text-slate-600">Phân tích sâu bài toán kỹ thuật, tích hợp và ràng buộc kiến trúc.</p>
-                    </div>
-                    <div className="p-4 rounded-2xl bg-sky-50/60 border border-sky-200 space-y-1">
-                      <div className="font-bold text-sky-900">2. Thiết kế Kiến trúc (Sheet 3)</div>
-                      <p className="text-[11px] text-slate-600">Lựa chọn Tech Stack, thiết kế High-Level Architecture và SLA.</p>
-                    </div>
-                    <div className="p-4 rounded-2xl bg-sky-50/60 border border-sky-200 space-y-1">
-                      <div className="font-bold text-sky-900">3. Rà soát Rủi ro RAID (Sheet 8)</div>
-                      <p className="text-[11px] text-slate-600">Đánh giá rủi ro an ninh thông tin, giả định và biện pháp giảm thiểu.</p>
-                    </div>
-                    <div className="p-4 rounded-2xl bg-sky-50/60 border border-sky-200 space-y-1">
-                      <div className="font-bold text-sky-900">4. Kiến tạo AI UI Design Brief</div>
-                      <p className="text-[11px] text-slate-600">Sinh bản đặc tả giao diện và chuẩn bị tài liệu kỹ thuật vào Vault.</p>
-                    </div>
-                  </div>
-                )}
-
                 {selectedRole === 'ADMIN' && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
                     <div className="p-4 rounded-2xl bg-purple-50/60 border border-purple-200 space-y-1">
@@ -1479,7 +1457,7 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
             <div className="p-3.5 rounded-2xl bg-amber-50/80 border border-amber-200/80 text-xs text-amber-900 flex items-start gap-2.5">
               <Sparkles className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
               <div className="leading-relaxed">
-                <strong>Lưu ý:</strong> Không phải lead nào cũng cần có cả 6 role. Tùy biến đội ngũ linh hoạt theo quy mô và tính chất dự án.
+                <strong>Lưu ý:</strong> Không phải lead nào cũng cần có cả 5 role. Tùy biến đội ngũ linh hoạt theo quy mô và tính chất dự án.
               </div>
             </div>
 
@@ -1491,36 +1469,36 @@ export const RolePipelines: React.FC<RolePipelinesProps> = ({
               <div className="flex flex-wrap gap-2 text-xs">
                 <button
                   type="button"
-                  onClick={() => setSelectedDealRoles(['SALES_REP', 'SOLUTION_ARCHITECT'])}
+                  onClick={() => setSelectedDealRoles(['SALES_REP', 'PRESALE_CONSULTANT'])}
                   className="px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 font-medium transition-colors cursor-pointer"
                 >
                   ⚡ Deal Nhỏ (Fast-Track: 2 vai trò)
                 </button>
                 <button
                   type="button"
-                  onClick={() => setSelectedDealRoles(['SALES_REP', 'PRESALE_CONSULTANT', 'SOLUTION_ARCHITECT'])}
+                  onClick={() => setSelectedDealRoles(['PRESALE_LEAD', 'PRESALE_CONSULTANT', 'SALES_REP'])}
                   className="px-3 py-1.5 rounded-xl border border-brand-200 bg-brand-50 hover:bg-brand-100 text-brand-800 font-semibold transition-colors cursor-pointer"
                 >
                   💼 Tiêu Chuẩn (Standard: 3 vai trò)
                 </button>
                 <button
                   type="button"
-                  onClick={() => setSelectedDealRoles(['PRESALE_LEAD', 'PRESALE_CONSULTANT', 'SOLUTION_ARCHITECT', 'SALES_REP'])}
+                  onClick={() => setSelectedDealRoles(['PRESALE_LEAD', 'PRESALE_CONSULTANT', 'SALES_REP', 'VIEWER'])}
                   className="px-3 py-1.5 rounded-xl border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-800 font-semibold transition-colors cursor-pointer"
                 >
                   🏢 Doanh Nghiệp Lớn (Enterprise: 4 vai trò)
                 </button>
                 <button
                   type="button"
-                  onClick={() => setSelectedDealRoles(['ADMIN', 'PRESALE_LEAD', 'PRESALE_CONSULTANT', 'SOLUTION_ARCHITECT', 'SALES_REP', 'VIEWER'])}
+                  onClick={() => setSelectedDealRoles(['ADMIN', 'PRESALE_LEAD', 'PRESALE_CONSULTANT', 'SALES_REP', 'VIEWER'])}
                   className="px-3 py-1.5 rounded-xl border border-slate-200 bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold transition-colors cursor-pointer"
                 >
-                  🌐 Đầy Đủ (Tất cả 6 vai trò)
+                  🌐 Đầy Đủ (Tất cả 5 vai trò)
                 </button>
               </div>
             </div>
 
-            {/* 6 Role Selection Cards */}
+            {/* 5 Role Selection Cards */}
             <div className="space-y-2.5 pt-1">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 {(Object.keys(ROLE_DETAILS) as UserRole[]).map((r) => {

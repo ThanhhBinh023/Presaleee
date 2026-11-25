@@ -54,6 +54,15 @@ export interface PortalProposalView {
   currency: string;
   estimatedTimelineWeeks: number | null;
   sheets: Array<{ sheetName: string; sheetOrder: number; sheetData: Record<string, unknown> }>;
+  portalConfig?: {
+    aiAssistantEnabled: boolean;
+    commentsEnabled: boolean;
+    branding: {
+      logoUrl: string;
+      primaryColor: string;
+      welcomeMessage: string;
+    };
+  };
 }
 
 export interface PortalQuestionAnswer {

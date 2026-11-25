@@ -25,6 +25,8 @@ import { UserController } from '../controllers/UserController.js';
 import { createUserRouter } from './userRoutes.js';
 import { AuditController } from '../controllers/AuditController.js';
 import { createAuditRouter } from './auditRoutes.js';
+import { SettingsController } from '../controllers/SettingsController.js';
+import { createSettingsRouter } from './settingsRoutes.js';
 
 export function createApiRouter(
   ragController: RAGController,
@@ -39,7 +41,8 @@ export function createApiRouter(
   clientController: ClientController,
   rateCardController: RateCardController,
   userController: UserController,
-  auditController: AuditController
+  auditController: AuditController,
+  settingsController?: SettingsController
 ): Router {
   const router = Router();
 
@@ -63,6 +66,9 @@ export function createApiRouter(
   router.use('/audit-logs', createAuditRouter(auditController));
   router.use('/auth', createAuthRouter(authController));
   router.use('/dashboard', createDashboardRouter(dashboardController));
+  if (settingsController) {
+    router.use('/settings', createSettingsRouter(settingsController));
+  }
 
   return router;
 }

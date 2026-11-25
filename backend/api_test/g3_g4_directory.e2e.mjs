@@ -209,8 +209,8 @@ await suite.test('G3-10', 'PATCH /users/:id updates a member and requires at lea
   const empty = await http(adminA, 'PATCH', `/api/v1/users/${ids.viewer}`, { body: {} });
   expectEnvelope(empty, 400);
 
-  const promoted = await http(adminA, 'PATCH', `/api/v1/users/${ids.viewer}`, { body: { role: 'SOLUTION_ARCHITECT' } });
-  expect(promoted.status === 200 && promoted.json.data.role === 'SOLUTION_ARCHITECT', `role change failed: ${promoted.status}`);
+  const promoted = await http(adminA, 'PATCH', `/api/v1/users/${ids.viewer}`, { body: { role: 'PRESALE_CONSULTANT' } });
+  expect(promoted.status === 200 && promoted.json.data.role === 'PRESALE_CONSULTANT', `role change failed: ${promoted.status}`);
   return ['partial update keeps other fields', '400 on empty patch'];
 });
 
@@ -297,7 +297,7 @@ await suite.test('G3-14', 'PATCH /users/me edits profile fields and ignores role
   });
   expect(updated.status === 200, `expected 200, got ${updated.status} ${updated.text.slice(0, 200)}`);
   expect(updated.json.data.user.fullName === 'E2E Viewer Self', 'self name update failed');
-  expect(updated.json.data.user.role === 'SOLUTION_ARCHITECT', `self-service must not escalate role, got ${updated.json.data.user.role}`);
+  expect(updated.json.data.user.role === 'PRESALE_CONSULTANT', `self-service must not escalate role, got ${updated.json.data.user.role}`);
   expectNoCredentialLeak(updated);
 
   const empty = await http(viewer, 'PATCH', '/api/v1/users/me', { body: {} });

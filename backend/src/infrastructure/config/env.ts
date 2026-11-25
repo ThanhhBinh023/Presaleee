@@ -17,6 +17,9 @@ export interface AppConfig {
   authCookieSameSite: 'strict' | 'lax' | 'none';
   frontendUrl: string;
   passwordResetTokenTtlMinutes: number;
+  supabaseUrl: string;
+  supabaseAnonKey: string;
+  googleClientId: string;
 }
 
 const cookieSameSite = (process.env.AUTH_COOKIE_SAME_SITE || 'lax').toLowerCase();
@@ -44,6 +47,9 @@ export const env: AppConfig = {
   authCookieSecure: process.env.AUTH_COOKIE_SECURE === 'true',
   authCookieSameSite: cookieSameSite as AppConfig['authCookieSameSite'],
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
-  passwordResetTokenTtlMinutes
+  passwordResetTokenTtlMinutes,
+  supabaseUrl: (process.env.SUPABASE_URL || '').replace(/\/$/, ''),
+  supabaseAnonKey: process.env.SUPABASE_ANON_KEY || '',
+  googleClientId: process.env.GOOGLE_CLIENT_ID || ''
 };
 

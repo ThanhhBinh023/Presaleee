@@ -54,6 +54,12 @@ export const ClientPortalPage: React.FC = () => {
   const [loadingPdf, setLoadingPdf] = useState(false);
   const [viewMode, setViewMode] = useState<'pdf' | 'sheets'>('pdf');
 
+  // Passcode Protection & Branding
+  const [passcodeRequired, setPasscodeRequired] = useState(false);
+  const [passcodeInput, setPasscodeInput] = useState('');
+  const [passcodeSubmitted, setPasscodeSubmitted] = useState<string | undefined>(undefined);
+  const [gateBranding, setGateBranding] = useState<{ logoUrl?: string; primaryColor?: string; welcomeMessage?: string } | null>(null);
+
   const persistAndStrip = (next: StoredPortal) => {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     setActive(next);
@@ -85,12 +91,13 @@ export const ClientPortalPage: React.FC = () => {
     };
   }, [pdfBlobUrl]);
 
-  const loadAll = async (session: StoredPortal) => {
+  const loadAll = async (session: StoredPortal, passcode?: string) => {
     setIsWorking(true);
     setError(null);
+    setPasscodeRequired(false);
     try {
-      const [view, commentRows, materialRows] = await Promise.all([
-        portalClientService.getProposal(session.proposalId, session.token),
+      const view = await portalClientService.getProposal(session.proposalId, session.token, passcode);
+      const [commentRows, materialRows] = await Promise.all([
         portalClientService.listComments(session.proposalId, session.token),
         portalClientService.listMaterials(session.proposalId, session.token)
       ]);
@@ -117,6 +124,19 @@ export const ClientPortalPage: React.FC = () => {
       setProposal(null);
       setComments([]);
       setMaterials([]);
+      if (err instanceof ApiError && err.status === 403) {
+        try {
+          const parsed = JSON.parse(err.message);
+          if (parsed?.code === 'PORTAL_PASSCODE_REQUIRED') {
+            setPasscodeRequired(true);
+            setGateBranding(parsed.branding || null);
+            if (passcode) setError(parsed.message || 'Mật khẩu truy cập không đúng.');
+            return;
+          }
+        } catch {
+          // plain text 403
+        }
+      }
       const message = err instanceof ApiError && err.status === 401
         ? 'Liên kết xem hồ sơ không hợp lệ hoặc đã hết hạn truy cập. Vui lòng liên hệ Trưởng dự án để nhận liên kết mới.'
         : err instanceof Error ? err.message : 'Không thể tải hồ sơ đề xuất.';
@@ -127,8 +147,8 @@ export const ClientPortalPage: React.FC = () => {
   };
 
   useEffect(() => {
-    if (active) void loadAll(active);
-  }, [active]);
+    if (active) void loadAll(active, passcodeSubmitted);
+  }, [active, passcodeSubmitted]);
 
   const ask = async () => {
     if (!active || !question.trim()) return;
@@ -258,7 +278,50 @@ export const ClientPortalPage: React.FC = () => {
           </div>
         )}
 
-        {active && !proposal && isWorking && (
+        {active && !proposal && passcodeRequired && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!passcodeInput.trim()) return;
+              setPasscodeSubmitted(passcodeInput.trim());
+            }}
+            className="max-w-md mx-auto my-12 p-8 rounded-3xl bg-white border border-slate-200 shadow-sm text-center space-y-4"
+          >
+            {gateBranding?.logoUrl ? (
+              <img src={gateBranding.logoUrl} alt="Logo" className="h-12 mx-auto object-contain" />
+            ) : (
+              <div
+                className="w-12 h-12 rounded-2xl text-white flex items-center justify-center mx-auto font-bold"
+                style={{ backgroundColor: gateBranding?.primaryColor || '#10b981' }}
+              >
+                P
+              </div>
+            )}
+            <div>
+              <h3 className="text-base font-bold text-slate-900">Cổng Thông Tin Được Bảo Vệ Bằng Passcode</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                {gateBranding?.welcomeMessage || 'Vui lòng nhập mật khẩu (Passcode) được cung cấp bởi đội ngũ Presale để mở tài liệu.'}
+              </p>
+            </div>
+            <input
+              type="password"
+              value={passcodeInput}
+              onChange={(e) => setPasscodeInput(e.target.value)}
+              placeholder="Nhập Passcode truy cập..."
+              className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm text-center font-mono focus:outline-none focus:border-brand-500"
+            />
+            <button
+              type="submit"
+              disabled={isWorking || !passcodeInput.trim()}
+              className="w-full py-2.5 rounded-xl text-white text-xs font-bold cursor-pointer disabled:opacity-50"
+              style={{ backgroundColor: gateBranding?.primaryColor || '#10b981' }}
+            >
+              Mở khóa Tài liệu Đề xuất
+            </button>
+          </form>
+        )}
+
+        {active && !proposal && !passcodeRequired && isWorking && (
           <div className="p-16 text-center space-y-3 bg-white rounded-3xl border border-slate-200">
             <RefreshCw className="w-8 h-8 text-brand-500 animate-spin mx-auto" />
             <p className="text-xs font-mono text-slate-500">Đang tải hồ sơ đề xuất giải pháp kỹ thuật...</p>
@@ -267,6 +330,24 @@ export const ClientPortalPage: React.FC = () => {
 
         {proposal && (
           <div className="space-y-6">
+            {/* White-label Welcome Banner if configured */}
+            {proposal.portalConfig?.branding && (
+              <div
+                className="rounded-2xl border bg-white p-4 flex flex-wrap items-center gap-3 shadow-2xs"
+                style={{ borderColor: proposal.portalConfig.branding.primaryColor }}
+              >
+                {proposal.portalConfig.branding.logoUrl && (
+                  <img
+                    src={proposal.portalConfig.branding.logoUrl}
+                    alt="Partner Logo"
+                    className="h-9 max-w-[140px] object-contain"
+                  />
+                )}
+                <div className="text-xs text-slate-700 font-medium">
+                  {proposal.portalConfig.branding.welcomeMessage}
+                </div>
+              </div>
+            )}
             
             {/* Proposal Overview Header Card */}
             <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-xs space-y-4">
@@ -429,6 +510,7 @@ export const ClientPortalPage: React.FC = () => {
             )}
 
             {/* AI Proposal Assistant for Client */}
+            {proposal.portalConfig?.aiAssistantEnabled !== false && (
             <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-xs space-y-4">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-brand-600" />
@@ -471,6 +553,7 @@ export const ClientPortalPage: React.FC = () => {
                 </div>
               )}
             </div>
+            )}
 
             {/* Shared Materials */}
             {materials.length > 0 && (
@@ -495,6 +578,7 @@ export const ClientPortalPage: React.FC = () => {
             )}
 
             {/* Comments & Feedback */}
+            {proposal.portalConfig?.commentsEnabled !== false && (
             <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-xs space-y-4">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
@@ -550,6 +634,7 @@ export const ClientPortalPage: React.FC = () => {
                 </div>
               </div>
             </div>
+            )}
 
           </div>
         )}

@@ -15,6 +15,13 @@ interface LeadRow {
   extracted_metadata: Record<string, unknown> | string | null;
   bant_score: number | null;
   bant_details: Record<string, unknown> | string | null;
+  client_name?: string | null;
+  industry?: string | null;
+  description?: string | null;
+  is_archived?: boolean;
+  archive_outcome?: string | null;
+  archived_at?: Date | string | null;
+  project_settings?: Record<string, unknown> | string | null;
   created_at: Date | string;
   updated_at: Date | string;
 }
@@ -44,13 +51,21 @@ function mapLead(row: LeadRow): Lead {
     extractedMetadata: parseJson(row.extracted_metadata),
     bantScore: row.bant_score,
     bantDetails: parseJson(row.bant_details),
+    clientName: row.client_name ?? null,
+    industry: row.industry ?? null,
+    description: row.description ?? null,
+    isArchived: Boolean(row.is_archived),
+    archiveOutcome: row.archive_outcome ?? null,
+    archivedAt: row.archived_at ? new Date(row.archived_at).toISOString() : null,
+    projectSettings: parseJson(row.project_settings ?? null),
     createdAt: new Date(row.created_at).toISOString(),
     updatedAt: new Date(row.updated_at).toISOString()
   };
 }
 
 const FULL_LEAD_COLUMNS = `id, organization_id, client_id, created_by, assigned_to, title, source, status,
-  raw_rfp_content, extracted_metadata, bant_score, bant_details, created_at, updated_at`;
+  raw_rfp_content, extracted_metadata, bant_score, bant_details, client_name, industry, description,
+  is_archived, archive_outcome, archived_at, project_settings, created_at, updated_at`;
 
 export class PostgresLeadRepository implements ILeadRepository {
   constructor(private readonly pool: Pool) {}

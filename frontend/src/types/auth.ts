@@ -1,4 +1,4 @@
-export type UserRole = 'ADMIN' | 'PRESALE_LEAD' | 'PRESALE_CONSULTANT' | 'SOLUTION_ARCHITECT' | 'SALES_REP' | 'VIEWER';
+export type UserRole = 'ADMIN' | 'PRESALE_LEAD' | 'PRESALE_CONSULTANT' | 'SALES_REP' | 'VIEWER';
 
 export type UserStatus = 'ACTIVE' | 'INVITED' | 'DEACTIVATED';
 
@@ -42,6 +42,8 @@ export interface RegisterData {
 
 export interface SessionData {
   user: AuthUser;
+  requires2FA?: boolean;
+  email?: string;
 }
 
 export interface ForgotPasswordData {

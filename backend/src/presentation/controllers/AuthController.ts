@@ -1,4 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
+import axios from 'axios';
+import { Pool } from 'pg';
 import { AppError, ForbiddenError, UnauthorizedError, ValidationError } from '../../domain/errors/AppError.js';
 import { GetCurrentUserUseCase, LoginUseCase, RefreshSessionUseCase, LogoutUseCase, ForgotPasswordUseCase, ResetPasswordUseCase } from '../../application/use-cases/AuthUseCases.js';
 import { RegisterUseCase } from '../../application/use-cases/UserUseCases.js';
@@ -83,7 +85,8 @@ export class AuthController {
     private readonly forgotPasswordUseCase: ForgotPasswordUseCase,
     private readonly resetPasswordUseCase: ResetPasswordUseCase,
     private readonly registerUseCase: RegisterUseCase,
-    private readonly authRepository?: IAuthRepository
+    private readonly authRepository?: IAuthRepository,
+    private readonly dbPool?: Pool
   ) {}
 
   devLogin = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
@@ -122,7 +125,11 @@ export class AuthController {
     try {
       validateCsrfOrigin(req);
       const body = req.body && typeof req.body === 'object' ? req.body : {};
-      const session = await this.loginUseCase.execute(body.email, body.password, sessionContext(req));
+      const session = await this.loginUseCase.execute(body.email, body.password, sessionContext(req), body.totpCode);
+      if (session.requires2FA) {
+        res.status(200).json({ success: true, data: { requires2FA: true, email: session.user.email } });
+        return;
+      }
       setSessionCookies(res, session.accessToken, session.refreshToken);
       res.status(200).json({ success: true, data: { user: session.user } });
     } catch (error) { next(error); }
@@ -178,6 +185,88 @@ export class AuthController {
       await this.resetPasswordUseCase.execute(body.token, body.password);
       clearSessionCookies(res);
       res.status(200).json({ success: true, data: { message: 'Password reset successfully. Please sign in.' } });
+    } catch (error) { next(error); }
+  };
+
+  getGoogleAuthUrl = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const redirectTo = typeof req.query.redirectTo === 'string' && req.query.redirectTo.trim()
+        ? req.query.redirectTo.trim()
+        : env.frontendUrl;
+      if (!env.supabaseUrl) {
+        throw new AppError('Chưa cấu hình SUPABASE_URL cho đăng nhập Gmail.', 503);
+      }
+      const url = `${env.supabaseUrl}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectTo)}`;
+      res.status(200).json({ success: true, data: { url } });
+    } catch (error) { next(error); }
+  };
+
+  exchangeGoogleToken = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      validateCsrfOrigin(req);
+      if (!this.authRepository) throw new AppError('Auth repository unavailable.', 500);
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const supabaseAccessToken = typeof body.accessToken === 'string' ? body.accessToken.trim() : '';
+      if (!supabaseAccessToken) throw new ValidationError('Google/Supabase access token is required.');
+      if (!env.supabaseUrl || !env.supabaseAnonKey) {
+        throw new AppError('SUPABASE_URL / SUPABASE_ANON_KEY chưa được cấu hình trên server.', 503);
+      }
+
+      let supaUser: any;
+      try {
+        const resp = await axios.get(`${env.supabaseUrl}/auth/v1/user`, {
+          headers: {
+            apikey: env.supabaseAnonKey,
+            Authorization: `Bearer ${supabaseAccessToken}`
+          },
+          timeout: 8000
+        });
+        supaUser = resp.data;
+      } catch {
+        throw new UnauthorizedError('Không thể xác thực phiên đăng nhập Gmail từ Supabase.');
+      }
+
+      const email = typeof supaUser?.email === 'string' ? supaUser.email.trim().toLowerCase() : '';
+      if (!email) throw new UnauthorizedError('Tài khoản Gmail không cung cấp địa chỉ email hợp lệ.');
+
+      let user = await this.authRepository.findUserByEmail(email);
+      if (!user && this.dbPool) {
+        const fullName =
+          supaUser?.user_metadata?.full_name ||
+          supaUser?.user_metadata?.name ||
+          email.split('@')[0];
+        const avatarUrl = supaUser?.user_metadata?.avatar_url || supaUser?.user_metadata?.picture || null;
+
+        // Provision user inside default/first organization or create personal org
+        const orgRes = await this.dbPool.query<{ id: string }>(
+          `SELECT id FROM organizations ORDER BY created_at ASC LIMIT 1;`
+        );
+        let orgId = orgRes.rows[0]?.id;
+        if (!orgId) {
+          const newOrg = await this.dbPool.query<{ id: string }>(
+            `INSERT INTO organizations (name, domain, plan) VALUES ($1, $2, 'FREE') RETURNING id;`,
+            [`${fullName}'s Workspace`, email.split('@')[1] || null]
+          );
+          orgId = newOrg.rows[0].id;
+        }
+        await this.dbPool.query(
+          `INSERT INTO users (supabase_auth_id, organization_id, email, full_name, avatar_url, role, status)
+           VALUES ($1, $2, $3, $4, $5, 'VIEWER', 'ACTIVE')
+           ON CONFLICT (email) DO UPDATE SET supabase_auth_id = EXCLUDED.supabase_auth_id, updated_at = NOW();`,
+          [supaUser.id || null, orgId, email, fullName, avatarUrl]
+        );
+        user = await this.authRepository.findUserByEmail(email);
+      }
+
+      if (!user || user.status !== 'ACTIVE') {
+        throw new UnauthorizedError('Tài khoản Gmail này chưa được kích hoạt hoặc đã bị khóa.');
+      }
+
+      const refreshToken = createOpaqueToken();
+      const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_MS);
+      await this.authRepository.createRefreshToken(user.id, hashToken(refreshToken), expiresAt, sessionContext(req));
+      setSessionCookies(res, issueAccessToken(user), refreshToken);
+      res.status(200).json({ success: true, data: { user: toPublicUser(user) } });
     } catch (error) { next(error); }
   };
 }

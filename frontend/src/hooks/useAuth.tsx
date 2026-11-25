@@ -10,7 +10,7 @@ export type AuthStatus = 'loading' | 'authenticated' | 'anonymous';
 interface AuthContextValue {
   status: AuthStatus;
   user: AuthUser | null;
-  login: (input: LoginInput) => Promise<AuthUser>;
+  login: (input: LoginInput) => Promise<{ user: AuthUser | null; requires2FA?: boolean }>;
   devLogin: (email?: string) => Promise<AuthUser>;
   register: (input: RegisterInput) => Promise<AuthUser>;
   logout: () => Promise<void>;
@@ -30,6 +30,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const restoreSession = async (): Promise<SessionData | null> => {
       try {
         localStorage.removeItem('presaleee_simulated_role');
+
+        // Handle OAuth redirect fragment (#access_token=... from Google/Supabase OAuth)
+        if (window.location.hash.includes('access_token=')) {
+          const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+          const oauthToken = hashParams.get('access_token');
+          if (oauthToken) {
+            try {
+              const session = await authService.exchangeGoogleToken(oauthToken);
+              window.location.hash = '#overview';
+              return session;
+            } catch {
+              window.location.hash = '#signin';
+            }
+          }
+        }
+
         const session = await authService.me();
         return session;
       } catch (error) {
@@ -59,9 +75,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const login = useCallback(async (input: LoginInput) => {
     localStorage.removeItem('presaleee_simulated_role');
     const session = await authService.login(input);
+    if (session.requires2FA) {
+      return { user: null, requires2FA: true };
+    }
     setUser(session.user);
     setStatus('authenticated');
-    return session.user;
+    return { user: session.user };
   }, []);
 
   const devLogin = useCallback(async (email: string = 'ntbinh1@gmail.com') => {

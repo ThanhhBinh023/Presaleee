@@ -11,6 +11,7 @@ const AUTH_PREFIX = '/api/v1/auth';
 export interface LoginInput {
   email: string;
   password: string;
+  totpCode?: string;
 }
 
 export interface RegisterInput {
@@ -41,5 +42,11 @@ export const authService = {
     apiRequest<ForgotPasswordData>(`${AUTH_PREFIX}/forgot-password`, { method: 'POST', body: { email } }),
 
   resetPassword: (token: string, password: string) =>
-    apiRequest<MessageData>(`${AUTH_PREFIX}/reset-password`, { method: 'POST', body: { token, password } })
+    apiRequest<MessageData>(`${AUTH_PREFIX}/reset-password`, { method: 'POST', body: { token, password } }),
+
+  getGoogleAuthUrl: (redirectTo: string) =>
+    apiRequest<{ url: string }>(`${AUTH_PREFIX}/google/url?redirectTo=${encodeURIComponent(redirectTo)}`),
+
+  exchangeGoogleToken: (accessToken: string) =>
+    apiRequest<SessionData>(`${AUTH_PREFIX}/google/exchange`, { method: 'POST', body: { accessToken } })
 };

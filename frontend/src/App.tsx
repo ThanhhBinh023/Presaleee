@@ -15,7 +15,7 @@ import { AIWorkspace } from './components/AIWorkspace';
 import { RfpIntake } from './components/RfpIntake';
 import { KnowledgeVault } from './components/KnowledgeVault';
 import { MembersDirectory } from './components/MembersDirectory';
-import { Profile } from './components/Profile';
+import { SettingsCenter } from './components/SettingsCenter';
 import { ClientsDirectory } from './components/ClientsDirectory';
 import { AuditLog } from './components/AuditLog';
 import { LeadsDirectory } from './components/LeadsDirectory';
@@ -39,6 +39,7 @@ type Page =
   | 'vault'
   | 'members'
   | 'profile'
+  | 'settings'
   | 'clients'
   | 'audit'
   | 'leads'
@@ -61,6 +62,7 @@ function pageFromHash(hash: string): Page {
   if (route === '#vault') return 'vault';
   if (route === '#members') return 'members';
   if (route === '#profile') return 'profile';
+  if (route === '#settings') return 'settings';
   if (route === '#clients') return 'clients';
   if (route === '#audit') return 'audit';
   if (route === '#leads') return 'leads';
@@ -99,6 +101,25 @@ const AppShell: React.FC = () => {
     }
   }, [status, user, currentPage]);
 
+  // Render-blocking guard: never flash Home / SignIn / old UI while auth session is being verified
+  const isPublicTokenRoute = currentPage === 'client-portal' || currentPage === 'reset-password';
+  if (status === 'loading' && !isPublicTokenRoute) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-3 bg-[#f8fafc]">
+        <span className="w-8 h-8 rounded-full border-2 border-brand-500 border-t-transparent animate-spin" />
+        <span className="text-xs font-mono text-slate-500">Đang đồng bộ phiên làm việc...</span>
+      </div>
+    );
+  }
+
+  // Synchronously resolve target page when authenticated so landing page never flashes for 1 frame
+  const effectivePage: Page =
+    status === 'authenticated' && (currentPage === 'home' || currentPage === 'signin' || !window.location.hash || window.location.hash === '#')
+      ? 'overview'
+      : status === 'authenticated' && user?.role === 'ADMIN' && ['ai-workspace', 'rfps', 'leads', 'portal', 'meetings', 'proposals', 'rate-cards'].includes(currentPage)
+      ? 'overview'
+      : currentPage;
+
   const goTo = (page: Page) => {
     window.location.hash = page === 'home' ? '' : `#${page}`;
     setCurrentPage(page);
@@ -131,7 +152,7 @@ const AppShell: React.FC = () => {
 
   const signedInName = status === 'authenticated' && user ? user.fullName : null;
 
-  if (currentPage === 'analytics') {
+  if (effectivePage === 'analytics') {
     return (
       <RequireAuth>
         <AdminAnalytics
@@ -146,7 +167,7 @@ const AppShell: React.FC = () => {
     );
   }
 
-  if (currentPage === 'ai-workspace') {
+  if (effectivePage === 'ai-workspace') {
     return (
       <RequireAuth>
         <AIWorkspace
@@ -160,7 +181,7 @@ const AppShell: React.FC = () => {
     );
   }
 
-  if (currentPage === 'overview') {
+  if (effectivePage === 'overview') {
     return (
       <RequireAuth>
         <Overview
@@ -182,7 +203,7 @@ const AppShell: React.FC = () => {
     );
   }
 
-  if (currentPage === 'rfps') {
+  if (effectivePage === 'rfps') {
     return (
       <RequireAuth>
         <RfpIntake
@@ -195,7 +216,7 @@ const AppShell: React.FC = () => {
     );
   }
 
-    if (currentPage === 'vault') {
+  if (effectivePage === 'vault') {
     return (
       <RequireAuth>
         <KnowledgeVault
@@ -207,7 +228,7 @@ const AppShell: React.FC = () => {
     );
   }
 
-  if (currentPage === 'leads') {
+  if (effectivePage === 'leads') {
     return (
       <RequireAuth>
         <LeadsDirectory onBackToOverview={navigateToOverview} onLogout={handleLogout} />
@@ -237,7 +258,7 @@ const AppShell: React.FC = () => {
     );
   }
 
-  if (currentPage === 'meetings') {
+  if (effectivePage === 'meetings') {
     return (
       <RequireAuth>
         <MeetingsWorkspace onBackToOverview={navigateToOverview} />
@@ -245,7 +266,7 @@ const AppShell: React.FC = () => {
     );
   }
 
-  if (currentPage === 'proposals') {
+  if (effectivePage === 'proposals') {
     return (
       <RequireAuth>
         <ProposalsStudio onBackToOverview={navigateToOverview} onLogout={handleLogout} />
@@ -253,7 +274,7 @@ const AppShell: React.FC = () => {
     );
   }
 
-  if (currentPage === 'portal') {
+  if (effectivePage === 'portal') {
     return (
       <RequireAuth>
         <PortalDesk onBackToOverview={navigateToOverview} onLogout={handleLogout} />
@@ -261,11 +282,11 @@ const AppShell: React.FC = () => {
     );
   }
 
-  if (currentPage === 'client-portal') {
+  if (effectivePage === 'client-portal') {
     return <ClientPortalPage />;
   }
 
-  if (currentPage === 'pipelines') {
+  if (effectivePage === 'pipelines') {
     return (
       <RequireAuth>
         <RolePipelines
@@ -277,7 +298,7 @@ const AppShell: React.FC = () => {
     );
   }
 
-  if (currentPage === 'clients') {
+  if (effectivePage === 'clients') {
     return (
       <RequireAuth>
         <ClientsDirectory onBackToOverview={navigateToOverview} />
@@ -285,7 +306,7 @@ const AppShell: React.FC = () => {
     );
   }
 
-  if (currentPage === 'audit') {
+  if (effectivePage === 'audit') {
     return (
       <RequireAuth>
         <AuditLog onBackToOverview={navigateToOverview} />
@@ -293,7 +314,7 @@ const AppShell: React.FC = () => {
     );
   }
 
-  if (currentPage === 'members') {
+  if (effectivePage === 'members') {
     return (
       <RequireAuth>
         <MembersDirectory onBackToOverview={navigateToOverview} />
@@ -301,19 +322,19 @@ const AppShell: React.FC = () => {
     );
   }
 
-  if (currentPage === 'profile') {
+  if (effectivePage === 'profile' || effectivePage === 'settings') {
     return (
       <RequireAuth>
-        <Profile />
+        <SettingsCenter />
       </RequireAuth>
     );
   }
 
-  if (currentPage === 'reset-password') {
+  if (effectivePage === 'reset-password') {
     return <ResetPassword onBackToHome={navigateToHome} onDone={navigateToSignIn} />;
   }
 
-  if (currentPage === 'signin') {
+  if (effectivePage === 'signin') {
     return <SignIn onBackToHome={navigateToHome} onLoginSuccess={navigateToOverview} />;
   }
 

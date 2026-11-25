@@ -2,7 +2,6 @@ export const USER_ROLES = [
   'ADMIN',
   'PRESALE_LEAD',
   'PRESALE_CONSULTANT',
-  'SOLUTION_ARCHITECT',
   'SALES_REP',
   'VIEWER'
 ] as const;

@@ -7,10 +7,20 @@
     <title>Presaleee — The AI Workspace for IT Presale & SOW Drafting</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+    <style>
+      .initial-blocking-loader{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:#f8fafc;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;color:#64748b;font-size:12px}
+      .initial-blocking-spinner{width:32px;height:32px;border-radius:9999px;border:2.5px solid #10b981;border-top-color:transparent;animation:spin .7s linear infinite}
+      @keyframes spin{to{transform:rotate(360deg)}}
+    </style>
   </head>
   <body class="bg-white text-slate-900 font-sans antialiased selection:bg-brand-500 selection:text-white">
-    <div id="root"></div>
+    <div id="root">
+      <div class="initial-blocking-loader">
+        <div class="initial-blocking-spinner"></div>
+        <span>Đang khởi tạo Presaleee...</span>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -24,7 +24,8 @@ const APPLIED_PROBES: Record<string, string> = {
   '010_seed_system_admin': `SELECT EXISTS (SELECT 1 FROM users WHERE email = 'admin@presaleee.io') AS applied`,
   '011_add_proposal_review_notes': `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'proposals' AND column_name = 'review_notes') AS applied`,
   '012_unique_proposal_lead': `SELECT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'uq_proposals_lead_id') AS applied`,
-  '013_consolidate_dut_organization': `SELECT NOT EXISTS (SELECT 1 FROM users WHERE email = 'ntbinh1@gmail.com' AND organization_id = 'fb5e76e1-edeb-450f-a579-4596feeaf8df') AS applied`
+  '013_consolidate_dut_organization': `SELECT NOT EXISTS (SELECT 1 FROM users WHERE email = 'ntbinh1@gmail.com' AND organization_id = 'fb5e76e1-edeb-450f-a579-4596feeaf8df') AS applied`,
+  '014_settings_and_remove_architect': `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'system_settings') AS applied`
 };
 
 async function runPendingMigrations(): Promise<void> {

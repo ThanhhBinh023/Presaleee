@@ -527,7 +527,7 @@ export class LeadIntakeController {
       const { email, projectRole } = req.body ?? {};
       if (!email || !projectRole) throw new ValidationError('Email and projectRole are required.');
 
-      const allowedRoles = ['PRESALE_LEAD', 'SALES_REP', 'PRESALE_CONSULTANT', 'SOLUTION_ARCHITECT', 'VIEWER'];
+      const allowedRoles = ['PRESALE_LEAD', 'SALES_REP', 'PRESALE_CONSULTANT', 'VIEWER'];
       if (!allowedRoles.includes(projectRole)) {
         throw new ValidationError(`projectRole must be one of: ${allowedRoles.join(', ')}.`);
       }
@@ -609,7 +609,7 @@ export class LeadIntakeController {
       const { projectRole } = req.body ?? {};
       if (!projectRole) throw new ValidationError('projectRole is required.');
 
-      const allowedRoles = ['PRESALE_LEAD', 'SALES_REP', 'PRESALE_CONSULTANT', 'SOLUTION_ARCHITECT', 'VIEWER'];
+      const allowedRoles = ['PRESALE_LEAD', 'SALES_REP', 'PRESALE_CONSULTANT', 'VIEWER'];
       if (!allowedRoles.includes(projectRole)) {
         throw new ValidationError(`projectRole must be one of: ${allowedRoles.join(', ')}.`);
       }

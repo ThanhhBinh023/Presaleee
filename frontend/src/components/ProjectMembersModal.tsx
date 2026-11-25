@@ -173,7 +173,6 @@ export const ProjectMembersModal: React.FC<ProjectMembersModalProps> = ({
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-800 focus:outline-none focus:border-brand-500"
                 >
                   <option value="PRESALE_CONSULTANT">Presale Consultant</option>
-                  <option value="SOLUTION_ARCHITECT">Solution Architect</option>
                   <option value="SALES_REP">Sales Rep</option>
                   <option value="PRESALE_LEAD">Presale Lead</option>
                   <option value="VIEWER">Viewer (Chỉ đọc)</option>
@@ -247,7 +246,6 @@ export const ProjectMembersModal: React.FC<ProjectMembersModalProps> = ({
                           <option value="PRESALE_LEAD">Presale Lead</option>
                           <option value="SALES_REP">Sales Rep</option>
                           <option value="PRESALE_CONSULTANT">Presale Consultant</option>
-                          <option value="SOLUTION_ARCHITECT">Solution Architect</option>
                           <option value="VIEWER">Viewer</option>
                         </select>
                       ) : (

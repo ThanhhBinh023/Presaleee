@@ -28,6 +28,9 @@ import {
 } from '../services/meetingService';
 import type { LeadItem } from '../services/leadService';
 import { fetchLeads } from '../services/leadService';
+import { settingsService } from '../services/settingsService';
+import { navigateTo } from '../navigation';
+import type { ExternalIntegrations } from '../types/settings';
 import type { UserRole } from '../types/auth';
 
 interface DiscoveryMeetingsTabProps {
@@ -68,7 +71,44 @@ export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({
   const [newTitle, setNewTitle] = useState<string>('');
   const [newSourceTool, setNewSourceTool] = useState<MeetingSourceTool>('ZOOM');
   const [newTranscript, setNewTranscript] = useState<string>('');
+  const [meetingUrl, setMeetingUrl] = useState<string>('');
+  const [integrations, setIntegrations] = useState<ExternalIntegrations | null>(null);
+  const [autoExtractTranscript, setAutoExtractTranscript] = useState<boolean>(true);
   const [showTranscriptDetails, setShowTranscriptDetails] = useState<boolean>(false);
+
+  // Clean VTT / SRT timestamps & cue IDs from uploaded meeting transcripts
+  const cleanTranscriptText = (raw: string): string => {
+    const lines = raw.replace(/\r\n/g, '\n').split('\n');
+    const cleaned: string[] = [];
+    for (const line of lines) {
+      const t = line.trim();
+      if (!t || t === 'WEBVTT' || /^\d+$/.test(t)) continue;
+      if (/^\d{2}:\d{2}(:\d{2})?[.,]\d{3}\s*-->\s*\d{2}:\d{2}/.test(t)) continue;
+      if (/^NOTE\b/i.test(t)) continue;
+      cleaned.push(t.replace(/<[^>]+>/g, ''));
+    }
+    return cleaned.join('\n');
+  };
+
+  useEffect(() => {
+    settingsService.getAccountSettings()
+      .then((res) => setIntegrations(res.integrations))
+      .catch(() => {});
+  }, []);
+
+  const currentToolIntegration = React.useMemo(() => {
+    if (!integrations) return null;
+    if (newSourceTool === 'GOOGLE_MEET') return { label: 'Google Meet', ...integrations.googleMeet };
+    if (newSourceTool === 'ZOOM') return { label: 'Zoom Meetings', ...integrations.zoom };
+    if (newSourceTool === 'TEAMS') return { label: 'Microsoft Teams', ...integrations.microsoftTeams };
+    return null;
+  }, [integrations, newSourceTool]);
+
+  useEffect(() => {
+    if (currentToolIntegration) {
+      setAutoExtractTranscript(Boolean(currentToolIntegration.connected && currentToolIntegration.autoExtractTranscript));
+    }
+  }, [currentToolIntegration]);
 
   // 1. Initial Load: Fetch Leads
   useEffect(() => {
@@ -170,11 +210,16 @@ export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({
     try {
       const order = meetings.length + 1;
       const titleToUse = newTitle.trim() || `Meeting #${order}: Technical Deep Dive`;
+      const transcriptBody = [
+        meetingUrl.trim() ? `[Meeting Link: ${meetingUrl.trim()}]` : '',
+        autoExtractTranscript ? cleanTranscriptText(newTranscript) : newTranscript.trim()
+      ].filter(Boolean).join('\n\n');
+
       const created = await createMeeting({
         leadId: selectedLeadId,
         title: titleToUse,
         sourceTool: newSourceTool,
-        rawTranscript: newTranscript.trim()
+        rawTranscript: transcriptBody
       });
 
       setMeetings(prev => [...prev, created]);
@@ -182,6 +227,20 @@ export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({
       setShowCreateModal(false);
       setNewTitle('');
       setNewTranscript('');
+      setMeetingUrl('');
+
+      if (autoExtractTranscript && transcriptBody.trim().length > 15) {
+        try {
+          setIsInspecting(true);
+          const inspected = await inspectMeeting(created.id, transcriptBody);
+          setMeetings(prev => prev.map(m => m.id === inspected.id ? inspected : m));
+          toast.success('Đã tự động rút trích & phân tích Transcript bằng AI!', 'Auto-Transcript');
+        } catch {
+          // Meeting is still created even if AI inspection fails
+        } finally {
+          setIsInspecting(false);
+        }
+      }
     } catch (err: any) {
       toast.error(`Create Meeting failed: ${err.message || 'Unknown error'}`, 'Lỗi tạo cuộc họp');
     }
@@ -610,7 +669,7 @@ export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({
                     <button
                       onClick={() => handleLifecycleChange('LOCKED')}
                       disabled={isTransitioning || !canModifyMeeting}
-                      title={!canModifyMeeting ? 'Chỉ Presale Lead / Solution Architect mới có quyền khóa/mở meeting' : undefined}
+                      title={!canModifyMeeting ? 'Chỉ Presale Lead / Presale Consultant mới có quyền khóa/mở meeting' : undefined}
                       className="px-3.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 font-mono text-slate-700 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Lock className="w-3.5 h-3.5 text-slate-500" />
@@ -622,7 +681,7 @@ export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({
                     <button
                       onClick={() => handleLifecycleChange('OPEN')}
                       disabled={isTransitioning || !canModifyMeeting}
-                      title={!canModifyMeeting ? 'Chỉ Presale Lead / Solution Architect mới có quyền khóa/mở meeting' : undefined}
+                      title={!canModifyMeeting ? 'Chỉ Presale Lead / Presale Consultant mới có quyền khóa/mở meeting' : undefined}
                       className="px-3.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 font-mono text-slate-700 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Unlock className="w-3.5 h-3.5 text-slate-500" />
@@ -634,7 +693,7 @@ export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({
                     <button
                       onClick={() => handleLifecycleChange('REOPENED')}
                       disabled={isTransitioning || !canModifyMeeting}
-                      title={!canModifyMeeting ? 'Chỉ Presale Lead / Solution Architect mới có quyền khóa/mở meeting' : undefined}
+                      title={!canModifyMeeting ? 'Chỉ Presale Lead / Presale Consultant mới có quyền khóa/mở meeting' : undefined}
                       className="px-3.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 font-mono text-slate-700 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Unlock className="w-3.5 h-3.5 text-slate-500" />
@@ -646,7 +705,7 @@ export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({
                     <button
                       onClick={() => handleLifecycleChange('LOCKED')}
                       disabled={isTransitioning || !canModifyMeeting}
-                      title={!canModifyMeeting ? 'Chỉ Presale Lead / Solution Architect mới có quyền khóa/mở meeting' : undefined}
+                      title={!canModifyMeeting ? 'Chỉ Presale Lead / Presale Consultant mới có quyền khóa/mở meeting' : undefined}
                       className="px-3.5 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 font-mono text-slate-700 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Lock className="w-3.5 h-3.5 text-slate-500" />
@@ -753,6 +812,75 @@ export const DiscoveryMeetingsTab: React.FC<DiscoveryMeetingsTabProps> = ({
                   <option value="OTTER">Otter.ai</option>
                   <option value="MANUAL">Manual / Recorded Session</option>
                 </select>
+              </div>
+
+              {/* Auto-Transcript Integration Option */}
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                    <Video className="w-3.5 h-3.5 text-brand-600" />
+                    <span>Tích hợp &amp; Transcript Tự động</span>
+                  </span>
+                  {currentToolIntegration ? (
+                    currentToolIntegration.connected ? (
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                        Đã kết nối: {currentToolIntegration.accountEmail || currentToolIntegration.label}
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowCreateModal(false);
+                          navigateTo('settings', { tab: 'integrations' });
+                        }}
+                        className="text-[11px] font-semibold text-brand-700 hover:underline cursor-pointer"
+                      >
+                        Chưa kết nối {currentToolIntegration.label} → Cài đặt Tích hợp
+                      </button>
+                    )
+                  ) : null}
+                </div>
+
+                <label className="flex items-center gap-2 text-[11px] font-sans text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={autoExtractTranscript}
+                    onChange={(e) => setAutoExtractTranscript(e.target.checked)}
+                    className="rounded text-brand-600"
+                  />
+                  <span>Tự động làm sạch &amp; chạy AI rút trích Transcript (Auto-Transcript) ngay khi tạo</span>
+                </label>
+
+                <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                  <input
+                    type="url"
+                    value={meetingUrl}
+                    onChange={(e) => setMeetingUrl(e.target.value)}
+                    placeholder="Link phòng họp / ghi âm (Google Meet, Zoom, Teams)..."
+                    className="flex-1 min-w-[200px] px-3 py-1.5 rounded-lg bg-white border border-slate-300 text-slate-800 font-sans text-[11px]"
+                  />
+                  <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-brand-300 bg-emerald-50 hover:bg-emerald-100 text-brand-800 font-sans font-semibold text-[11px] cursor-pointer">
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>Nạp file Transcript (.vtt/.srt/.txt)</span>
+                    <input
+                      type="file"
+                      accept=".vtt,.srt,.txt"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                          const raw = String(reader.result || '');
+                          setNewTranscript(autoExtractTranscript ? cleanTranscriptText(raw) : raw);
+                          toast.info(`Đã nạp transcript từ "${file.name}".`, 'Auto-Transcript');
+                        };
+                        reader.readAsText(file);
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
+                </div>
               </div>
 
               <div>

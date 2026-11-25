@@ -22,6 +22,7 @@ interface RequestOptions {
   /** Opaque client-portal token. Staff cookies must not be sent with these calls. */
   bearerToken?: string;
   credentials?: RequestCredentials;
+  extraHeaders?: Record<string, string>;
 }
 
 let isRefreshing = false;
@@ -56,7 +57,7 @@ async function send<T>(path: string, options: RequestOptions, isRetry = false): 
 
   let response: Response;
   try {
-    const headers: Record<string, string> = {};
+    const headers: Record<string, string> = { ...(options.extraHeaders || {}) };
     if (options.body !== undefined) headers['Content-Type'] = 'application/json';
     if (options.bearerToken) headers.Authorization = `Bearer ${options.bearerToken}`;
     response = await fetch(`${API_BASE_URL}${path}`, {

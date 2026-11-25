@@ -3,6 +3,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useDashboardOverview } from '../hooks/useDashboard';
 import { WorkspacePill } from './workspace/WorkspacePill';
 import { UserCard } from './workspace/UserCard';
+import { NotificationBell } from './common/NotificationBell';
 import { navigateTo } from '../navigation';
 import { formatDateTime, formatMoney } from '../utils/format';
 import type { CurrencyAmount } from '../types/dashboard';
@@ -102,12 +103,6 @@ export const Overview: React.FC<OverviewProps> = ({
       actionText: 'Vào AI Presale Workspace',
       onAction: onNavigateAIWorkspace
     },
-    SOLUTION_ARCHITECT: {
-      title: `${user?.fullName || 'bạn'}!`,
-      subtitle: 'Thiết kế kiến trúc hệ thống, rà soát ma trận rủi ro RAID và chuẩn bị UI Design Brief.',
-      actionText: 'Vào AI Workspace (Kiến trúc)',
-      onAction: onNavigateAIWorkspace
-    },
     ADMIN: {
       title: `${user?.fullName || 'bạn'}!`,
       subtitle: 'Quản lý toàn bộ tổ chức, phân quyền thành viên và giám sát nhật ký Audit Log bất biến.',
@@ -123,6 +118,16 @@ export const Overview: React.FC<OverviewProps> = ({
   };
 
   const currentGreeting = roleGreetings[userRole] || roleGreetings.VIEWER;
+
+  // Render-blocking: block painting Overview until initial dashboard payload is ready
+  if (isLoading && !overview) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-3 bg-[#f8fafc]">
+        <span className="w-8 h-8 rounded-full border-2 border-brand-500 border-t-transparent animate-spin" />
+        <span className="text-xs font-mono text-slate-500">Đang tải bảng điều khiển Overview...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#f8fafc] flex text-slate-900 font-sans">
@@ -290,8 +295,9 @@ export const Overview: React.FC<OverviewProps> = ({
             </span>
           </div>
 
-          {/* Quick Actions */}
-          <div className="flex items-center gap-2">
+          {/* Quick Actions & Notification Bell */}
+          <div className="flex items-center gap-2.5">
+            <NotificationBell />
             {userRole === 'ADMIN' && (
               <>
                 <button

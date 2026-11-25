@@ -17,6 +17,13 @@ export interface Lead {
   extractedMetadata: Record<string, unknown>;
   bantScore: number | null;
   bantDetails: Record<string, unknown>;
+  clientName?: string | null;
+  industry?: string | null;
+  description?: string | null;
+  isArchived?: boolean;
+  archiveOutcome?: string | null;
+  archivedAt?: string | null;
+  projectSettings?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
 }

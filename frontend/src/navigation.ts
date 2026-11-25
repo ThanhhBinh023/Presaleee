@@ -4,6 +4,7 @@ export type RouteName =
   | 'overview'
   | 'members'
   | 'profile'
+  | 'settings'
   | 'clients'
   | 'audit'
   | 'leads'

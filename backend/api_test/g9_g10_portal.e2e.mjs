@@ -183,7 +183,7 @@ await suite.test('G9/G10-00', 'Bootstrap: organizations, portal roles, APPROVED 
     [presales, LEAD, 'PRESALE_LEAD', 'E2E G9 Presales Lead'],
     [viewer, VIEWER, 'VIEWER', 'E2E G9 Viewer'],
     [sales, SALES, 'SALES_REP', 'E2E G9 Sales Rep'],
-    [architect, ARCHITECT, 'SOLUTION_ARCHITECT', 'E2E G9 Solution Architect']
+    [architect, ARCHITECT, 'PRESALE_CONSULTANT', 'E2E G9 Presale Consultant']
   ]) {
     const member = await addMember(adminA, address, role, name);
     expect(member.status === 201, `${role} fixture expected 201, got ${member.status} ${member.text.slice(0, 160)}`);
@@ -269,9 +269,9 @@ await suite.test('G9-02', 'Session role and tenant guards: VIEWER 403, anonymous
   expect(repOnShared.status === 201, `SALES_REP on an already SENT_TO_CLIENT proposal expected 201, got ${repOnShared.status} ${repOnShared.text.slice(0, 160)}`);
   ids.sessionSales = repOnShared.json.data.id;
   const architectOnShared = await newSession(architect, { proposalId: ids.approved, clientEmail: `arch-${CLIENT}` });
-  expect(architectOnShared.status === 201, `SOLUTION_ARCHITECT expected 201, got ${architectOnShared.status}`);
+  expect(architectOnShared.status === 201, `PRESALE_CONSULTANT expected 201, got ${architectOnShared.status}`);
   ids.sessionArchitect = architectOnShared.json.data.id;
-  suite.note('SALES_REP and SOLUTION_ARCHITECT can open portal sessions, but only ADMIN/PRESALE_LEAD can be the first one on an APPROVED proposal (G9-04)');
+  suite.note('SALES_REP and PRESALE_CONSULTANT can open portal sessions, but only ADMIN/PRESALE_LEAD can be the first one on an APPROVED proposal (G9-04)');
 
   const smuggled = await newSession(adminB, { proposalId: ids.approved, clientEmail: CLIENT, organizationId: ids.orgA });
   expectEnvelope(smuggled, 404);

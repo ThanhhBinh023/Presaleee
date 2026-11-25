@@ -219,7 +219,7 @@ await suite.test('G13/G14-00', 'Bootstrap: three tenants, roles, an eleven-lead 
   for (const [jar, address, role, name] of [
     [leadJar, LEAD, 'PRESALE_LEAD', 'E2E G13 Presales Lead'],
     [viewerJar, VIEWER, 'VIEWER', 'E2E G13 Viewer'],
-    [architectJar, ARCHITECT, 'SOLUTION_ARCHITECT', 'E2E G13 Architect'],
+    [architectJar, ARCHITECT, 'PRESALE_CONSULTANT', 'E2E G13 Consultant'],
     [salesJar, SALES, 'SALES_REP', 'E2E G13 Sales Rep']
   ]) {
     const member = await addMember(adminA, address, role, name);
@@ -626,7 +626,7 @@ await suite.test('G14-02', 'Audit RBAC: ADMIN and PRESALE_LEAD read, every other
     const response = await audit(jar, '?limit=1');
     expect(response.status === 200, `${label} expected 200, got ${response.status} ${response.text.slice(0, 160)}`);
   }
-  for (const [label, jar] of [['VIEWER', viewerJar], ['SALES_REP', salesJar], ['SOLUTION_ARCHITECT', architectJar]]) {
+  for (const [label, jar] of [['VIEWER', viewerJar], ['SALES_REP', salesJar], ['PRESALE_CONSULTANT', architectJar]]) {
     const response = await audit(jar);
     expect(response.status === 403, `${label} expected 403, got ${response.status} ${response.text.slice(0, 160)}`);
     expectEnvelope(response, 403);

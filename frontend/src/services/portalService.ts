@@ -71,13 +71,19 @@ export const portalStaffService = {
   }
 };
 
-function clientOpts(token: string, extra: { method?: 'GET' | 'POST'; body?: unknown; timeoutMs?: number } = {}) {
+function clientOpts(
+  token: string,
+  extra: { method?: 'GET' | 'POST'; body?: unknown; timeoutMs?: number; extraHeaders?: Record<string, string> } = {}
+) {
   return { ...extra, bearerToken: token, credentials: 'omit' as const };
 }
 
 export const portalClientService = {
-  getProposal: (proposalId: string, token: string) =>
-    apiRequest<PortalProposalView>(`${CLIENT}/${encodeURIComponent(proposalId)}`, clientOpts(token)),
+  getProposal: (proposalId: string, token: string, passcode?: string) =>
+    apiRequest<PortalProposalView>(
+      `${CLIENT}/${encodeURIComponent(proposalId)}`,
+      clientOpts(token, passcode ? { extraHeaders: { 'x-portal-passcode': passcode } } : {})
+    ),
 
   listComments: async (proposalId: string, token: string): Promise<PortalComment[]> => {
     const result = await apiRequestWithMeta<PortalComment[]>(

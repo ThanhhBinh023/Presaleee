@@ -5,8 +5,7 @@ import {
   Eye,
   EyeOff,
   ShieldCheck,
-  ArrowLeft,
-  KeyRound
+  ArrowLeft
 } from 'lucide-react';
 import { authService } from '../services/authService';
 import { useAuth } from '../hooks/useAuth';
@@ -47,6 +46,8 @@ export const SignIn: React.FC<SignInProps> = ({ onBackToHome, onLoginSuccess }) 
   const [organizationName, setOrganizationName] = useState('');
   const [organizationDomain, setOrganizationDomain] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [requires2FA, setRequires2FA] = useState(false);
+  const [totpCode, setTotpCode] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [devResetUrl, setDevResetUrl] = useState<string | null>(null);
@@ -57,6 +58,8 @@ export const SignIn: React.FC<SignInProps> = ({ onBackToHome, onLoginSuccess }) 
     setNotice(null);
     setDevResetUrl(null);
     setPassword('');
+    setRequires2FA(false);
+    setTotpCode('');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -67,7 +70,16 @@ export const SignIn: React.FC<SignInProps> = ({ onBackToHome, onLoginSuccess }) 
 
     try {
       if (mode === 'signin') {
-        await login({ email: email.trim(), password });
+        const res = await login({
+          email: email.trim(),
+          password,
+          ...(requires2FA && totpCode.trim() ? { totpCode: totpCode.trim() } : {})
+        });
+        if (res.requires2FA) {
+          setRequires2FA(true);
+          setNotice('Tài khoản đang bật xác thực 2 yếu tố (2FA). Vui lòng nhập mã 6 chữ số từ ứng dụng Authenticator.');
+          return;
+        }
         if (rememberMe) {
           localStorage.setItem('presaleee_saved_email', email.trim());
         } else {
@@ -100,6 +112,23 @@ export const SignIn: React.FC<SignInProps> = ({ onBackToHome, onLoginSuccess }) 
     if (!devResetUrl) return;
     const hash = devResetUrl.split('#')[1];
     if (hash) window.location.hash = hash;
+  };
+
+  const handleGmailLogin = async () => {
+    setFormError(null);
+    setIsSubmitting(true);
+    try {
+      const res = await authService.getGoogleAuthUrl(window.location.origin);
+      if (res?.url) {
+        window.location.href = res.url;
+      } else {
+        setFormError('Không nhận được đường dẫn đăng nhập Gmail.');
+        setIsSubmitting(false);
+      }
+    } catch (err: any) {
+      setFormError(err?.message || 'Đăng nhập bằng Gmail hiện chưa khả dụng.');
+      setIsSubmitting(false);
+    }
   };
 
   const copy = modeCopy[mode];
@@ -267,6 +296,25 @@ export const SignIn: React.FC<SignInProps> = ({ onBackToHome, onLoginSuccess }) 
               </div>
             )}
 
+            {mode === 'signin' && requires2FA && (
+              <div className="p-3.5 rounded-xl border border-brand-200 bg-emerald-50/70 space-y-1.5">
+                <label htmlFor="totpCode" className="text-xs font-mono font-bold text-brand-900 uppercase block">
+                  Mã xác thực 2FA (6 chữ số)
+                </label>
+                <input
+                  id="totpCode"
+                  type="text"
+                  inputMode="numeric"
+                  required
+                  maxLength={6}
+                  value={totpCode}
+                  onChange={(e) => setTotpCode(e.target.value)}
+                  placeholder="123456"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-brand-300 bg-white text-slate-900 text-base font-mono tracking-widest text-center focus:outline-none focus:border-brand-600"
+                />
+              </div>
+            )}
+
             {mode === 'signin' && (
               <div className="flex items-center justify-between text-xs pt-1">
                 <label className="flex items-center gap-2 cursor-pointer select-none text-slate-600">
@@ -296,11 +344,14 @@ export const SignIn: React.FC<SignInProps> = ({ onBackToHome, onLoginSuccess }) 
               <div className="pt-1">
                 <button
                   type="button"
-                  disabled
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50/70 text-slate-400 text-xs font-mono cursor-not-allowed"
+                  onClick={() => void handleGmailLogin()}
+                  disabled={isSubmitting}
+                  className="w-full flex items-center justify-center gap-2.5 px-4 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs transition-all cursor-pointer disabled:opacity-60"
                 >
-                  <KeyRound className="w-3.5 h-3.5" />
-                  <span>SAML / Enterprise SSO - chưa hỗ trợ</span>
+                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
+                    <path fill="#EA4335" d="M12 10.2v3.9h5.4c-.2 1.3-1.5 3.8-5.4 3.8-3.3 0-6-2.7-6-6s2.7-6 6-6c1.9 0 3.1.8 3.8 1.5l2.6-2.5C16.8 3.4 14.6 2.5 12 2.5 6.8 2.5 2.5 6.8 2.5 12s4.3 9.5 9.5 9.5c5.5 0 9.1-3.9 9.1-9.3 0-.6-.1-1.1-.2-1.6H12z" />
+                  </svg>
+                  <span>Đăng nhập bằng Gmail (Google)</span>
                 </button>
               </div>
             )}

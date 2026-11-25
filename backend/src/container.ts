@@ -95,6 +95,8 @@ import {
 import { UserController } from './presentation/controllers/UserController.js';
 import { ListAuditLogsUseCase } from './application/use-cases/AuditUseCases.js';
 import { AuditController } from './presentation/controllers/AuditController.js';
+import { PostgresSettingsRepository } from './infrastructure/database/repositories/PostgresSettingsRepository.js';
+import { SettingsController } from './presentation/controllers/SettingsController.js';
 
 export interface ServiceContainer {
   knowledgeRepository: PostgresKnowledgeRepository;
@@ -143,6 +145,8 @@ export interface ServiceContainer {
   rateCardController: RateCardController;
   userController: UserController;
   auditController: AuditController;
+  settingsRepository: PostgresSettingsRepository;
+  settingsController: SettingsController;
 }
 
 export function createContainer(): ServiceContainer {
@@ -158,6 +162,7 @@ export function createContainer(): ServiceContainer {
   const rateCardRepository = new PostgresRateCardRepository(dbPool);
   const userRepository = new PostgresUserRepository(dbPool);
   const auditRepository = new PostgresAuditRepository(dbPool);
+  const settingsRepository = new PostgresSettingsRepository(dbPool);
   const referenceValidator = new ReferenceValidator(clientRepository, userRepository);
   const embeddingGateway = new GeminiEmbeddingGateway();
   const llmGateway = new FastAPILMGateway();
@@ -178,7 +183,7 @@ export function createContainer(): ServiceContainer {
   const updateLeadStatusUseCase = new UpdateLeadStatusUseCase(leadRepository, auditRepository);
   const deleteLeadUseCase = new DeleteLeadUseCase(leadRepository, auditRepository);
   const getLatestQualificationUseCase = new GetLatestQualificationUseCase(leadRepository);
-  const loginUseCase = new LoginUseCase(authRepository);
+  const loginUseCase = new LoginUseCase(authRepository, dbPool, auditRepository);
   const refreshSessionUseCase = new RefreshSessionUseCase(authRepository);
   const logoutUseCase = new LogoutUseCase(authRepository);
   const getCurrentUserUseCase = new GetCurrentUserUseCase(authRepository);
@@ -253,7 +258,8 @@ export function createContainer(): ServiceContainer {
     forgotPasswordUseCase,
     resetPasswordUseCase,
     registerUseCase,
-    authRepository
+    authRepository,
+    dbPool
   );
   const dashboardController = new DashboardController(
     new GetDashboardOverviewUseCase(dashboardRepository),
@@ -277,13 +283,13 @@ export function createContainer(): ServiceContainer {
     new UpdateMeetingStatusUseCase(meetingRepository),
     dbPool
   );
-  const getPortalProposalUseCase = new GetPortalProposalUseCase(proposalRepository);
+  const getPortalProposalUseCase = new GetPortalProposalUseCase(proposalRepository, settingsRepository);
   const portalController = new PortalController(
-    new CreatePortalSessionUseCase(portalRepository, proposalRepository),
+    new CreatePortalSessionUseCase(portalRepository, proposalRepository, settingsRepository),
     getPortalProposalUseCase,
-    new AskPortalProposalUseCase(proposalRepository, llmGateway),
+    new AskPortalProposalUseCase(proposalRepository, llmGateway, settingsRepository),
     new ListPortalCommentsUseCase(portalRepository),
-    new CreatePortalCommentUseCase(portalRepository),
+    new CreatePortalCommentUseCase(portalRepository, proposalRepository, settingsRepository),
     new ListPortalMaterialsUseCase(portalRepository),
     new ExportPortalProposalPdfUseCase(exportProposalToPdfUseCase, getPortalProposalUseCase, auditRepository),
     new RevokePortalSessionUseCase(portalRepository),
@@ -320,6 +326,7 @@ export function createContainer(): ServiceContainer {
     new UpdateOwnProfileUseCase(authRepository, userRepository, auditRepository)
   );
   const auditController = new AuditController(new ListAuditLogsUseCase(auditRepository));
+  const settingsController = new SettingsController(settingsRepository, authRepository, auditRepository);
 
 
   return {
@@ -364,7 +371,9 @@ export function createContainer(): ServiceContainer {
     clientController,
     rateCardController,
     userController,
-    auditController
+    auditController,
+    settingsRepository,
+    settingsController
   };
 }
 
